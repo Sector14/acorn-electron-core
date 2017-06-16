@@ -1,0 +1,6 @@
+# xilinx build intermediates
+**/build/
+
+# Ignore sym links
+lib
+replay_lib
