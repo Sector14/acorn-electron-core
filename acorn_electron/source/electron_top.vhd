@@ -50,7 +50,7 @@ library ieee;
 library UNISIM;
   use UNISIM.Vcomponents.all;
 
-entity Replay_Example_Top is
+entity Electron_Top is
   port (
 	------------------------------------------------------
 	-- To Lib
@@ -140,7 +140,7 @@ entity Replay_Example_Top is
 	);
 end;
 
-architecture RTL of Replay_Example_Top is
+architecture RTL of Electron_Top is
 
   signal led                    : bit1;
   signal tick_pre1              : bit1;

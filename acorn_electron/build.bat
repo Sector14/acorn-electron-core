@@ -1,6 +1,6 @@
 @echo off
 set name=replay
-set core=example
+set core=acorn_electron
 
 set REPLAYLIBCOMMONPATH=..\..\replay_lib\common
 set REPLAYLIBPATH=      ..\..\replay_lib\rtl

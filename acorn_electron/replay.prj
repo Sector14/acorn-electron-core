@@ -41,9 +41,9 @@ vhdl    work    replay_videotiming.vhd
 
 vhdl    work    replay_lib_wrap_pack.vhd
 
-vhdl    work    replay_example_core_pack.vhd
-vhdl    work    replay_example_top.vhd
-vhdl    work    replay_example_core_top.vhd
+vhdl    work    core_pack.vhd
+vhdl    work    electron_top.vhd
+vhdl    work    core_top.vhd
 vhdl    work    replay_lib_wrap.vhd
 vhdl    work    replay_top_entity.vhd
 vhdl    work    replay_top.vhd

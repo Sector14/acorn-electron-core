@@ -131,7 +131,7 @@ begin
   --
   -- The Core
   --
-  u_Core : entity work.Replay_Example_Top
+  u_Core : entity work.Electron_Top
   port map (
 	--
 	i_clk_sys             => clk_sys,
