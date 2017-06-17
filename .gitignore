@@ -1,6 +1,9 @@
 # xilinx build intermediates
 **/build/
 
+# unused vscode workspace
+.vscode
+
 # Ignore sym links
 lib
 replay_lib

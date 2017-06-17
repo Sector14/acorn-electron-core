@@ -53,50 +53,50 @@ library UNISIM;
 
 entity Core_Top is
   port (
-	------------------------------------------------------
-	-- To Lib
-	------------------------------------------------------
+    ------------------------------------------------------
+    -- To Lib
+    ------------------------------------------------------
 
-	-- Clocks
-	o_ctrl                : out   r_Ctrl_fm_core;
-	i_ctrl                : in    r_Ctrl_to_core;
-	-- Config
-	o_cfg                 : out   r_Cfg_fm_core;
-	i_cfg                 : in    r_Cfg_to_core;
-	-- Keyboard, Mouse and Joystick
-	o_kb_ms_joy           : out   r_KbMsJoy_fm_core;
-	i_kb_ms_joy           : in    r_KbMsJoy_to_core;
-	-- DDR memory
-	o_ddr                 : out   r_DDR_fm_core;
-	i_ddr                 : in    r_DDR_to_core;
-	-- File/Mem IO
-	o_io                  : out   r_IO_fm_core;
-	i_io                  : in    r_IO_to_core;
-	-- Audio/Video
-	o_av                  : out   r_AV_fm_core;
-	i_av                  : in    r_AV_to_core;
+    -- Clocks
+    o_ctrl                : out   r_Ctrl_fm_core;
+    i_ctrl                : in    r_Ctrl_to_core;
+    -- Config
+    o_cfg                 : out   r_Cfg_fm_core;
+    i_cfg                 : in    r_Cfg_to_core;
+    -- Keyboard, Mouse and Joystick
+    o_kb_ms_joy           : out   r_KbMsJoy_fm_core;
+    i_kb_ms_joy           : in    r_KbMsJoy_to_core;
+    -- DDR memory
+    o_ddr                 : out   r_DDR_fm_core;
+    i_ddr                 : in    r_DDR_to_core;
+    -- File/Mem IO
+    o_io                  : out   r_IO_fm_core;
+    i_io                  : in    r_IO_to_core;
+    -- Audio/Video
+    o_av                  : out   r_AV_fm_core;
+    i_av                  : in    r_AV_to_core;
 
-	------------------------------------------------------
-	-- Other IO
-	------------------------------------------------------
-	i_rs232_rxd           : in    bit1;
-	o_rs232_txd           : out   bit1;
-	i_rs232_cts           : in    bit1;
-	o_rs232_rts           : out   bit1;
+    ------------------------------------------------------
+    -- Other IO
+    ------------------------------------------------------
+    i_rs232_rxd           : in    bit1;
+    o_rs232_txd           : out   bit1;
+    i_rs232_cts           : in    bit1;
+    o_rs232_rts           : out   bit1;
 
-	b_2v5_io_1            : inout bit1;
-	b_2v5_io_0            : inout bit1;
+    b_2v5_io_1            : inout bit1;
+    b_2v5_io_0            : inout bit1;
 
-	o_clk_68k             : out   bit1;
-	b_clk_aux             : out   bit1;
+    o_clk_68k             : out   bit1;
+    b_clk_aux             : out   bit1;
 
-	b_io                  : inout word(54 downto 0);
-	b_aux_io              : inout word(39 downto 0);
-	i_aux_ip              : in    word(22 downto 0);
+    b_io                  : inout word(54 downto 0);
+    b_aux_io              : inout word(39 downto 0);
+    i_aux_ip              : in    word(22 downto 0);
 
-	o_disk_led            : out   bit1;
-	o_pwr_led             : out   bit1
-	);
+    o_disk_led            : out   bit1;
+    o_pwr_led             : out   bit1
+    );
 end;
 
 architecture RTL of Core_Top is
@@ -133,85 +133,70 @@ begin
   --
   u_Core : entity work.Electron_Top
   port map (
-	--
-	i_clk_sys             => clk_sys,
-	i_ena_sys             => ena_sys,
-	i_cph_sys             => cph_sys,
-	i_rst_sys             => rst_sys,
+    --
+    i_clk_sys             => clk_sys,
+    i_ena_sys             => ena_sys,
+    i_cph_sys             => cph_sys,
+    i_rst_sys             => rst_sys,
 
-	i_clk_ram             => i_ctrl.clk_ram,
-	i_rst_ram             => i_ctrl.rst_ram,
+    i_clk_ram             => i_ctrl.clk_ram,
+    i_rst_ram             => i_ctrl.rst_ram,
 
-	i_clk_vid             => clk_vid,
-	i_rst_vid             => rst_vid,
+    i_clk_vid             => clk_vid,
+    i_rst_vid             => rst_vid,
 
-	--
-	o_cfg_status          => o_cfg.cfg_status,
-	i_cfg_static          => i_cfg.cfg_static,
-	i_cfg_dynamic         => i_cfg.cfg_dynamic,
+    --
+    o_cfg_status          => o_cfg.cfg_status,
+    i_cfg_static          => i_cfg.cfg_static,
+    i_cfg_dynamic         => i_cfg.cfg_dynamic,
 
-	i_tick_1us            => i_ctrl.tick_1us,
-	i_tick_100us          => i_ctrl.tick_100us,
-	i_halt                => i_ctrl.halt,
-	i_dram_ref_panic      => i_ctrl.dram_ref_panic,
-	o_rst_soft            => o_ctrl.rst_soft,
+    i_tick_1us            => i_ctrl.tick_1us,
+    i_tick_100us          => i_ctrl.tick_100us,
+    i_halt                => i_ctrl.halt,
+    i_dram_ref_panic      => i_ctrl.dram_ref_panic,
+    o_rst_soft            => o_ctrl.rst_soft,
 
-	--
-	i_joy_a_l             => i_kb_ms_joy.joy_a_l,
-	i_joy_b_l             => i_kb_ms_joy.joy_b_l,
+    --
+    i_joy_a_l             => i_kb_ms_joy.joy_a_l,
+    i_joy_b_l             => i_kb_ms_joy.joy_b_l,
 
-	--
-	o_kb_ps2_leds         => o_kb_ms_joy.kb_ps2_leds,
-	i_kb_ps2_we           => i_kb_ms_joy.kb_ps2_we,
-	i_kb_ps2_data         => i_kb_ms_joy.kb_ps2_data,
-	i_kb_inhibit          => i_kb_ms_joy.kb_inhibit,
+    --
+    o_kb_ps2_leds         => o_kb_ms_joy.kb_ps2_leds,
+    i_kb_ps2_we           => i_kb_ms_joy.kb_ps2_we,
+    i_kb_ps2_data         => i_kb_ms_joy.kb_ps2_data,
+    i_kb_inhibit          => i_kb_ms_joy.kb_inhibit,
 
-	--
-	i_ms_we               => i_kb_ms_joy.ms_we,
-	i_ms_posx             => i_kb_ms_joy.ms_posx,
-	i_ms_posy             => i_kb_ms_joy.ms_posy,
-	i_ms_posz             => i_kb_ms_joy.ms_posz,
-	i_ms_butn             => i_kb_ms_joy.ms_butn,
+    --
+    i_fcha_cfg            => i_io.fcha_cfg,
+    i_fcha_to_core        => i_io.fcha_to_core,
+    o_fcha_fm_core        => o_io.fcha_fm_core,
 
-	o_ddr_hp_fm_core      => o_ddr.ddr_hp_fm_core,
-	i_ddr_hp_to_core      => i_ddr.ddr_hp_to_core,
+    i_fchb_cfg            => i_io.fchb_cfg,
+    i_fchb_to_core        => i_io.fchb_to_core,
+    o_fchb_fm_core        => o_io.fchb_fm_core,
 
-	o_ddr_vp_fm_core      => o_ddr.ddr_vp_fm_core,
-	i_ddr_vp_to_core      => i_ddr.ddr_vp_to_core,
+    --
+    i_memio_to_core       => i_io.memio_to_core,
+    o_memio_fm_core       => o_io.memio_fm_core,
 
-	--
-	i_fcha_cfg            => i_io.fcha_cfg,
-	i_fcha_to_core        => i_io.fcha_to_core,
-	o_fcha_fm_core        => o_io.fcha_fm_core,
+    --
+    o_vid_rgb             => o_av.vid_rgb,
+    o_vid_sync            => o_av.vid_sync,
 
-	i_fchb_cfg            => i_io.fchb_cfg,
-	i_fchb_to_core        => i_io.fchb_to_core,
-	o_fchb_fm_core        => o_io.fchb_fm_core,
+    --
+    o_audio_l             => o_av.audio_l,
+    o_audio_r             => o_av.audio_r,
+    i_audio_taken         => i_av.audio_taken,
 
-	--
-	i_memio_to_core       => i_io.memio_to_core,
-	o_memio_fm_core       => o_io.memio_fm_core,
+    ------------------------------------------------------
+    -- Other IO
+    ------------------------------------------------------
+    o_disk_led            => o_disk_led,
+    o_pwr_led             => o_pwr_led
+    );
 
-	--
-	o_vid_rgb             => o_av.vid_rgb,
-	o_vid_sync            =>o_av.vid_sync,
-
-	--
-	o_audio_l             => o_av.audio_l,
-	o_audio_r             => o_av.audio_r,
-	i_audio_taken         => i_av.audio_taken,
-
-	------------------------------------------------------
-	-- Other IO
-	------------------------------------------------------
-	i_rs232_rxd           => i_rs232_rxd,
-	o_rs232_txd           => o_rs232_txd,
-	i_rs232_cts           => i_rs232_cts,
-	o_rs232_rts           => o_rs232_rts,
-	--
-	o_disk_led            => disk_led,
-	o_pwr_led             => pwr_led
-	);
+  o_ddr.ddr_hp_fm_core      <= z_DDR_hp_fm_core;
+  o_ddr.ddr_vp_fm_core      <= z_DDR_vp_fm_core;
 
   o_kb_ms_joy.ms_load <= '0';
   o_kb_ms_joy.ms_posx <= (others => '0');
@@ -222,8 +207,8 @@ begin
   b_2v5_io_0  <= 'Z';
   o_clk_68k   <= 'Z';
   b_clk_aux   <= 'Z';
-  o_disk_led  <= disk_led;
-  o_pwr_led   <= pwr_led;
+  o_rs232_txd <= '0';
+  o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
   b_aux_io(39 downto 0) <= (others => 'Z');
