@@ -1,0 +1,50 @@
+vhdl    work    replay_pack.vhd
+vhdl    work    replay_videotiming_pack.vhd
+vhdl    work    replay_ddrctrl_pack.vhd
+vhdl    work    replay_scancode_ps2_pack.vhd
+
+vhdl    work    fifo_async_d16.vhd
+vhdl    work    fifo_asyncblock_d512_w36.vhd
+vhdl    work    fifo_syncsrl_d16.vhd
+vhdl    work    fifo_syncblock_d1024_w18.vhd
+vhdl    work    fifo_syncblock_d2048_w18.vhd
+vhdl    work    fifo_syncblock_d2048_w8.vhd
+vhdl    work    dpram_be_d64.vhd
+vhdl    work    dpram_d64.vhd
+vhdl    work    dpram_d16.vhd
+
+vhdl    work    replay_ddrctrl_datapath_db.vhd
+vhdl    work    replay_ddrctrl_db.vhd
+vhdl    work    replay_ddrctrl_top_db.vhd
+
+vhdl    work    font0_rom.vhd
+vhdl    work    font1_rom.vhd
+vhdl    work    font2_rom.vhd
+
+vhdl    work    kcpsm3.vhd
+vhdl    work    ps2_rom.vhd
+
+vhdl    work    replay_floppy_dpll.vhd
+vhdl    work    replay_i2c.vhd
+vhdl    work    replay_spi8.vhd
+vhdl    work    replay_dblscan.vhd
+vhdl    work    replay_fileio_sync.vhd
+vhdl    work    replay_osd.vhd
+vhdl    work    replay_syscon.vhd
+vhdl    work    replay_video.vhd
+vhdl    work    replay_clockgen_sync.vhd
+vhdl    work    replay_joy_quad.vhd
+vhdl    work    replay_joy_ps2.vhd
+vhdl    work    replay_audio.vhd
+
+vhdl    work    replay_videotiming.vhd
+
+vhdl    work    replay_lib_wrap_pack.vhd
+
+vhdl    work    replay_example_core_pack.vhd
+vhdl    work    replay_example_top.vhd
+vhdl    work    replay_example_core_top.vhd
+vhdl    work    replay_lib_wrap.vhd
+vhdl    work    replay_top_entity.vhd
+vhdl    work    replay_top.vhd
+

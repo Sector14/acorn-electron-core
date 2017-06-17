@@ -1,0 +1,13 @@
+run
+-ifn replay.prj
+-ifmt MIXED
+-ofn replay.ngc
+-ofmt NGC
+-p XC3S1600E-FG320-4
+-opt_mode SPEED
+-opt_level 1
+-fsm_extract no
+-keep_hierarchy yes
+-top Replay_Top
+-glob_opt ALLCLOCKNETS
+
