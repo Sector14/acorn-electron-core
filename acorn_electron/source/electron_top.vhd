@@ -244,7 +244,7 @@ begin
 
   -- 32kB ROM
     
-  -- 4x8K RAM
+  -- 4x64K 1bit RAM 
 
   -- T65 (6502-A)
     
