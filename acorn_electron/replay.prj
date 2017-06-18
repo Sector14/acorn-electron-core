@@ -42,6 +42,7 @@ vhdl    work    replay_videotiming.vhd
 vhdl    work    replay_lib_wrap_pack.vhd
 
 vhdl    work    core_pack.vhd
+vhdl    work    ram_d32k_w8.vhd
 vhdl    work    ula_12c021.vhd
 vhdl    work    electron_top.vhd
 vhdl    work    core_top.vhd
