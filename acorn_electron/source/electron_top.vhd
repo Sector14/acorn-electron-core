@@ -127,6 +127,8 @@ architecture RTL of Electron_Top is
   signal tick_pre1              : bit1;
   signal tick                   : bit1;
 
+  signal div13                  : bit1;
+
 begin
 
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -242,17 +244,49 @@ begin
   -- Acorn Electron Specific
   --
 
-  -- 32kB ROM
+  -- IC9 clock div 13 (74LS163)
+  b_clk_div : block
+    signal cnt : unsigned( 3 downto 0 ) := (others => '0');
+  begin
+
+    p_ic9_div13 : process(i_clk_sys)
+    begin
+      if rising_edge(i_clk_sys) then
+        div13 <= '0';
+
+        cnt <= cnt + 1;        
+        if (cnt = 12) then
+          cnt <= (others => '0');
+          div13 <= '1';
+        end if;
+      end if;
+    end process;
+
+  end block;
+
+  -- TODO: RAM and ROM should probably move to DRAM but using BRAM and/or 
+  --       distributed ram for simplicity. 
+
+  -- 32kB ROM (addressable via ARM bus)
     
-  -- 4x64K 1bit RAM 
+  -- 4x64K 1bit RAM
 
   -- T65 (6502-A)
     
-  -- Keyboad
+  -- Keyboard
 
   -- ULA (Uncommitted Logic Array)
   -- Handles RAM, Video, Cassette and sound
 
-  -- Cassette i/o wrapper
 
+  --
+  -- Electron to Lib Adapters
+  -- 
+
+  -- Cassette i/o adapter
+  -- Audio adapter
+
+
+  -- TODO: Add Chipscope
+  
 end RTL;
