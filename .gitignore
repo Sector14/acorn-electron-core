@@ -1,5 +1,6 @@
 # xilinx build intermediates
 **/build/
+**/sim/
 
 # unused vscode workspace
 .vscode
