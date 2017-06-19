@@ -39,6 +39,11 @@
 --
 -- Email support@fpgaarcade.com
 --
+
+--
+-- TODO: RAM and ROM should probably move to DRAM but using BRAM for simplicity. 
+--
+
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
@@ -128,14 +133,24 @@ architecture RTL of Electron_Top is
 
   signal div13                  : bit1;
 
+  -- addr/data bus shared by ROM, CPU and ULA
+  signal addr_bus  : word(15 downto 0);
+  signal data_bus  : word( 7 downto 0);
+
+  -- todo: this should use ULA port out
+  signal rom_ena   : bit1;
+  signal rom_data  : word( 7 downto 0);
+
 begin
+
+  --
+  -- Replay Lib
+  -- 
 
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
   o_kb_ps2_leds         <= "000";
-
-  o_memio_fm_core       <= Z_Memio_fm_core;
 
   o_fcha_fm_core        <= z_Fileio_fm_core;
   o_fchb_fm_core        <= z_Fileio_fm_core;
@@ -262,13 +277,38 @@ begin
     end process;
 
   end block;
+  
+  -- ROM 32kB (addressable via ARM bus)
+  -- 0x000 - 0x7FFF
+  -- Hitatchi HN613256 with tri-state output buffer
+  -- Ignored /CS tied to gnd.
+  rom_ic2 : entity work.RAM_D32K_W8
+  generic map (
+    g_addr => x"00000000",
+    g_mask => x"00008000"
+  )
+  port map (
+    -- ARM interface
+    i_memio_to_core  => i_memio_to_core,  -- not used
+    i_memio_fm_core  => z_Memio_fm_core,  -- first module
+    o_memio_fm_core  => o_memio_fm_core,  
 
-  -- TODO: RAM and ROM should probably move to DRAM but using BRAM and/or 
-  --       distributed ram for simplicity. 
+    i_clk_sys  => i_clk_sys,              -- ARM clock
+    i_ena_sys  => i_ena_sys,
 
-  -- 32kB ROM (addressable via ARM bus)
-    
-  -- 4x64K 1bit RAM
+    -- Core interface
+    i_addr  => addr_bus(14 downto 0),
+    i_data  => x"00",                     -- ROM unused
+    i_ena   => rom_ena,
+    i_wen   => '0',                       -- ROM unused
+    o_data  => rom_data,
+
+    i_clk   => i_clk_sys                  -- FPGA clock
+  );
+  -- tri-state ROM OE
+  data_bus <= rom_data when rom_ena = '1' else (others => 'Z');
+
+  -- RAM 4x64K 1bit
 
   -- T65 (6502-A)
     
@@ -284,7 +324,6 @@ begin
 
   -- Cassette i/o adapter
   -- Audio adapter
-
 
   -- TODO: Add Chipscope
   
