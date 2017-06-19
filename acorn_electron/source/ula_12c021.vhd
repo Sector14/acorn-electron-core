@@ -1,9 +1,13 @@
 -- Acorn Electron ULA
 -- Ferranti 12C021 Custom
+--
+-- Copyright Gary Preston 2017
+-- All Rights Reserved
+--
+-- Temporary implementation until reverse engineering of the 12C021 is complete
 
 library ieee;
   use ieee.std_logic_1164.all;
-  use ieee.std_logic_unsigned.all;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
