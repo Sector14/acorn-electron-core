@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="ram_d32k_w8_tb.wdb" id="1" type="auto">
+         <top_modules>
+            <top_module name="a_ram_d32k_w8_tb" />
+            <top_module name="numeric_std" />
+            <top_module name="replay_pack" />
+            <top_module name="replay_tb_pack" />
+            <top_module name="std_logic_1164" />
+            <top_module name="std_logic_arith" />
+            <top_module name="std_logic_textio" />
+            <top_module name="std_logic_unsigned" />
+            <top_module name="textio" />
+            <top_module name="vcomponents" />
+            <top_module name="vital_primitives" />
+            <top_module name="vital_timing" />
+            <top_module name="vpkg" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <WVObjectSize size="10" />
+   <wvobject fp_name="divider38" type="divider">
+      <obj_property name="label">RAM</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="BkColor">128 128 255</obj_property>
+      <obj_property name="TextColor">230 230 230</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/clk_sys" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">clk_sys</obj_property>
+      <obj_property name="ObjectShortName">clk_sys</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/ena_sys" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">ena_sys</obj_property>
+      <obj_property name="ObjectShortName">ena_sys</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/wen" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">wen</obj_property>
+      <obj_property name="ObjectShortName">wen</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/ena" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">ena</obj_property>
+      <obj_property name="ObjectShortName">ena</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">addr[14:0]</obj_property>
+      <obj_property name="ObjectShortName">addr[14:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/data_write" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">data_write[7:0]</obj_property>
+      <obj_property name="ObjectShortName">data_write[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_ram_d32k_w8_tb/data_read" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">data_read[7:0]</obj_property>
+      <obj_property name="ObjectShortName">data_read[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="divider37" type="divider">
+      <obj_property name="label">RAM Internal</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="BkColor">128 128 255</obj_property>
+      <obj_property name="TextColor">230 230 230</obj_property>
+   </wvobject>
+   <wvobject fp_name="group36" type="group">
+      <obj_property name="label">uut_ram</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_clk_sys" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_clk_sys</obj_property>
+         <obj_property name="ObjectShortName">i_clk_sys</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_ena_sys" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_ena_sys</obj_property>
+         <obj_property name="ObjectShortName">i_ena_sys</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_addr" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">i_addr[14:0]</obj_property>
+         <obj_property name="ObjectShortName">i_addr[14:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_data" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">i_data[7:0]</obj_property>
+         <obj_property name="ObjectShortName">i_data[7:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/o_data" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">o_data[7:0]</obj_property>
+         <obj_property name="ObjectShortName">o_data[7:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_ena" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_ena</obj_property>
+         <obj_property name="ObjectShortName">i_ena</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_wen" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_wen</obj_property>
+         <obj_property name="ObjectShortName">i_wen</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_clk" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_clk</obj_property>
+         <obj_property name="ObjectShortName">i_clk</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_ena0" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_ena0</obj_property>
+         <obj_property name="ObjectShortName">i_ena0</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/i_ena1" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">i_ena1</obj_property>
+         <obj_property name="ObjectShortName">i_ena1</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/o_data0" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">o_data0[7:0]</obj_property>
+         <obj_property name="ObjectShortName">o_data0[7:0]</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_ram_d32k_w8_tb/uut_ram/o_data1" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">o_data1[7:0]</obj_property>
+         <obj_property name="ObjectShortName">o_data1[7:0]</obj_property>
+      </wvobject>
+   </wvobject>
+</wave_config>

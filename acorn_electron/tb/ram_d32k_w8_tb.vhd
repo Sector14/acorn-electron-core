@@ -17,7 +17,11 @@ library ieee;
 entity a_RAM_D32K_W8_tb is
 end;
 
-architecture rtl of a_RAM_D32K_W8_tb is 
+architecture rtl of a_RAM_D32K_W8_tb is
+  
+  -- TODO: Adjust to match core
+  constant c_clk_sys_period : time := 1 us / 114.545; -- MHz
+  
   -- memio_to_core : r_Memio_to_core;
   -- memio_fm_core : r_Memio_fm_core;
   signal o_memio_fm_core : r_Memio_fm_core;
@@ -25,15 +29,45 @@ architecture rtl of a_RAM_D32K_W8_tb is
   signal clk_sys : bit1 := '0';
   signal ena_sys : bit1 := '0';
 
-  signal clk_ram : bit1 := '0';
-
   signal addr        : word(14 downto 0) := (others => '0');
   signal data_write  : word( 7 downto 0) := (others => '0');
-  signal ena         : std_logic := '0';
+  signal ena         : std_logic := '1';
   signal wen         : bit1 := '0';
   signal data_read   : word( 7 downto 0) := (others => '0');
 
 begin
+
+  -- sys clock with 1:4 sys_ena
+  p_clk_gen_sys : process
+  begin
+    ena_sys <= '0';
+  	clk_sys <= '1';
+  	wait for c_clk_sys_period/2;
+
+  	clk_sys <= '0';
+    wait for c_clk_sys_period/2;
+
+    clk_sys <= '1';
+  	wait for c_clk_sys_period/2;
+
+  	clk_sys <= '0';
+    wait for c_clk_sys_period/2;
+
+    clk_sys <= '1';
+  	wait for c_clk_sys_period/2;
+
+  	clk_sys <= '0';
+    wait for c_clk_sys_period/2;
+
+    ena_sys <= '1';
+    clk_sys <= '1';
+  	wait for c_clk_sys_period/2;
+
+    ena_sys <= '0';
+  	clk_sys <= '0';
+    wait for c_clk_sys_period/2;
+
+  end process;
 
   uut_ram : entity work.RAM_D32K_W8
   -- 32k 0x000 - 0x7FFF
@@ -60,5 +94,78 @@ begin
     i_clk   => clk_sys                    -- FPGA clock
   );
 
-  clk_sys <= 'X', '0' after 10 NS, '1' after 20 NS;
+  rw_process : process
+  begin    
+    -- TODO: Sort out a more realistic test case using similar clock setup as the core.
+    
+    --
+    -- Bank 0 address 0 & 1 write/read
+    --
+    wait until falling_edge(clk_sys);
+
+    -- Test FPGA write/read
+    addr <= x"00" & "0000000";
+    data_write <= "00011011";
+    wen <= '1';    
+
+    wait until falling_edge(clk_sys);
+    addr <= x"00" & "0000001";
+    data_write <= "01010101";
+    wen <= '1';    
+    
+    wait until falling_edge(clk_sys);
+    addr <= x"00" & "0000000";
+    data_write <= "11111111";
+    wen <= '0';
+
+    wait until falling_edge(clk_sys);
+    
+    assert (data_read = "00011011")
+      report "Unexpected data read from address 0x0"
+      severity FAILURE;
+
+    --
+    -- Bank 1 address 0 & 1 write/read
+    --
+
+    -- Test FPGA write/read
+    addr <= x"80" & "0000000";
+    data_write <= "11011011";
+    wen <= '1';    
+
+    wait until falling_edge(clk_sys);
+    addr <= x"80" & "0000001";
+    data_write <= "11010101";
+    wen <= '1';    
+    
+    wait until falling_edge(clk_sys);
+    addr <= x"80" & "0000000";
+    data_write <= "11111111";
+    wen <= '0';
+
+    wait until falling_edge(clk_sys);
+    
+    assert (data_read = "11011011")
+      report "Unexpected data read from address 0x4000"
+      severity FAILURE;
+    
+    -- Check bank 0 address 0 still correct
+    addr <= x"00" & "0000000";
+    wen <= '0';
+
+    wait until falling_edge(clk_sys);
+    
+    assert (data_read = "00011011")
+      report "Unexpected data read from address 0x0"
+      severity FAILURE;
+
+    --
+    -- TODO: Test ARM write/read, both banks
+    --
+
+    --
+    -- TODO: Test ARM port write then FPGA read, both banks
+    --
+  end process;
+
 end;

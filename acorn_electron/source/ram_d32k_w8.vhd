@@ -140,7 +140,7 @@ begin
       DIA   => i_memio_to_core.w_data(i downto i),
       DIB   => i_data(i downto i),
       ENA   => memio_ena0,
-      ENB   => i_ena1,
+      ENB   => i_ena0,
       SSRA  => '0',
       SSRB  => '0',
       WEA   => memio_we,
