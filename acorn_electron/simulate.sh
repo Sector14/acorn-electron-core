@@ -1,12 +1,27 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SIMULATION COMPILE SCRIPT USING ISIM (WEBPACK)
 #
+# Usage:
+#   ./simulate.sh [test_bench_name]
+#
+# test_bench_name if not provided will default to "replay_tb" resulting in the
+# "tb/replay_tb.prj" being included and the test bench entity "a_[test_bench_name]_tb"
+#
+# Example:
+#   To run the Acorn Electron ram only test bench.
+#
+#   ./simulate.sh ram_d32k_w8_tb
+#
 # TODO: -view and -run switches not implemented
-# TODO: Remove hardcoded path for fuse
 
 NAME="replay"
+TB_NAME="${1:-${NAME}_tb}"
 REPLAY_LIB_BASE_PATH="../replay_lib"
 LIB_PATH="../lib"
+
+# Clear out cmd line args as xilinx settings tries to use them
+args=$@
+shift
 
 if [ -d "/opt/Xilinx" ]; then
 	XILINX_VERSIONS=(/opt/Xilinx/*)
@@ -46,16 +61,16 @@ cp ${REPLAY_LIB_BASE_PATH}/tb/*.vhd ./sim
 cp ./source/*.vhd ./sim
 cp ./tb/*.vhd ./sim
 
-cp ${NAME}.prj sim/
-cat tb/${NAME}_tb.prj >> sim/${NAME}.prj
+cp ${NAME}.prj sim/${TB_NAME}.prj
+cat tb/${TB_NAME}.prj >> sim/${TB_NAME}.prj
 
 pushd sim
 
-${FUSE} -incremental -prj ${NAME}.prj -o ${NAME}.bin -t a_${NAME}_tb || exit $?
+${FUSE} -incremental -prj ${TB_NAME}.prj -o ${TB_NAME}.bin -t a_${TB_NAME} || exit $?
 
 echo "Running Simulation in iSIM gui"
 
-./${NAME}.bin -gui -f ../tb/${NAME}.cmd -wdb ${NAME}.wdb -log ${NAME}.log -view ../tb/${NAME}.wcfg || exit $?
+./${TB_NAME}.bin -gui -f ../tb/${TB_NAME}.cmd -wdb ${TB_NAME}.wdb -log ${TB_NAME}.log -view ../tb/${TB_NAME}.wcfg || exit $?
 
 popd
 

@@ -57,7 +57,7 @@ library UNISIM;
 --
 -- A RAM/ROM which is loadable/readable from the ARM MemIO bus
 --
-entity RAM_D4096_W8 is -- 32k 0x000 - 0x7FFF
+entity RAM_D32K_W8 is -- 32k 0x000 - 0x7FFF
   generic (
     g_addr                      : in  word(31 downto 0); -- 31 and 14..0 not used (15bits req)
     g_mask                      : in  word(31 downto 0) := x"FFFFFFFF" -- use to mask off any other bits in the compare
@@ -82,7 +82,7 @@ entity RAM_D4096_W8 is -- 32k 0x000 - 0x7FFF
     );
 end;
 
-architecture RTL of RAM_D4096_W8 is
+architecture RTL of RAM_D32K_W8 is
   signal memio_match            : bit1;
   signal memio_cycle            : bit1 := '0';
   signal memio_ena              : bit1;

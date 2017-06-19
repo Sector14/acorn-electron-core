@@ -10,10 +10,10 @@ library ieee;
   use work.Replay_Pack.all;
   use work.Replay_Tb_Pack.all;
 
-entity a_Replay_Example_tb is
+entity a_Replay_tb is
 end;
 
-architecture rtl of a_Replay_Example_tb is
+architecture rtl of a_Replay_tb is
 
   constant c_clk_a_period : time := 1 us / 114.545; -- MHz
   constant c_clk_b_period : time := 1 us / 49.152;  -- MHz
