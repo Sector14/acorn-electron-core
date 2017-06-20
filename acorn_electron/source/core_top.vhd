@@ -109,9 +109,12 @@ architecture RTL of Core_Top is
   signal rst_vid                : bit1;
 
   signal pwr_led                : bit1;
-  signal disk_led              : bit1;
+  signal disk_led               : bit1;
 
 begin
+
+  -- TODO: Switch to single clock domain for system/video/audio?
+  --       Or leave video on its own?
 
   clk_sys <= i_ctrl.clk_sys;
   rst_sys <= i_ctrl.rst_sys;
@@ -210,6 +213,9 @@ begin
   o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
-  b_aux_io(39 downto 0) <= (others => 'Z');
+  b_aux_io(39 downto 16) <= (others => 'Z');
+  b_aux_io(14 downto  0) <= (others => 'Z');
 
-  end RTL;
+  b_aux_io(15) <= cph_sys(1) or cph_sys(3);
+
+end RTL;

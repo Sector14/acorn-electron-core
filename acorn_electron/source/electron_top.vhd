@@ -41,8 +41,10 @@
 --
 
 --
--- TODO: RAM and ROM should probably move to DRAM but using BRAM for simplicity. 
---
+-- RAM and ROM  could be moved to DRAM but using BRAM for simplicity. 
+-- Keep eye on timing if moved as ULA runs at 16MHz which is sys_clk / 2
+-- whilst DRAM is set for a sys_clk / 4 read cycle. May not be an issue
+-- however as internally ULA will be generating a 2MHz and 1MHz clock.
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -131,18 +133,24 @@ architecture RTL of Electron_Top is
   signal tick_pre1              : bit1;
   signal tick                   : bit1;
 
-  signal div13                  : bit1;
 
   -- addr/data bus shared by ROM, CPU and ULA
   signal addr_bus  : word(15 downto 0);
   signal data_bus  : word( 7 downto 0);
 
-  -- todo: this should use ULA port out
-  signal rom_ena   : bit1;
+  -- ROM
   signal rom_data  : word( 7 downto 0);
 
+  --
+  -- ULA
+  --
+  signal ula_clk   : bit1;
+  signal div13     : bit1;
+  signal n_por     : bit1;
+  signal n_reset   : bit1;
+  signal rom_ena   : bit1;
 begin
-
+  
   --
   -- Replay Lib
   -- 
@@ -160,6 +168,7 @@ begin
 
   o_vid_rgb             <= (others => '0');
 
+  -- TODO: How to reconcile this and ULA h/v sync?
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -299,13 +308,14 @@ begin
     -- Core interface
     i_addr  => addr_bus(14 downto 0),
     i_data  => x"00",                     -- ROM unused
-    i_ena   => rom_ena,
     i_wen   => '0',                       -- ROM unused
     o_data  => rom_data,
 
-    i_clk   => i_clk_sys                  -- FPGA clock
+    -- TODO: should this really be CPU out clock?
+    i_ena   => i_ena_sys,
+    i_clk   => i_clk_sys                  -- Core clock
   );
-  -- tri-state ROM OE
+  -- rom data tri-state via OE
   data_bus <= rom_data when rom_ena = '1' else (others => 'Z');
 
   -- RAM 4x64K 1bit
@@ -316,7 +326,68 @@ begin
 
   -- ULA (Uncommitted Logic Array)
   -- Handles RAM, Video, Cassette and sound
+  -- TODO: Finish wiring
+  -- ULA uses 16MHz clock, which is sys_clk / 2, bear in mind if ROM/RAM
+  -- is moved to DRAM as access time is sys_clk / 4. May not be an issue
+  -- however as internally ULA runs at 2MHz and 1MHz.
+  ula_ic1 : entity work.ULA_12C021
+  port map (
+    -- Cassette I/O (not yet supported)
+    i_cas         => '0',
+    o_cas         => open,
+    b_cas_rc      => open,                      -- RC high tone detection
+    o_cas_mo      => open,                      -- Motor relay
+       
+    -- Audio             
+    o_sound_op    => open,            
+       
+    -- Reset             
+    i_n_por       => n_por,                     -- /Power on reset
+       
+    -- Video             
+    o_n_csync     => open,                      -- h/v sync
+    o_hsync       => open,                      -- h sync
+    o_red         => open,            
+    o_green       => open,            
+    o_blue        => open,            
+       
+    -- Clock   
+    i_clk         => ula_clk,
+    i_div_13      => div13,                     -- clk div 13
+       
+    -- RAM (4x64k 1 bit)       
+    b_ram0        => open,                      -- RAM Data ic 0
+    b_ram1        => open,                      -- RAM Data ic 1
+    b_ram2        => open,                      -- RAM Data ic 2
+    b_ram3        => open,                      -- RAM Data ic 3
+       
+    o_n_we        => open,                      -- /write, read
+    o_n_ras       => open,                      -- row address strobe  -ve edge
+    o_n_cas       => open,                      -- col address strobe  -ve edge
 
+    o_ra          => open,                      -- ram address
+
+    -- Keyboard
+    i_kbd         => "0000",
+    i_caps_lock   => '0',
+    i_n_reset     => n_reset,
+
+    -- ROM/CPU addressing
+    o_rom         => rom_ena,                   -- rom select enable   
+    i_addr        => addr_bus,
+    b_pd          => data_bus,                  -- CPU/ROM data
+
+    -- CPU
+    i_nmi         => '0',                       -- 1MHz RAM access detection
+    o_phi_out     => open,                      -- CPU clk, 2MHz, 1MHz or stopped
+    o_n_irq       => open,
+    i_n_w         => '0'                        -- Data direction, /write, read
+  );
+
+  n_por <= not i_halt;
+  n_reset <= not i_halt; -- TODO: incl keyboard "break"
+  -- 16MHz from sys_clk / 2
+  ula_clk <= i_cph_sys(1) or i_cph_sys(3); 
 
   --
   -- Electron to Lib Adapters
