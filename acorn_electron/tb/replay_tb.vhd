@@ -129,4 +129,6 @@ begin
     wait;
   end process;
 
+  -- TODO: Upload OS/Basic ROM and verify read from handful of locations
+  -- TODO: Verify 6502 can read rom and RAM via ULA
 end;

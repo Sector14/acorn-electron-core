@@ -42,8 +42,6 @@
 -- Email support@fpgaarcade.com
 --
 
--- TODO: Needs test bench and validation
-
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="tm4164ea3_64k_w4_tb.wdb" id="1" type="auto">
+         <top_modules>
+            <top_module name="a_tm4164ea3_64k_w4_tb" />
+            <top_module name="numeric_std" />
+            <top_module name="replay_pack" />
+            <top_module name="replay_tb_pack" />
+            <top_module name="std_logic_1164" />
+            <top_module name="std_logic_arith" />
+            <top_module name="std_logic_textio" />
+            <top_module name="std_logic_unsigned" />
+            <top_module name="textio" />
+            <top_module name="vcomponents" />
+            <top_module name="vital_primitives" />
+            <top_module name="vital_timing" />
+            <top_module name="vpkg" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <WVObjectSize size="32" />
+   <wvobject fp_name="divider8" type="divider">
+      <obj_property name="label">TB</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="BkColor">#008000</obj_property>
+      <obj_property name="TextColor">230 230 230</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/clk" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">clk</obj_property>
+      <obj_property name="ObjectShortName">clk</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffffff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">addr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">addr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/data" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">data[3:0]</obj_property>
+      <obj_property name="ObjectShortName">data[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/n_ras" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_ras</obj_property>
+      <obj_property name="ObjectShortName">n_ras</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffff00</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/n_cas" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_cas</obj_property>
+      <obj_property name="ObjectShortName">n_cas</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffa500</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/n_we" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_we</obj_property>
+      <obj_property name="ObjectShortName">n_we</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ff0000</obj_property>
+   </wvobject>
+   <wvobject fp_name="divider9" type="divider">
+      <obj_property name="label">RAM UUT</obj_property>
+      <obj_property name="DisplayName">label</obj_property>
+      <obj_property name="BkColor">#800080</obj_property>
+      <obj_property name="TextColor">230 230 230</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_clk" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">i_clk</obj_property>
+      <obj_property name="ObjectShortName">i_clk</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffffff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">i_addr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">i_addr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/row_addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">row_addr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">row_addr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/col_addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">col_addr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">col_addr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">addr[15:0]</obj_property>
+      <obj_property name="ObjectShortName">addr[15:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_data" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">i_data[3:0]</obj_property>
+      <obj_property name="ObjectShortName">i_data[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/o_data" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">o_data[3:0]</obj_property>
+      <obj_property name="ObjectShortName">o_data[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_n_ras" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">i_n_ras</obj_property>
+      <obj_property name="ObjectShortName">i_n_ras</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffff00</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_n_cas" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">i_n_cas</obj_property>
+      <obj_property name="ObjectShortName">i_n_cas</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffa500</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/i_n_we" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">i_n_we</obj_property>
+      <obj_property name="ObjectShortName">i_n_we</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ff0000</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/we_l" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">we_l</obj_property>
+      <obj_property name="ObjectShortName">we_l</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/en0" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">en0</obj_property>
+      <obj_property name="ObjectShortName">en0</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#0000ff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/en1" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">en1</obj_property>
+      <obj_property name="ObjectShortName">en1</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#0000ff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/en2" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">en2</obj_property>
+      <obj_property name="ObjectShortName">en2</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#0000ff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/en3" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">en3</obj_property>
+      <obj_property name="ObjectShortName">en3</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#0000ff</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/n_ras_edge" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_ras_edge</obj_property>
+      <obj_property name="ObjectShortName">n_ras_edge</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/n_cas_edge" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_cas_edge</obj_property>
+      <obj_property name="ObjectShortName">n_cas_edge</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/n_ras_l" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_ras_l</obj_property>
+      <obj_property name="ObjectShortName">n_ras_l</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/n_cas_l" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">n_cas_l</obj_property>
+      <obj_property name="ObjectShortName">n_cas_l</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/d0" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">d0[3:0]</obj_property>
+      <obj_property name="ObjectShortName">d0[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/d1" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">d1[3:0]</obj_property>
+      <obj_property name="ObjectShortName">d1[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/d2" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">d2[3:0]</obj_property>
+      <obj_property name="ObjectShortName">d2[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/d3" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">d3[3:0]</obj_property>
+      <obj_property name="ObjectShortName">d3[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/a_tm4164ea3_64k_w4_tb/uut_ram/read_data" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">read_data[3:0]</obj_property>
+      <obj_property name="ObjectShortName">read_data[3:0]</obj_property>
+   </wvobject>
+</wave_config>
