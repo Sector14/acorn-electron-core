@@ -142,6 +142,13 @@ architecture RTL of Electron_Top is
   -- ROM
   signal rom_data  : word( 7 downto 0);
 
+  -- RAM
+  signal ram_addr  : word( 7 downto 0);
+  signal ram_data  : word( 3 downto 0);
+  signal ram_n_we  : bit1;
+  signal ram_n_ras  : bit1;
+  signal ram_n_cas  : bit1;
+
   --
   -- ULA
   --
@@ -288,7 +295,7 @@ begin
 
   end block;
   
-  -- ROM 32kB (addressable via ARM bus)
+  -- IC2 ROM 32kB (addressable via ARM bus)
   -- 0x000 - 0x7FFF
   -- Hitatchi HN613256 with tri-state output buffer
   -- Ignored /CS tied to gnd.
@@ -319,15 +326,30 @@ begin
   -- rom data tri-state via OE
   data_bus <= rom_data when rom_ena = '1' else (others => 'Z');
 
-  -- RAM 4x64K 1bit
+  -- IC20 RAM 4x64K 1bit
+  -- 64k 0x000 - 0x3FFFF
+  ram_ic20 : entity work.TM4164EA3_64k_W4
+  port map (
+    -- clock for sync bram 
+    i_clk    => ula_clk,
 
-  -- T65 (6502-A)
+    i_addr   => ram_addr,
+
+    i_data   => ram_data,
+    o_data   => ram_data,
+  
+    i_n_we   => ram_n_we,
+    i_n_ras  => ram_n_ras,
+    i_n_cas  => ram_n_cas
+  );
+
+  -- IC3 T65 (6502-A)
     
   -- Keyboard
-
-  -- ULA (Uncommitted Logic Array)
-  -- Handles RAM, Video, Cassette and sound
+  
   -- TODO: Finish wiring
+  -- IC1 ULA (Uncommitted Logic Array)
+  -- Handles RAM, Video, Cassette and sound
   -- ULA uses 16MHz clock, which is sys_clk / 2, bear in mind if ROM/RAM
   -- is moved to DRAM as access time is sys_clk / 4. May not be an issue
   -- however as internally ULA runs at 2MHz and 1MHz.
@@ -354,19 +376,19 @@ begin
        
     -- Clock   
     i_clk         => ula_clk,
-    i_div_13      => div13,                     -- clk div 13
+    i_div_13      => div13,                     -- ula_clk div 13
        
     -- RAM (4x64k 1 bit)       
-    b_ram0        => open,                      -- RAM Data ic 0
-    b_ram1        => open,                      -- RAM Data ic 1
-    b_ram2        => open,                      -- RAM Data ic 2
-    b_ram3        => open,                      -- RAM Data ic 3
+    b_ram0        => ram_data(0),
+    b_ram1        => ram_data(1),
+    b_ram2        => ram_data(2),
+    b_ram3        => ram_data(3),
        
-    o_n_we        => open,                      -- /write, read
-    o_n_ras       => open,                      -- row address strobe  -ve edge
-    o_n_cas       => open,                      -- col address strobe  -ve edge
+    o_n_we        => ram_n_we,                  -- /write, read
+    o_n_ras       => ram_n_ras,                 -- row address strobe  -ve edge
+    o_n_cas       => ram_n_cas,                 -- col address strobe  -ve edge
 
-    o_ra          => open,                      -- ram address
+    o_ra          => ram_addr,                  -- ram address
 
     -- Keyboard
     i_kbd         => "0000",

@@ -14,8 +14,8 @@ end;
 
 architecture rtl of a_Replay_tb is
 
-  constant c_clk_a_period : time := 1 us / 114.545; -- MHz
-  constant c_clk_b_period : time := 1 us / 49.152;  -- MHz
+  constant c_clk_a_period : time := 1 us / 128.032; -- MHz
+  constant c_clk_b_period : time := 1 us / 27.000;  -- MHz
   constant c_clk_c_period : time := 1 us / 27.000;   -- MHz
 
   signal scl                    : bit1;
