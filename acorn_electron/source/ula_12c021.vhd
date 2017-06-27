@@ -5,6 +5,15 @@
 -- All Rights Reserved
 --
 -- Temporary implementation until reverse engineering of the 12C021 is complete
+--
+-- Note: This implementation is a compromise between matching the external interface
+-- of the real ULA and providing the replay framework with the data it needs to
+-- function. A fully pin accurate mapping would likely entail so much extra logic
+-- outside the ULA to rebuild data the ULA could just provide. For example
+-- outputting one bit RGB vs the full value the framework takes. Likewise for
+-- trying to derive the active video signal from just csync and hsync.
+--
+-- Ram access didn't need that much more logic to remain pin accurate however.
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -18,24 +27,44 @@ library UNISIM;
 
 entity ULA_12C021 is
   port (
+
+    -- TEMP: Needed by VideoTiming atm. Assume always enabled.
+    i_clk_vid     : in bit1;
+    i_rst_vid     : in bit1;
+
+    --
+    -- Additional framework signals to ease usage
+    --
+    -- TODO: [Gary] Current setup is PAL 576i analog, so vsync is always 1 and hsync 
+    --       is actually csync. Need to either modify replay_videotiming to provide
+    --       split h/v even in PAL mode or add custom sig gen
+    o_n_vsync     : out bit1;                  -- 
+    o_de          : out bit1;                  --
+
+    o_rgb         : out word(23 downto 0);
+
+    --
+    -- ULA
+    -- 
+    
     -- Cassette I/O (not yet supported)
     i_cas         : in bit1; 
     o_cas         : out bit1;      
     b_cas_rc      : inout bit1;                -- RC high tone detection
     o_cas_mo      : out bit1;                  -- Motor relay
-       
-    -- Audio             
+           
+    -- Audio
     o_sound_op    : out bit1;            
        
     -- Reset             
     i_n_por       : in bit1;                   -- /Power on reset
-       
-    -- Video             
-    o_n_csync     : out bit1;                  -- h/v sync
-    o_hsync       : out bit1;                  -- h sync
-    o_red         : out bit1;            
-    o_green       : out bit1;            
-    o_blue        : out bit1;            
+
+    -- Video
+    o_n_csync     : out bit1;                  -- h/v sync  (low during horizontal or vertical synchronisation)
+    o_n_hsync     : out bit1;                  -- h sync    
+    --o_red         : out bit1;            
+    --o_green       : out bit1;            
+    --o_blue        : out bit1; 
        
     -- Clock             
     i_clk         : in bit1;                    
@@ -72,8 +101,10 @@ entity ULA_12C021 is
 end;
 
 architecture RTL of ULA_12C021 is
-  -- TODO: Consts for bit access?
-  
+  -- Framework Video
+  signal ana_hsync, ana_vsync, ana_de : bit1;
+  signal dig_hsync, dig_vsync, dig_de : bit1;
+
   -- 
   -- Registers (AUG p206)
   --
@@ -104,14 +135,103 @@ begin
   -- bi-dir 'Z' state
   b_pd <= (others => 'Z');
 
--- Power up, perform reset
+  -- Power up, perform reset
 
--- Clock Divider
 
--- Modes
+  --
+  -- Master Timing
+  --
+  -- 4MHz, 2MHz generator
 
--- RAM Access
--- 4164 ram is async, however this implementation is synchronous
--- An actual ULA would need this interface logic rewriting to match timing requirements
+
+  --
+  -- Video Timing
+  --
+  -- Modes:
+  --   0 - 640x256 two colour gfx, 80x32 text (20K)
+  --   1 - 320x256 four colour gfx, 40x32 text (20K)
+  --   2 - 160x256 sixteen colour gfx, 20x32 text (20K)
+  --   3 - 80x25 two colour text gfx
+  --   4 - 320x256 two colour gfx, 40x32 text (10K)
+  --   5 - 160x256 four colour gfx, 20x32 text (10K)
+  --   6 - 40x25 two colour text (8K)
+
+  -- TODO: [Gary] Switch to using sys clock instead of separate video clock.
+  --       timing changes?
+
+  -- Temp use of VideoTiming to generate a 576i.
+  u_VideoTiming : entity work.Replay_VideoTiming
+    generic map (
+      g_enabledynamic       => '0',
+      g_param               => c_Vidparam_720x576i_50
+      )
+    port map (
+      i_clk                 => i_clk_vid,
+      i_ena                 => '1',
+      i_rst                 => i_rst_vid,
+      --i_clk => ula_clk,
+      --i_ena => '1',
+      --i_rst => i_rst_sys,
+      --
+      i_param               => c_Vidparam_720x576i_50,
+      i_sof                 => '0',
+      i_f2_flip             => '0',
+      --
+      o_hactive             => open,
+      o_hrep                => open,
+      o_vactive             => open,
+      --
+      o_dig_hs              => dig_hsync,
+      o_dig_vs              => dig_vsync,
+      o_dig_de              => dig_de,
+      o_dig_ha              => open,
+      o_dig_va              => open,
+      o_dig_sof             => open,
+      o_dig_sol             => open,
+      o_ana_hs              => ana_hsync,
+      o_ana_vs              => ana_vsync,
+      o_ana_de              => ana_de,
+      --
+      o_hpix                => open,
+      o_vpix                => open,
+      --
+      o_f2                  => open,
+      o_voddline            => open,
+      o_stdprog             => open
+      );
+
+  -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
+  -- hsycn and '1' for vsync. However, OSD in Syscon uses vsync to determine display
+  -- location so digital h/v passed out for now. This is a cludge for now as the
+  -- timing of dig h/v does not match that of analog h/v (or combined csync). This will
+  -- be fixed once ULA switched to its own analog timing, or VideoTiming adjusted to
+  -- expose analog h/v.
+  o_rgb <= x"FF0000";
+  o_n_hsync <= dig_hsync;
+  o_n_vsync <= dig_vsync;
+  o_n_csync <= ana_hsync;
+  o_de      <= ana_de;
+
+  --
+  -- Ram Interface & Timing
+  --
+  -- 4164 ram is async, however this implementation is synchronous
+  -- An actual ULA would need this interface logic rewriting to match timing requirements
+
+  --
+  -- Registers
+  --
+
+  -- 
+  -- Keyboard Interface
+  --
+
+  -- 
+  -- Sound Interface
+  --
+
+  --
+  -- Cassette Interface
+  --
 
 end;

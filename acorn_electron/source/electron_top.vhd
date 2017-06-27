@@ -56,7 +56,6 @@ library ieee;
 
 library UNISIM;
   use UNISIM.Vcomponents.all;
-
 entity Electron_Top is
   port (
     ------------------------------------------------------
@@ -74,6 +73,7 @@ entity Electron_Top is
 
     -- Video clock, generated from Clk C. Used for all OSD Video/PHY data path.
     i_clk_vid             : in  bit1;
+    i_ena_vid             : in  bit1;
     i_rst_vid             : in  bit1;
     --
     -- Config/Control
@@ -134,6 +134,11 @@ architecture RTL of Electron_Top is
   signal tick_pre1              : bit1;
   signal tick                   : bit1;
 
+  -- TODO: [Gary] _l for latch? check naming conventions.
+
+  -- Scanline doubler
+  --signal dbl_hsync_l, dbl_vsync_l, dbl_csync_l, dbl_blank : bit1;
+  --signal dbl_rgb   : word(23 downto 0);
 
   -- addr/data bus shared by ROM, CPU and ULA
   signal addr_bus  : word(15 downto 0);
@@ -142,21 +147,27 @@ architecture RTL of Electron_Top is
   -- ROM
   signal rom_data  : word( 7 downto 0);
 
-  -- RAM
+  -- RAM  
   signal ram_addr  : word( 7 downto 0);
   signal ram_data  : word( 3 downto 0);
   signal ram_n_we  : bit1;
-  signal ram_n_ras  : bit1;
-  signal ram_n_cas  : bit1;
+  signal ram_n_ras : bit1;
+  signal ram_n_cas : bit1;
 
-  --
   -- ULA
-  --
   signal ula_clk   : bit1;
   signal div13     : bit1;
   signal n_por     : bit1;
   signal n_reset   : bit1;
   signal rom_ena   : bit1;
+
+
+  -- ULA - Framework extras
+  signal n_hsync_l, n_vsync_l, n_csync_l, ula_de : bit1;
+  signal ula_rgb    : word(23 downto 0);
+
+  -- TODO: [Gary] This should come from config.
+  --constant cfg_dblscan : bit1 := '1';
 begin
   
   --
@@ -174,47 +185,40 @@ begin
   o_audio_l             <= (others => '0');
   o_audio_r             <= (others => '0');
 
-  o_vid_rgb             <= (others => '0');
+  --
+  -- Scanline Doubling
+  --
+--  u_DblScan : entity work.Replay_DblScan
+--  port map (
+--    -- TODO: [Gary] Switch to sys clk and move vid clk over to same?
+--    -- clocks
+--    --i_clk                 => ula_clk,
+--    --i_ena                 => '1', 
+--    --i_rst                 => i_rst_sys,
+--    
+--    i_clk                 => i_clk_vid,
+--    i_ena                 => i_ena_vid,
+--    i_rst                 => i_rst_vid,
+--    --
+--    i_bypass              => '1',
+--    i_dblscan             => cfg_dblscan,
+--    --
+--    i_hsync_l             => dig_hsync,
+--    i_vsync_l             => dig_vsync,
+--    i_csync_l             => csync_l,  -- passed through
+--    i_blank               => dig_de,   -- passed through
+--    i_vid_rgb             => x"FF0000", -- r 23..16 g 15..8 b 7..0
+--    --
+--    o_hsync_l             => dbl_hsync_l,
+--    o_vsync_l             => dbl_vsync_l,
+--    o_csync_l             => dbl_csync_l,
+--    o_blank               => dbl_blank,
+--    o_vid_rgb             => dbl_rgb
+--  );
 
-  -- TODO: How to reconcile this and ULA h/v sync?
-  u_VideoTiming : entity work.Replay_VideoTiming
-    generic map (
-      g_enabledynamic       => '0',
-      g_param               => c_Vidparam_720x480p_60
-      )
-    port map (
-      i_clk                 => i_clk_vid,
-      i_ena                 => '1',
-      i_rst                 => i_rst_vid,
-      --
-      i_param               => c_Vidparam_720x480p_60,
-      i_sof                 => '0',
-      i_f2_flip             => '0',
-      --
-      o_hactive             => open,
-      o_hrep                => open,
-      o_vactive             => open,
-      --
-      o_dig_hs              => o_vid_sync.dig_hs,
-      o_dig_vs              => o_vid_sync.dig_vs,
-      o_dig_de              => o_vid_sync.dig_de,
-      o_dig_ha              => open,
-      o_dig_va              => open,
-      o_dig_sof             => open,
-      o_dig_sol             => open,
-      o_ana_hs              => o_vid_sync.ana_hs,
-      o_ana_vs              => o_vid_sync.ana_vs,
-      o_ana_de              => o_vid_sync.ana_de,
-      --
-      o_hpix                => open,
-      o_vpix                => open,
-      --
-      o_f2                  => open,
-      o_voddline            => open,
-      o_stdprog             => open
-      );
-
+  --
   -- some blinking LED thingy...
+  --
   b_tick : block
     signal precounter1 : word(15 downto 0);
     signal precounter2 : word(11 downto 0);
@@ -319,7 +323,7 @@ begin
     i_wen   => '0',                       -- ROM unused
     o_data  => rom_data,
 
-    -- TODO: should this really be CPU out clock?
+    -- TODO: [Gary] should this really be CPU out clock?
     i_ena   => i_ena_sys,
     i_clk   => i_clk_sys                  -- Core clock
   );
@@ -343,11 +347,38 @@ begin
     i_n_cas  => ram_n_cas
   );
 
+  -- TODO: [Gary] Sort this. 
   -- IC3 T65 (6502-A)
-    
+--  ic3_6502 : entity T65
+--  port map (
+--    Mode    "00",               -- 6502
+--    Res_n   : in  std_logic;
+--    Enable  : in  std_logic;
+--    Clk     : in  std_logic;
+--    Rdy     : in  std_logic;
+--    Abort_n : in  std_logic;
+--    IRQ_n   : in  std_logic;
+--    NMI_n   : in  std_logic;
+--    SO_n    : in  std_logic;
+--    R_W_n   : out std_logic;
+--    Sync    : out std_logic;
+--    EF      : out std_logic;
+--    MF      : out std_logic;
+--    XF      : out std_logic;
+--    ML_n    : out std_logic;
+--    VP_n    : out std_logic;
+--    VDA     : out std_logic;
+--    VPA     : out std_logic;
+--    A       : out std_logic_vector(23 downto 0);
+--    DI      : in  std_logic_vector(7 downto 0);
+--    DO      : out std_logic_vector(7 downto 0);
+--    DEBUG   : out T_t65_dbg
+--  );
+  -- TODO: [Gary] multiplex di/do to just data_bus?
+
   -- Keyboard
   
-  -- TODO: Finish wiring
+  -- TODO: [Gary] Finish wiring
   -- IC1 ULA (Uncommitted Logic Array)
   -- Handles RAM, Video, Cassette and sound
   -- ULA uses 16MHz clock, which is sys_clk / 2, bear in mind if ROM/RAM
@@ -355,6 +386,20 @@ begin
   -- however as internally ULA runs at 2MHz and 1MHz.
   ula_ic1 : entity work.ULA_12C021
   port map (
+    --
+    -- Framework extras
+    --
+    i_clk_vid     => i_clk_vid,
+    i_rst_vid     => i_rst_vid,
+    
+    o_n_vsync     => n_vsync_l,
+    o_de          => ula_de,               
+    o_rgb         => ula_rgb,
+
+    --
+    -- ULA
+    --
+
     -- Cassette I/O (not yet supported)
     i_cas         => '0',
     o_cas         => open,
@@ -368,12 +413,9 @@ begin
     i_n_por       => n_por,                     -- /Power on reset
        
     -- Video             
-    o_n_csync     => open,                      -- h/v sync
-    o_hsync       => open,                      -- h sync
-    o_red         => open,            
-    o_green       => open,            
-    o_blue        => open,            
-       
+    o_n_csync     => n_csync_l,                 -- h/v sync
+    o_n_hsync     => n_hsync_l,                 -- h sync
+     
     -- Clock   
     i_clk         => ula_clk,
     i_div_13      => div13,                     -- ula_clk div 13
@@ -408,9 +450,24 @@ begin
   );
 
   n_por <= not i_halt;
-  n_reset <= not i_halt; -- TODO: incl keyboard "break"
+  n_reset <= not i_halt; -- TODO: [Gary] incl keyboard "break"
+
   -- 16MHz from sys_clk / 2
   ula_clk <= i_cph_sys(1) or i_cph_sys(3); 
+
+  o_vid_rgb <= ula_rgb;
+
+  -- REVIEW: This is using the analog signal from ULA. 
+  o_vid_sync.dig_de <= ula_de;
+  o_vid_sync.dig_hs <= n_hsync_l;
+  o_vid_sync.dig_vs <= n_vsync_l;
+
+  -- Analog
+  -- TODO: [Gary] When doubling use separate h & v sync. Otherwise use csync      
+  o_vid_sync.ana_de <= ula_de;
+  o_vid_sync.ana_hs <= n_csync_l;
+  o_vid_sync.ana_vs <= '1';
+
 
   --
   -- Electron to Lib Adapters
@@ -419,6 +476,6 @@ begin
   -- Cassette i/o adapter
   -- Audio adapter
 
-  -- TODO: Add Chipscope
+  -- TODO: [Gary] Add Chipscope
   
 end RTL;

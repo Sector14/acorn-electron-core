@@ -106,14 +106,16 @@ architecture RTL of Core_Top is
   signal rst_sys                : bit1;
 
   signal clk_vid                : bit1;
+  signal ena_vid                : bit1;
   signal rst_vid                : bit1;
 
   signal pwr_led                : bit1;
   signal disk_led               : bit1;
 
+  signal av                     : r_AV_fm_core;
 begin
 
-  -- TODO: Switch to single clock domain for system/video/audio?
+  -- TODO: [Gary] Switch to single clock domain for system/video/audio?
   --       Or leave video on its own?
 
   clk_sys <= i_ctrl.clk_sys;
@@ -122,6 +124,7 @@ begin
   cph_sys <= i_ctrl.cph_sys;
 
   clk_vid <= i_ctrl.clk_vid;
+  ena_vid <= i_ctrl.ena_vid;
   rst_vid <= i_ctrl.rst_vid;
 
   o_ctrl.clk_aud <= clk_sys;
@@ -145,6 +148,7 @@ begin
     i_rst_ram             => i_ctrl.rst_ram,
 
     i_clk_vid             => clk_vid,
+    i_ena_vid             => ena_vid,
     i_rst_vid             => rst_vid,
 
     --
@@ -182,8 +186,11 @@ begin
     o_memio_fm_core       => o_io.memio_fm_core,
 
     --
-    o_vid_rgb             => o_av.vid_rgb,
-    o_vid_sync            => o_av.vid_sync,
+    o_vid_rgb             => av.vid_rgb,
+    o_vid_sync            => av.vid_sync,
+    --o_vid_rgb             => o_av.vid_rgb,
+    --o_vid_sync            => o_av.vid_sync,
+    
 
     --
     o_audio_l             => o_av.audio_l,
@@ -196,6 +203,11 @@ begin
     o_disk_led            => o_disk_led,
     o_pwr_led             => o_pwr_led
     );
+
+  -- debug
+  o_av.vid_rgb  <= av.vid_rgb;
+  o_av.vid_sync <= av.vid_sync;
+
 
   o_ddr.ddr_hp_fm_core      <= z_DDR_hp_fm_core;
   o_ddr.ddr_vp_fm_core      <= z_DDR_vp_fm_core;
@@ -213,9 +225,14 @@ begin
   o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
+  --b_aux_io(39 downto 0) <= (others => 'Z');
   b_aux_io(39 downto 16) <= (others => 'Z');
-  b_aux_io(14 downto  0) <= (others => 'Z');
+  b_aux_io(11 downto  0) <= (others => 'Z');
 
-  b_aux_io(15) <= cph_sys(1) or cph_sys(3);
+  -- debug
+  b_aux_io(15) <= av.vid_sync.ana_de;
+  b_aux_io(14) <= av.vid_sync.ana_hs;
+  b_aux_io(13) <= av.vid_sync.dig_vs;
+  b_aux_io(12) <= av.vid_sync.dig_hs;
 
 end RTL;

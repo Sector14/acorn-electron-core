@@ -68,7 +68,7 @@ architecture RTL of TM4164EA3_64k_W4 is
   signal we_l                   : bit1;
 begin
   -- Bank enable selection
-  -- TODO: Could enable for single cycle only based on falling edge of cas
+  -- TODO: [Gary] Could enable for single cycle only based on falling edge of cas
   --       as read output is latched whilst disabled.
   en0 <= '1' when addr(15) = '0' and addr(14) = '0' else '0';
   en1 <= '1' when addr(15) = '0' and addr(14) = '1' else '0';
@@ -166,12 +166,12 @@ begin
       end if;
     end if;
 
-    -- TODO: Other modes that may be needed if used by ULA
+    -- TODO: [Gary] Other modes that may be needed if used by ULA
     --   * read-write/read-modify-write cycles
     --   * page mode read cycle
     --   * page mode write cycle
 
-    -- TODO: Implementation not needed just ensure it doesn't break anything if used:
+    -- TODO: [Gary] Implementation not needed just ensure it doesn't break anything if used:
     --   * ras only refresh cycle 
     --   * hidden refresh cycle
 
