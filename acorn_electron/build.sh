@@ -38,9 +38,6 @@ pwd
 
 cp $REPLAY_LIB_PATH/*.vhd ./
 
-cp ./../source/*.vhd ./
-#cp ./../source/*.edf ./
-
 cp $REPLAY_LIB_COMMON_PATH/*.vhd ./
 cp $REPLAY_LIB_COMMON_PATH/*.ut ./
 cp $REPLAY_LIB_COMMON_PATH/replay_common.ucf ./
@@ -50,6 +47,8 @@ cp ./../cs/*.edn ./
 cp ./../cs/*.ngc ./
 
 # project files
+cp ./../source/*.vhd ./
+cp ./../source/override_lib/*.vhd ./
 cp ./../$NAME.ucf ./
 cp ./../$NAME.scr ./
 cp ./../$NAME.prj ./
