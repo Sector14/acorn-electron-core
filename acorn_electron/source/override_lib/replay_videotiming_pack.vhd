@@ -39,6 +39,12 @@
 --
 -- Email support@fpgaarcade.com
 --
+
+-- NOTE: This is a temporary file. 
+-- As lib copies happen before core source copies during build, this
+-- file will replace the library version allowing testing of a
+-- new mode without risking breaking everything in svn.
+
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.std_logic_unsigned.all;
@@ -79,7 +85,10 @@ Package Replay_VideoTiming_Pack is
     progressive     : bit1;
   end record;
 
-  type t_Standard_ana is (PAL, NTSC, NONE);
+  -- PAL_P is a fake progressive resolution of 256 but
+  -- still using two fields @50Hz.
+  -- REVIEW: Better place to identify this?
+  type t_Standard_ana is (PAL, PAL_P, NTSC, NONE);
 
   type r_Vidsync is record
     dig_de : bit1;
@@ -122,7 +131,44 @@ Package Replay_VideoTiming_Pack is
 
   -- note, in these numbers the front porch is at the start of the line, and
   -- the active video finishes at the end of the line
+  -- e.g fline_f1_v 22 means first active video line for field one starts
+  -- at the end of line 22.
   -- for SD standards 1 count = 37.037ns
+  --{{{
+  constant c_Vidparam_720x256p_50 : r_Vidparam_int := (
+    -- 720(1440)x256p @ 50Hz 27MHz pclk
+    -- Field 1 end short sync extended by 1/2 scanline
+    -- causing Field 2 start to begin on line 314 not 313.5
+    -- Note, this requires last visible line from field 1 to be lost
+    -- One line from field 2 is also dropped to balance out giving
+    -- 287 active lines per field
+    rep_h           => '1',
+    total_h         => 1728,
+    active_h        => 1440,
+    syncp_h         => 24,  -- start of sync
+    syncw_h         => 126, -- sync width
+    --
+    total_v         => 624,
+    active_v        => 574,  -- two lines dropped
+    --
+    fline_f1_v      => 22,
+    lline_f1_v      => 309,  -- one line lost
+    fline_f2_v      => 334,
+    lline_f2_v      => 621,
+    --
+    start_f1_v      => 621,
+    start_f2_v      => 309,
+    --
+    fsync_f1_v      => 624,
+    lsync_f1_v      => 3,
+    fsync_f2_v      => 312,
+    lsync_f2_v      => 315,
+    --
+    syncpol_h       => '0', -- active low
+    syncpol_v       => '0', -- active low
+    progressive     => '0'
+  );
+  --}}}
   --{{{
   constant c_Vidparam_720x576i_50 : r_Vidparam_int := (
     -- 720(1440)x576i @ 50Hz 27MHz pclk

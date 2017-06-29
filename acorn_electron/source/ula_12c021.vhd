@@ -105,6 +105,8 @@ architecture RTL of ULA_12C021 is
   signal ana_hsync, ana_vsync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
+  signal vpix : word(13 downto 0);
+
   -- 
   -- Registers (AUG p206)
   --
@@ -163,7 +165,7 @@ begin
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
-      g_param               => c_Vidparam_720x576i_50
+      g_param               => c_Vidparam_720x256p_50
       )
     port map (
       i_clk                 => i_clk_vid,
@@ -173,7 +175,7 @@ begin
       --i_ena => '1',
       --i_rst => i_rst_sys,
       --
-      i_param               => c_Vidparam_720x576i_50,
+      i_param               => c_Vidparam_720x256p_50,
       i_sof                 => '0',
       i_f2_flip             => '0',
       --
@@ -193,7 +195,7 @@ begin
       o_ana_de              => ana_de,
       --
       o_hpix                => open,
-      o_vpix                => open,
+      o_vpix                => vpix,
       --
       o_f2                  => open,
       o_voddline            => open,
@@ -206,11 +208,31 @@ begin
   -- timing of dig h/v does not match that of analog h/v (or combined csync). This will
   -- be fixed once ULA switched to its own analog timing, or VideoTiming adjusted to
   -- expose analog h/v.
-  o_rgb <= x"FF0000";
   o_n_hsync <= dig_hsync;
   o_n_vsync <= dig_vsync;
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
+
+  u_vid_rgb : process(i_clk_vid)
+  begin
+    if rising_edge(i_clk_vid) then
+      o_rgb <= x"000000";
+
+      -- To render 256 res centered vertically, use:
+      -- 15 to 270 and 327 to 582
+      -- 256 lines @ 50fps
+      if (vpix >= 100 and vpix <= 110) then
+        o_rgb <= x"00FF00";
+      elsif (vpix >= 15 and vpix <= 270) then      
+        o_rgb <= x"FF0000";
+      elsif (vpix >= 327 and vpix <= 582) then
+        o_rgb <= x"FFFFFF";
+      elsif (vpix > 270 and vpix < 327) then
+        o_rgb <= x"0000FF";
+      end if;
+
+    end if;
+  end process;
 
   --
   -- Ram Interface & Timing

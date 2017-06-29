@@ -39,6 +39,12 @@
 --
 -- Email support@fpgaarcade.com
 --
+
+-- NOTE: This is a temporary file. Included as a replacement for the
+-- Replay videotiming to provide a new mode. As lib copies happen before
+-- core source copies during build, this will replace the library version
+-- allowing testing of a new mode without risking breaking everything in svn.
+
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.std_logic_unsigned.all;
@@ -172,6 +178,8 @@ begin
         standard_ana <= NTSC;
       elsif (param_int = c_Vidparam_720x576i_50) then
         standard_ana <= PAL;
+      elsif (param_int = c_Vidparam_720x256p_50) then
+        standard_ana <= PAL_P;
       end if;
       --
       -- calc constants here so they are static, this saves a lot of space.
@@ -405,6 +413,7 @@ begin
 
             if (v_cnt = 311-1) then cs_gate <= "01100"; end if;
             if (v_cnt = 312-1) then cs_gate <= "01100"; end if;
+
             if (v_cnt = 313-1) then cs_gate <= "01001"; end if;
             if (v_cnt = 314-1) then cs_gate <= "00011"; end if;
             if (v_cnt = 315-1) then cs_gate <= "00011"; end if;
@@ -415,6 +424,31 @@ begin
             if (v_cnt = 623-1) then cs_gate <= "10100"; end if; -- half line
             if (v_cnt = 624-1) then cs_gate <= "01100"; end if;
             if (v_cnt = 625-1) then cs_gate <= "01100"; end if;
+          elsif (standard_ana = PAL_P) then
+            -- Field 1 start
+            if (v_cnt =   624) then cs_gate <= "00011"; end if;  -- actually line 1
+            if (v_cnt =   2-1) then cs_gate <= "00011"; end if;
+            if (v_cnt =   3-1) then cs_gate <= "00110"; end if;
+            if (v_cnt =   4-1) then cs_gate <= "01100"; end if;
+            if (v_cnt =   5-1) then cs_gate <= "01100"; end if;
+
+            -- One line dropped. Visible now ends after 309 rather than 310
+            if (v_cnt = 310-1) then cs_gate <= "01100"; end if;
+            if (v_cnt = 311-1) then cs_gate <= "01100"; end if;            
+            if (v_cnt = 312-1) then cs_gate <= "01100"; end if; -- extended to full line
+
+            -- Field 2 start
+            if (v_cnt = 313-1) then cs_gate <= "00011"; end if;
+            if (v_cnt = 314-1) then cs_gate <= "00011"; end if;
+            if (v_cnt = 315-1) then cs_gate <= "00110"; end if;
+            if (v_cnt = 316-1) then cs_gate <= "01100"; end if;
+            if (v_cnt = 317-1) then cs_gate <= "01100"; end if; 
+            -- 
+            -- One line dropped. Visible now ends after 621 rather than 622
+            if (v_cnt = 622-1) then cs_gate <= "01100"; end if;
+            if (v_cnt = 623-1) then cs_gate <= "01100"; end if;
+            if (v_cnt = 624-1) then cs_gate <= "01100"; end if;
+            -- Line 625 no longer used. 624 total lines.
           else
             -- NTSC
             if (v_cnt =   525) then cs_gate <= "01100"; end if;  -- line1
