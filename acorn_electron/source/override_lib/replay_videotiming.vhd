@@ -178,7 +178,8 @@ begin
         standard_ana <= NTSC;
       elsif (param_int = c_Vidparam_720x576i_50) then
         standard_ana <= PAL;
-      elsif (param_int = c_Vidparam_720x256p_50) then
+      elsif (param_int = c_Vidparam_720x287p_50 or
+             param_int = c_Vidparam_832x287p_50_16MHz) then
         standard_ana <= PAL_P;
       end if;
       --

@@ -232,7 +232,7 @@ begin
   -- debug
   b_aux_io(15) <= av.vid_sync.ana_de;
   b_aux_io(14) <= av.vid_sync.ana_hs;
-  b_aux_io(13) <= av.vid_rgb(0);
+  b_aux_io(13) <= av.vid_sync.dig_hs;
   b_aux_io(12) <= av.vid_sync.dig_vs;
 
 end RTL;

@@ -138,6 +138,36 @@ Package Replay_VideoTiming_Pack is
   --   * http://martin.hinner.info/vga/pal.html
   --   * http://www.batsocks.co.uk/readme/video_timing.htm
   --{{{
+  constant c_Vidparam_832x287p_50_16MHz : r_Vidparam_int := (
+    -- 832x256p @ 50Hz 16MHz pclk
+    rep_h           => '0',
+    total_h         => 1024,
+    active_h        => 832,
+    syncp_h         => 26,
+    syncw_h         => 75,
+    --
+    total_v         => 312,
+    active_v        => 287,  -- two lines dropped per field
+    --
+    fline_f1_v      => 22,
+    lline_f1_v      => 309,  -- one line lost
+    fline_f2_v      => 0,
+    lline_f2_v      => 0,
+    --
+    start_f1_v      => 312,
+    start_f2_v      => 0,
+    --
+    fsync_f1_v      => 312,
+    lsync_f1_v      => 3,
+    fsync_f2_v      => 0,
+    lsync_f2_v      => 0,
+    --
+    syncpol_h       => '0', -- active low
+    syncpol_v       => '0', -- active low
+    progressive     => '1'
+  );
+  --}}}
+  --{{{
   constant c_Vidparam_720x287p_50 : r_Vidparam_int := (
     -- 720(1440)x256p @ 50Hz 27MHz pclk
     rep_h           => '1',

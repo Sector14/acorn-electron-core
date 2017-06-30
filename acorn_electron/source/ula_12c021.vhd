@@ -27,11 +27,6 @@ library UNISIM;
 
 entity ULA_12C021 is
   port (
-
-    -- TEMP: Needed by VideoTiming atm. Assume always enabled.
-    i_clk_vid     : in bit1;
-    i_rst_vid     : in bit1;
-
     --
     -- Additional framework signals to ease usage
     --
@@ -107,6 +102,8 @@ architecture RTL of ULA_12C021 is
 
   signal vpix, hpix : word(13 downto 0);
 
+  signal rst : bit1;
+
   -- 
   -- Registers (AUG p206)
   --
@@ -138,7 +135,7 @@ begin
   b_pd <= (others => 'Z');
 
   -- Power up, perform reset
-
+  rst <= not i_n_por;
 
   --
   -- Master Timing
@@ -165,17 +162,14 @@ begin
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
-      g_param               => c_Vidparam_720x287p_50
+      g_param               => c_Vidparam_832x287p_50_16MHz
       )
     port map (
-      i_clk                 => i_clk_vid,
+      i_clk                 => i_clk,
       i_ena                 => '1',
-      i_rst                 => i_rst_vid,
-      --i_clk => ula_clk,
-      --i_ena => '1',
-      --i_rst => i_rst_sys,
+      i_rst                 => rst,
       --
-      i_param               => c_Vidparam_720x287p_50,
+      i_param               => c_Vidparam_832x287p_50_16MHz,
       i_sof                 => '0',
       i_f2_flip             => '0',
       --
@@ -213,15 +207,14 @@ begin
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
 
-  u_vid_rgb : process(i_clk_vid)
+  u_vid_rgb : process(i_clk)
   begin
-    if rising_edge(i_clk_vid) then
+    if rising_edge(i_clk) then
       o_rgb <= x"000000";
       
       -- 287 visible lines. Using center 256 for output.
-      -- 832 visible horizontal, using center 640 with 96 border either side.
-      -- In 320 mode use 2 cycles per pixel.
-      -- TODO: [Gary] Confirm actual electron output. 
+      -- Using center 640 with border either side.
+      -- TODO: [Gary] In 320 mode use 2 cycles per pixel, or define a new mode?
       -- TODO: [Gary] TV sometimes locks onto the display at a slight vertical offset. 
       --       Need to double check timings. Full top overscan + blanking visible whilst
       --       at bottom just the tip of the bottom overscan visible.

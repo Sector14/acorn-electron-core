@@ -389,9 +389,6 @@ begin
     --
     -- Framework extras
     --
-    i_clk_vid     => i_clk_vid,
-    i_rst_vid     => i_rst_vid,
-    
     o_n_vsync     => n_vsync_l,
     o_de          => ula_de,               
     o_rgb         => ula_rgb,
@@ -463,7 +460,7 @@ begin
   o_vid_sync.dig_vs <= n_vsync_l;
 
   -- Analog
-  -- TODO: [Gary] When doubling use separate h & v sync. Otherwise use csync      
+  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync      
   o_vid_sync.ana_de <= ula_de;
   o_vid_sync.ana_hs <= n_csync_l;
   o_vid_sync.ana_vs <= '1';
