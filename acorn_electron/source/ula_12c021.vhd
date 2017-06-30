@@ -105,7 +105,7 @@ architecture RTL of ULA_12C021 is
   signal ana_hsync, ana_vsync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
-  signal vpix : word(13 downto 0);
+  signal vpix, hpix : word(13 downto 0);
 
   -- 
   -- Registers (AUG p206)
@@ -165,7 +165,7 @@ begin
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
-      g_param               => c_Vidparam_720x256p_50
+      g_param               => c_Vidparam_720x287p_50
       )
     port map (
       i_clk                 => i_clk_vid,
@@ -175,7 +175,7 @@ begin
       --i_ena => '1',
       --i_rst => i_rst_sys,
       --
-      i_param               => c_Vidparam_720x256p_50,
+      i_param               => c_Vidparam_720x287p_50,
       i_sof                 => '0',
       i_f2_flip             => '0',
       --
@@ -194,7 +194,7 @@ begin
       o_ana_vs              => ana_vsync,
       o_ana_de              => ana_de,
       --
-      o_hpix                => open,
+      o_hpix                => hpix,
       o_vpix                => vpix,
       --
       o_f2                  => open,
@@ -217,18 +217,24 @@ begin
   begin
     if rising_edge(i_clk_vid) then
       o_rgb <= x"000000";
-
-      -- To render 256 res centered vertically, use:
-      -- 15 to 270 and 327 to 582
-      -- 256 lines @ 50fps
-      if (vpix >= 100 and vpix <= 110) then
-        o_rgb <= x"00FF00";
-      elsif (vpix >= 15 and vpix <= 270) then      
-        o_rgb <= x"FF0000";
-      elsif (vpix >= 327 and vpix <= 582) then
+      
+      -- 287 visible lines. Using center 256 for output.
+      -- 832 visible horizontal, using center 640 with 96 border either side.
+      -- In 320 mode use 2 cycles per pixel.
+      -- TODO: [Gary] Confirm actual electron output. 
+      -- TODO: [Gary] TV sometimes locks onto the display at a slight vertical offset. 
+      --       Need to double check timings. Full top overscan + blanking visible whilst
+      --       at bottom just the tip of the bottom overscan visible.
+      
+      if (vpix < 16 or vpix >= 16+256) then
+        -- overscan
         o_rgb <= x"FFFFFF";
-      elsif (vpix > 270 and vpix < 327) then
-        o_rgb <= x"0000FF";
+      elsif (vpix >= 16 and vpix < 16+256) then
+
+        if (hpix >= 96 and hpix < 96+640) then
+          o_rgb <= x"FF0000";
+        end if;
+
       end if;
 
     end if;

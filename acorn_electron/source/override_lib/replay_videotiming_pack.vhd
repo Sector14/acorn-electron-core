@@ -133,40 +133,38 @@ Package Replay_VideoTiming_Pack is
   -- the active video finishes at the end of the line
   -- e.g fline_f1_v 22 means first active video line for field one starts
   -- at the end of line 22.
-  -- for SD standards 1 count = 37.037ns
+  -- for SD standards 1 count = 37.037ns (using 27MHZ pixel clock)
+  -- Timing Links:
+  --   * http://martin.hinner.info/vga/pal.html
+  --   * http://www.batsocks.co.uk/readme/video_timing.htm
   --{{{
-  constant c_Vidparam_720x256p_50 : r_Vidparam_int := (
+  constant c_Vidparam_720x287p_50 : r_Vidparam_int := (
     -- 720(1440)x256p @ 50Hz 27MHz pclk
-    -- Field 1 end short sync extended by 1/2 scanline
-    -- causing Field 2 start to begin on line 314 not 313.5
-    -- Note, this requires last visible line from field 1 to be lost
-    -- One line from field 2 is also dropped to balance out giving
-    -- 287 active lines per field
     rep_h           => '1',
     total_h         => 1728,
     active_h        => 1440,
-    syncp_h         => 24,  -- start of sync
-    syncw_h         => 126, -- sync width
+    syncp_h         => 24,
+    syncw_h         => 126,
     --
-    total_v         => 624,
-    active_v        => 574,  -- two lines dropped
+    total_v         => 312,
+    active_v        => 287,  -- two lines dropped per field
     --
     fline_f1_v      => 22,
     lline_f1_v      => 309,  -- one line lost
-    fline_f2_v      => 334,
-    lline_f2_v      => 621,
+    fline_f2_v      => 0,
+    lline_f2_v      => 0,
     --
-    start_f1_v      => 621,
-    start_f2_v      => 309,
+    start_f1_v      => 312,
+    start_f2_v      => 0,
     --
-    fsync_f1_v      => 624,
+    fsync_f1_v      => 312,
     lsync_f1_v      => 3,
-    fsync_f2_v      => 312,
-    lsync_f2_v      => 315,
+    fsync_f2_v      => 0,
+    lsync_f2_v      => 0,
     --
     syncpol_h       => '0', -- active low
     syncpol_v       => '0', -- active low
-    progressive     => '0'
+    progressive     => '1'
   );
   --}}}
   --{{{
