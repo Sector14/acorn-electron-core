@@ -30,9 +30,6 @@ entity ULA_12C021 is
     --
     -- Additional framework signals to ease usage
     --
-    -- TODO: [Gary] Current setup is PAL 576i analog, so vsync is always 1 and hsync 
-    --       is actually csync. Need to either modify replay_videotiming to provide
-    --       split h/v even in PAL mode or add custom sig gen
     o_n_vsync     : out bit1;                  -- 
     o_de          : out bit1;                  --
 
@@ -154,11 +151,6 @@ begin
   --   4 - 320x256 two colour gfx, 40x32 text (10K)
   --   5 - 160x256 four colour gfx, 20x32 text (10K)
   --   6 - 40x25 two colour text (8K)
-
-  -- TODO: [Gary] Switch to using sys clock instead of separate video clock.
-  --       timing changes?
-
-  -- Temp use of VideoTiming to generate a 576i.
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -197,9 +189,9 @@ begin
       );
 
   -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
-  -- hsycn and '1' for vsync. However, OSD in Syscon uses vsync to determine display
-  -- location so digital h/v passed out for now. This is a cludge for now as the
-  -- timing of dig h/v does not match that of analog h/v (or combined csync). This will
+  -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
+  -- location so digital h/v passed out for now. This is a cludge as the
+  -- timing of dig h/v may not match that of analog h/v (or combined csync). This will
   -- be fixed once ULA switched to its own analog timing, or VideoTiming adjusted to
   -- expose analog h/v.
   o_n_hsync <= dig_hsync;
@@ -212,13 +204,12 @@ begin
     if rising_edge(i_clk) then
       o_rgb <= x"000000";
       
-      -- 640x256p display centered.
-      -- TODO: [Gary] 832 active "pixels" in the 51.95us display area. The 640
-      --       display should use the central 40us giving a pixel change rate of
-      --       62.5ns. Needs a 96 border both sides for centering or a start cycle
-      --       of 288. ULA doc suggests it may be advantagous to display slightly 
-      --       off-center with start on 256 boundary. Giving a border of 64 and 128.
-      -- TODO: [Gary] In 320 mode use 2 cycles per pixel
+      -- 832 active "pixels" in the 51.95us display area. The 640
+      -- display should use the central 40us giving a cycle timing of 62.5ns.
+      -- Needs a 96 border both sides for centering or a start cycle of 288.
+      -- ULA doc suggests off-center with start on 256 boundary, border of 64 and 128.
+      --
+      -- In 320 mode use 2 cycles per pixel
       if (vpix < 16 or vpix >= 16+256) then
         -- overscan
         o_rgb <= x"FFFFFF";

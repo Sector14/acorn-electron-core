@@ -1,5 +1,27 @@
 #!/bin/bash
 
+NAME="replay"
+CORE="acorn_electron"
+REPLAY_LIB_COMMON_PATH="./../../replay_lib/common"
+REPLAY_LIB_PATH="./../../replay_lib/rtl"
+LIB_PATH="./../../lib"
+
+######################################################################
+
+function exit_cleanup {
+  echo ""
+  echo "Build log file available in build/build.log"
+}
+
+trap "exit_cleanup" EXIT
+
+######################################################################
+
+# Log output to build/build.log as well as stdout
+mkdir -p build
+logfile=build/build.log
+exec > >(tee $logfile)
+
 if [ -d "/opt/Xilinx" ]; then
 	XILINX_VERSIONS=(/opt/Xilinx/*)
 	XILINX_PATH="${XILINX_VERSIONS[0]}"
@@ -22,17 +44,13 @@ else
   source "${ISE_PATH}settings32.sh"
 fi
 
-NAME="replay"
-CORE="acorn_electron"
-REPLAY_LIB_COMMON_PATH="./../../replay_lib/common"
-REPLAY_LIB_PATH="./../../replay_lib/rtl"
-LIB_PATH="./../../lib"
+######################################################################
 
 echo "---------------------------------------------------------"
-echo "create build dir and copy files                          "
+echo "Copy files"
 echo "---------------------------------------------------------"
 
-mkdir -p build
+# mkdir -p build
 cd build
 pwd
 
@@ -90,3 +108,5 @@ echo "---------------------------------------------------------"
 bitgen $NAME.ncd $CORE.bit -w -f $NAME.ut || exit $?
 
 cp $CORE.bin ../sdcard || exit $?
+
+

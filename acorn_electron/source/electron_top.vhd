@@ -40,9 +40,10 @@
 -- Email support@fpgaarcade.com
 --
 
+-- TODO: [Gary] RAM and ROM needs be moving to DRAM. Using up
+-- 32 of 36 BRAMs which leaves too few for the framework.
 --
--- RAM and ROM  could be moved to DRAM but using BRAM for simplicity. 
--- Keep eye on timing if moved as ULA runs at 16MHz which is sys_clk / 2
+-- Check timing if moved as ULA runs at 16MHz which is sys_clk / 2
 -- whilst DRAM is set for a sys_clk / 4 read cycle. May not be an issue
 -- however as internally ULA will be generating a 2MHz and 1MHz clock.
 
@@ -71,10 +72,6 @@ entity Electron_Top is
     i_clk_ram             : in  bit1;
     i_rst_ram             : in  bit1;
 
-    -- Video clock, generated from Clk C. Used for all OSD Video/PHY data path.
-    i_clk_vid             : in  bit1;
-    i_ena_vid             : in  bit1;
-    i_rst_vid             : in  bit1;
     --
     -- Config/Control
     o_cfg_status          : out word(15 downto 0); -- status feedback to ARM
@@ -111,11 +108,11 @@ entity Electron_Top is
     i_memio_to_core       : in  r_Memio_to_core;
     o_memio_fm_core       : out r_Memio_fm_core;   -- connect to z_Memio_fm_core if not used
 
-    -- Video (clk_vid)
+    -- Video
     o_vid_rgb             : out word(23 downto 0);
     o_vid_sync            : out r_Vidsync;
 
-    -- Audio (clk_aud)
+    -- Audio
     o_audio_l             : out word(23 downto 0); -- left  sample
     o_audio_r             : out word(23 downto 0); -- right sample
     i_audio_taken         : in  bit1;  -- sample ack
@@ -133,8 +130,6 @@ architecture RTL of Electron_Top is
   signal led                    : bit1;
   signal tick_pre1              : bit1;
   signal tick                   : bit1;
-
-  -- TODO: [Gary] _l for latch? check naming conventions.
 
   -- Scanline doubler
   --signal dbl_hsync_l, dbl_vsync_l, dbl_csync_l, dbl_blank : bit1;
@@ -188,17 +183,15 @@ begin
   --
   -- Scanline Doubling
   --
+  -- TODO: [Gary] Sort high BRAM usage due to RAM/ROM before enabling this.
 --  u_DblScan : entity work.Replay_DblScan
 --  port map (
---    -- TODO: [Gary] Switch to sys clk and move vid clk over to same?
+--    -- TODO: [Gary] clk_sys is 2x video generation, sufficient for doubler?
 --    -- clocks
---    --i_clk                 => ula_clk,
+--    --i_clk                 => i_clk_sys,
 --    --i_ena                 => '1', 
 --    --i_rst                 => i_rst_sys,
---    
---    i_clk                 => i_clk_vid,
---    i_ena                 => i_ena_vid,
---    i_rst                 => i_rst_vid,
+--
 --    --
 --    i_bypass              => '1',
 --    i_dblscan             => cfg_dblscan,
@@ -381,9 +374,7 @@ begin
   -- TODO: [Gary] Finish wiring
   -- IC1 ULA (Uncommitted Logic Array)
   -- Handles RAM, Video, Cassette and sound
-  -- ULA uses 16MHz clock, which is sys_clk / 2, bear in mind if ROM/RAM
-  -- is moved to DRAM as access time is sys_clk / 4. May not be an issue
-  -- however as internally ULA runs at 2MHz and 1MHz.
+  -- ULA uses 16MHz clock, derived from sys_clk / 2
   ula_ic1 : entity work.ULA_12C021
   port map (
     --
@@ -454,13 +445,12 @@ begin
 
   o_vid_rgb <= ula_rgb;
 
-  -- REVIEW: This is using the analog signal from ULA. 
   o_vid_sync.dig_de <= ula_de;
   o_vid_sync.dig_hs <= n_hsync_l;
   o_vid_sync.dig_vs <= n_vsync_l;
 
   -- Analog
-  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync      
+  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync
   o_vid_sync.ana_de <= ula_de;
   o_vid_sync.ana_hs <= n_csync_l;
   o_vid_sync.ana_vs <= '1';
@@ -472,7 +462,5 @@ begin
 
   -- Cassette i/o adapter
   -- Audio adapter
-
-  -- TODO: [Gary] Add Chipscope
   
 end RTL;

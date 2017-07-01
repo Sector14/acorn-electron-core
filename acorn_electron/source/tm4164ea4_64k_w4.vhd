@@ -68,8 +68,6 @@ architecture RTL of TM4164EA3_64k_W4 is
   signal we_l                   : bit1;
 begin
   -- Bank enable selection
-  -- TODO: [Gary] Could enable for single cycle only based on falling edge of cas
-  --       as read output is latched whilst disabled.
   en0 <= '1' when addr(15) = '0' and addr(14) = '0' else '0';
   en1 <= '1' when addr(15) = '0' and addr(14) = '1' else '0';
   en2 <= '1' when addr(15) = '1' and addr(14) = '0' else '0';

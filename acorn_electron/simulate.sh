@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # SIMULATION COMPILE SCRIPT USING ISIM (WEBPACK)
 #
 # Usage:

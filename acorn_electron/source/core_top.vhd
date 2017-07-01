@@ -105,27 +105,17 @@ architecture RTL of Core_Top is
   signal cph_sys                : word(3 downto 0);
   signal rst_sys                : bit1;
 
-  signal clk_vid                : bit1;
-  signal ena_vid                : bit1;
-  signal rst_vid                : bit1;
-
   signal pwr_led                : bit1;
   signal disk_led               : bit1;
 
   signal av                     : r_AV_fm_core;
 begin
 
-  -- TODO: [Gary] Switch to single clock domain for system/video/audio?
-  --       Or leave video on its own?
-
+  -- Sys clock used for system, audio and video
   clk_sys <= i_ctrl.clk_sys;
   rst_sys <= i_ctrl.rst_sys;
   ena_sys <= i_ctrl.ena_sys;
   cph_sys <= i_ctrl.cph_sys;
-
-  clk_vid <= i_ctrl.clk_vid;
-  ena_vid <= i_ctrl.ena_vid;
-  rst_vid <= i_ctrl.rst_vid;
 
   o_ctrl.clk_aud <= clk_sys;
   o_ctrl.ena_aud <= ena_sys;
@@ -146,10 +136,6 @@ begin
 
     i_clk_ram             => i_ctrl.clk_ram,
     i_rst_ram             => i_ctrl.rst_ram,
-
-    i_clk_vid             => clk_vid,
-    i_ena_vid             => ena_vid,
-    i_rst_vid             => rst_vid,
 
     --
     o_cfg_status          => o_cfg.cfg_status,
