@@ -42,6 +42,7 @@
 
 -- TODO: [Gary] RAM and ROM needs be moving to DRAM. Using up
 -- 32 of 36 BRAMs which leaves too few for the framework.
+-- Even more over if chipscope is enabled.
 --
 -- Check timing if moved as ULA runs at 16MHz which is sys_clk / 2
 -- whilst DRAM is set for a sys_clk / 4 read cycle. May not be an issue
@@ -127,6 +128,8 @@ end;
 
 architecture RTL of Electron_Top is
 
+  constant fileio_cs_enable : boolean := true;
+
   signal led                    : bit1;
   signal tick_pre1              : bit1;
   signal tick                   : bit1;
@@ -177,10 +180,6 @@ architecture RTL of Electron_Top is
   --constant cfg_dblscan : bit1 := '1';
 begin
   
-  --
-  -- Replay Lib
-  -- 
-
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
@@ -192,9 +191,9 @@ begin
   o_audio_l             <= (others => '0');
   o_audio_r             <= (others => '0');
 
-  --
-  -- Acorn Electron Specific
-  --
+  -- ====================================================================
+  -- Misc
+  -- ====================================================================
 
   -- IC9 clock div 13 (74LS163)
   b_clk_div : block
@@ -216,6 +215,10 @@ begin
 
   end block;
   
+  -- ====================================================================
+  -- RAM/ROM
+  -- ====================================================================
+
   -- IC2 ROM 32kB (addressable via ARM bus)
   -- Hitatchi HN613256 with tri-state output buffer
   -- 0x000 - 0x7FFF
@@ -264,6 +267,10 @@ begin
     i_n_cas  => ram_n_cas
   );
 
+  -- ====================================================================
+  -- CPU
+  -- ====================================================================
+
   -- IC3 T65 (6502-A)
   ic3_6502 : entity work.T65
   port map (
@@ -295,11 +302,14 @@ begin
   -- multiplex di/do to bi-dir data_bus
   cpu_data_in <= data_bus;
   data_bus <= cpu_data_out when cpu_n_w = '0' else (others => 'Z');
-
-  -- Keyboard
-  -- TODO: [Gary] Hook up keyboard
   
-  -- TODO: [Gary] Finish wiring
+  -- ====================================================================
+  -- ULA
+  -- ====================================================================
+
+  -- TODO: [Gary] Cassette and audio to sort. May be simpler to add extra
+  --       signals and alternative path rather than to save converting data
+  --       to intermediate only to then try to convert back again.
   -- IC1 ULA (Uncommitted Logic Array)
   -- Managed RAM, Video, Cassette and Sound
   ula_ic1 : entity work.ULA_12C021
@@ -321,7 +331,7 @@ begin
     b_cas_rc      => open,                      -- RC high tone detection
     o_cas_mo      => open,                      -- Motor relay
        
-    -- Audio             
+    -- Audio      (not yet supported)       
     o_sound_op    => open,            
        
     -- Reset             
@@ -381,15 +391,25 @@ begin
   o_vid_sync.ana_de <= ula_de;
   o_vid_sync.ana_hs <= ula_n_csync;
   o_vid_sync.ana_vs <= '1';
+
+  -- ====================================================================
+  -- Input
+  -- ====================================================================
+
+  -- TODO: [Gary] Hook up keyboard
   
 
-  --
-  -- Electron to Lib Adapters
-  -- 
-
+  -- ====================================================================
+  -- Framwork Interfacing
+  -- ====================================================================
+  
   -- Cassette i/o adapter
+  -- Support loading via SD card rather than physical cassette.
+  -- Should be optional and route additional signals to allow a physical
+  -- cassette to be interfaced via expansion port.
+
+
   -- Audio adapter
-  
 
   
   --
@@ -422,7 +442,7 @@ begin
   --  );
 
   --
-  -- some blinking LED thingy...
+  -- Activity LEDs
   --
   b_tick : block
     signal precounter1 : word(15 downto 0);
@@ -479,4 +499,53 @@ begin
   o_disk_led        <=     led;
   o_pwr_led         <= not led;
 
+  -- ====================================================================
+  -- Chipscope
+  -- ====================================================================
+
+  cs_debug : block
+    component icon
+      PORT (
+        CONTROL0 : INOUT STD_LOGIC_VECTOR(35 DOWNTO 0)
+        );
+      end component;
+
+    component ila_1024_63
+      PORT (
+        CONTROL : INOUT STD_LOGIC_VECTOR(35 DOWNTO 0);
+        CLK : IN STD_LOGIC;
+        TRIG0 : IN STD_LOGIC_VECTOR(62 DOWNTO 0)
+        );
+    end component;
+
+    signal cs_clk  : bit1;
+    signal cs_ctrl : word(35 downto 0);
+    signal cs_trig : word(62 downto 0);
+
+  begin -- cs_debug
+
+    fileio_cs : if fileio_cs_enable=true generate
+
+      cs_icon : icon
+      port map (
+        CONTROL0 => cs_ctrl
+        );
+
+      cs_ila : ila_1024_63
+      port map (
+        CONTROL => cs_ctrl,
+        CLK     => cs_clk,
+        TRIG0   => cs_trig
+        );
+
+      cs_clk  <= i_clk_ram;
+      cs_trig(62) <= i_clk_sys;
+      cs_trig(61) <= i_ena_sys;
+      cs_trig(60) <= ula_clk;
+      cs_trig(59) <= ula_phi_out;
+      cs_trig(58) <= ula_rom_ena;
+      cs_trig(57 downto 0) <= (others => '0');
+    end generate fileio_cs;
+
+  end block cs_debug;
 end RTL;

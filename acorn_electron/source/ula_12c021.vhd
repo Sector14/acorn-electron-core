@@ -101,6 +101,9 @@ architecture RTL of ULA_12C021 is
 
   signal rst : bit1;
 
+  -- Timing
+  signal clk_2MHz, clk_1MHz  : bit1;
+
   -- 
   -- Registers (AUG p206)
   --
@@ -133,16 +136,37 @@ begin
 
   -- Power up, perform reset
   rst <= not i_n_por;
-
-  --
+  o_phi_out <= clk_1MHz;
+  
+  -- ====================================================================
   -- Master Timing
-  --
-  -- 4MHz, 2MHz generator
+  -- ====================================================================
+  -- 16MHz clock down to 2MHz & 1MHz generator
+  p_clk_gen : process
+    variable count : unsigned(3 downto 0) := (others => '0');
+  begin
+    if (rst = '1') then
+      count := (others => '0');
+      clk_1MHz <= '0';
+      clk_2MHz <= '0';
+    elsif rising_edge(i_clk) then
+      clk_1MHz <= '0';
+      clk_2MHz <= '0';
+      
+      -- TODO: [Gary] On real ULA were both clocks in phase?
+      if (count = "0000") then
+        clk_2MHz <= '1';
+        clk_1MHz <= '1';
+      elsif (count = "1000") then
+        clk_2MHz <= '1';
+      end if;
+      count := count + 1;
+    end if;
+  end process;
 
-
-  --
-  -- Video Timing
-  --
+  -- ====================================================================
+  -- Video
+  -- ====================================================================
   -- Modes:
   --   0 - 640x256 two colour gfx, 80x32 text (20K)
   --   1 - 320x256 four colour gfx, 40x32 text (20K)
@@ -151,6 +175,8 @@ begin
   --   4 - 320x256 two colour gfx, 40x32 text (10K)
   --   5 - 160x256 four colour gfx, 20x32 text (10K)
   --   6 - 40x25 two colour text (8K)
+  
+  -- TODO: [Gary] Need mode 6 going first for bootup.
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -227,15 +253,28 @@ begin
     end if;
   end process;
 
+  -- ====================================================================
+  -- RAM
+  -- ====================================================================
   --
   -- Ram Interface & Timing
   --
   -- 4164 ram is async, however this implementation is synchronous
   -- An actual ULA would need this interface logic rewriting to match timing requirements
 
+  -- ram enable/read/write
+
+  -- rom enable
+
+  -- memory contention for 1 and 2MHz switching
+  
   --
   -- Registers
   --
+
+  -- ====================================================================
+  -- Interfacing
+  -- ====================================================================
 
   -- 
   -- Keyboard Interface
