@@ -142,7 +142,7 @@ Package Replay_VideoTiming_Pack is
     -- 832x256p @ 50Hz 16MHz pclk
     rep_h           => '0',
     total_h         => 1024,
-    active_h        => 832,
+    active_h        => 832,  -- 91bp, 26fp, 75hs
     syncp_h         => 26,
     syncw_h         => 75,
     --

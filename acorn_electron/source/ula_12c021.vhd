@@ -212,22 +212,25 @@ begin
     if rising_edge(i_clk) then
       o_rgb <= x"000000";
       
-      -- 287 visible lines. Using center 256 for output.
-      -- Using center 640 with border either side.
-      -- TODO: [Gary] In 320 mode use 2 cycles per pixel, or define a new mode?
-      -- TODO: [Gary] TV sometimes locks onto the display at a slight vertical offset. 
-      --       Need to double check timings. Full top overscan + blanking visible whilst
-      --       at bottom just the tip of the bottom overscan visible.
-      
+      -- 640x256p display centered.
+      -- TODO: [Gary] 832 active "pixels" in the 51.95us display area. The 640
+      --       display should use the central 40us giving a pixel change rate of
+      --       62.5ns. Needs a 96 border both sides for centering or a start cycle
+      --       of 288. ULA doc suggests it may be advantagous to display slightly 
+      --       off-center with start on 256 boundary. Giving a border of 64 and 128.
+      -- TODO: [Gary] In 320 mode use 2 cycles per pixel
       if (vpix < 16 or vpix >= 16+256) then
         -- overscan
         o_rgb <= x"FFFFFF";
       elsif (vpix >= 16 and vpix < 16+256) then
 
-        if (hpix >= 96 and hpix < 96+640) then
+        if (hpix <= 64) then
           o_rgb <= x"FF0000";
-        end if;
-
+        elsif (hpix >= 832-96) then
+          o_rgb <= x"00FF00";
+        else
+          o_rgb <= x"0000FF";
+        end if;        
       end if;
 
     end if;
