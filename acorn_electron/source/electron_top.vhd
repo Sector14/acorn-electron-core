@@ -136,31 +136,43 @@ architecture RTL of Electron_Top is
   --signal dbl_rgb   : word(23 downto 0);
 
   -- addr/data bus shared by ROM, CPU and ULA
-  signal addr_bus  : word(15 downto 0);
-  signal data_bus  : word( 7 downto 0);
+  signal addr_bus    : word(15 downto 0);
+  signal data_bus    : word( 7 downto 0);
 
   -- ROM
-  signal rom_data  : word( 7 downto 0);
+  signal rom_data    : word( 7 downto 0);
 
   -- RAM  
-  signal ram_addr  : word( 7 downto 0);
-  signal ram_data  : word( 3 downto 0);
-  signal ram_n_we  : bit1;
-  signal ram_n_ras : bit1;
-  signal ram_n_cas : bit1;
+  signal ram_addr    : word( 7 downto 0);
+  signal ram_data    : word( 3 downto 0);
+  signal ram_n_we    : bit1;
+  signal ram_n_ras   : bit1;
+  signal ram_n_cas   : bit1;
 
+  -- CPU
+  signal cpu_n_w     : bit1;
+  signal cpu_data_in  : word(7 downto 0);
+  signal cpu_data_out : word(7 downto 0);
+  signal cpu_addr     : word(23 downto 0);
   -- ULA
-  signal ula_clk   : bit1;
-  signal div13     : bit1;
-  signal n_por     : bit1;
-  signal n_reset   : bit1;
-  signal rom_ena   : bit1;
+  signal ula_clk     : bit1;
+  signal ula_rom_ena : bit1;
 
+  signal ula_phi_out : bit1;
+  signal ula_n_irq   : bit1;
 
-  -- ULA - Framework extras
-  signal n_hsync_l, n_vsync_l, n_csync_l, ula_de : bit1;
-  signal ula_rgb    : word(23 downto 0);
+  -- ULA/Framework extras
+  signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;
+  signal ula_rgb     : word(23 downto 0);
 
+  -- ULA Glue
+  signal div13       : bit1;
+  signal n_por       : bit1;
+  signal n_reset     : bit1;
+
+  -- CPU/ULA Glue
+  signal n_nmi        : bit1;
+  
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 begin
@@ -181,33 +193,233 @@ begin
   o_audio_r             <= (others => '0');
 
   --
+  -- Acorn Electron Specific
+  --
+
+  -- IC9 clock div 13 (74LS163)
+  b_clk_div : block
+    signal cnt : unsigned( 3 downto 0 ) := (others => '0');
+  begin
+
+    p_ic9_div13 : process(i_clk_sys)
+    begin
+      if rising_edge(i_clk_sys) then
+        div13 <= '0';
+
+        cnt <= cnt + 1;        
+        if (cnt = 12) then
+          cnt <= (others => '0');
+          div13 <= '1';
+        end if;
+      end if;
+    end process;
+
+  end block;
+  
+  -- IC2 ROM 32kB (addressable via ARM bus)
+  -- Hitatchi HN613256 with tri-state output buffer
+  -- 0x000 - 0x7FFF
+  -- /CS not implemented, assume tied to gnd.
+  rom_ic2 : entity work.RAM_D32K_W8
+  generic map (
+    g_addr => x"00000000",
+    g_mask => x"00008000"
+  )
+  port map (
+    -- ARM interface
+    i_memio_to_core  => i_memio_to_core,  -- not used
+    i_memio_fm_core  => z_Memio_fm_core,  -- first module
+    o_memio_fm_core  => o_memio_fm_core,  
+
+    i_clk_sys  => i_clk_sys,              -- ARM clock
+    i_ena_sys  => i_ena_sys,
+
+    -- Core interface
+    i_addr  => addr_bus(14 downto 0),
+    i_data  => x"00",                     -- ROM unused
+    i_wen   => '0',                       -- ROM unused
+    o_data  => rom_data,
+
+    -- TODO: [Gary] should this really be CPU out clock?
+    i_ena   => i_ena_sys,
+    i_clk   => i_clk_sys                  -- Core clock
+  );
+  -- rom data tri-state via OE
+  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
+
+  -- IC20 RAM 4x64K 1bit
+  -- 64k 0x000 - 0x3FFFF
+  ram_ic20 : entity work.TM4164EA3_64k_W4
+  port map (
+    -- clock for sync bram 
+    i_clk    => ula_clk,
+
+    i_addr   => ram_addr,
+
+    i_data   => ram_data,
+    o_data   => ram_data,
+  
+    i_n_we   => ram_n_we,
+    i_n_ras  => ram_n_ras,
+    i_n_cas  => ram_n_cas
+  );
+
+  -- IC3 T65 (6502-A)
+  ic3_6502 : entity work.T65
+  port map (
+    Mode    => "00",               -- 6502
+    Res_n   => n_reset,
+    Enable  => '1',
+    Clk     => ula_phi_out,
+    Rdy     => '1',
+    Abort_n => '1',
+    IRQ_n   => ula_n_irq,
+    NMI_n   => n_nmi,
+    SO_n    => '1',
+    R_W_n   => cpu_n_w,
+    Sync    => open,
+    EF      => open,
+    MF      => open,
+    XF      => open,
+    ML_n    => open,
+    VP_n    => open,
+    VDA     => open,
+    VPA     => open,
+    A       => cpu_addr,
+    DI      => cpu_data_in,
+    DO      => cpu_data_out,
+    DEBUG   => open
+  );
+
+  addr_bus <= cpu_addr(15 downto 0);
+  -- multiplex di/do to bi-dir data_bus
+  cpu_data_in <= data_bus;
+  data_bus <= cpu_data_out when cpu_n_w = '0' else (others => 'Z');
+
+  -- Keyboard
+  -- TODO: [Gary] Hook up keyboard
+  
+  -- TODO: [Gary] Finish wiring
+  -- IC1 ULA (Uncommitted Logic Array)
+  -- Managed RAM, Video, Cassette and Sound
+  ula_ic1 : entity work.ULA_12C021
+  port map (
+    --
+    -- Framework extras
+    --
+    o_n_vsync     => ula_n_vsync,
+    o_de          => ula_de,               
+    o_rgb         => ula_rgb,
+
+    --
+    -- ULA
+    --
+
+    -- Cassette I/O (not yet supported)
+    i_cas         => '0',
+    o_cas         => open,
+    b_cas_rc      => open,                      -- RC high tone detection
+    o_cas_mo      => open,                      -- Motor relay
+       
+    -- Audio             
+    o_sound_op    => open,            
+       
+    -- Reset             
+    i_n_por       => n_por,                     -- /Power on reset
+       
+    -- Video             
+    o_n_csync     => ula_n_csync,               -- h/v sync
+    o_n_hsync     => ula_n_hsync,               -- h sync
+     
+    -- Clock   
+    i_clk         => ula_clk,                   -- 16MHz
+    i_div_13      => div13,                     -- ula_clk div 13
+       
+    -- RAM (4x64k 1 bit)       
+    b_ram0        => ram_data(0),
+    b_ram1        => ram_data(1),
+    b_ram2        => ram_data(2),
+    b_ram3        => ram_data(3),
+       
+    o_n_we        => ram_n_we,                  -- /write, read
+    o_n_ras       => ram_n_ras,                 -- row address strobe  -ve edge
+    o_n_cas       => ram_n_cas,                 -- col address strobe  -ve edge
+
+    o_ra          => ram_addr,                  -- ram address
+
+    -- Keyboard
+    i_kbd         => "0000",
+    i_caps_lock   => '0',
+    i_n_reset     => n_reset,
+
+    -- ROM/CPU addressing
+    o_rom         => ula_rom_ena,               -- rom select enable   
+    i_addr        => addr_bus,
+    b_pd          => data_bus,                  -- CPU/ROM data
+
+    -- CPU
+    i_nmi         => n_nmi,                     -- 1MHz RAM access detection
+    o_phi_out     => ula_phi_out,               -- CPU clk, 2MHz, 1MHz or stopped
+    o_n_irq       => ula_n_irq,
+    i_n_w         => cpu_n_w                    -- Data direction, /write, read
+  );
+
+  n_por <= not i_halt;
+  n_reset <= not i_halt; -- TODO: [Gary] incl keyboard "break"
+
+  -- 16MHz from sys_clk / 2
+  ula_clk <= i_cph_sys(1) or i_cph_sys(3); 
+  
+  o_vid_rgb <= ula_rgb;
+
+  o_vid_sync.dig_de <= ula_de;
+  o_vid_sync.dig_hs <= ula_n_hsync;
+  o_vid_sync.dig_vs <= ula_n_vsync;
+
+  -- Analog
+  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync
+  o_vid_sync.ana_de <= ula_de;
+  o_vid_sync.ana_hs <= ula_n_csync;
+  o_vid_sync.ana_vs <= '1';
+  
+
+  --
+  -- Electron to Lib Adapters
+  -- 
+
+  -- Cassette i/o adapter
+  -- Audio adapter
+  
+
+  
+  --
   -- Scanline Doubling
   --
   -- TODO: [Gary] Sort high BRAM usage due to RAM/ROM before enabling this.
---  u_DblScan : entity work.Replay_DblScan
---  port map (
---    -- TODO: [Gary] clk_sys is 2x video generation, sufficient for doubler?
---    -- clocks
---    --i_clk                 => i_clk_sys,
---    --i_ena                 => '1', 
---    --i_rst                 => i_rst_sys,
---
---    --
---    i_bypass              => '1',
---    i_dblscan             => cfg_dblscan,
---    --
---    i_hsync_l             => dig_hsync,
---    i_vsync_l             => dig_vsync,
---    i_csync_l             => csync_l,  -- passed through
---    i_blank               => dig_de,   -- passed through
---    i_vid_rgb             => x"FF0000", -- r 23..16 g 15..8 b 7..0
---    --
---    o_hsync_l             => dbl_hsync_l,
---    o_vsync_l             => dbl_vsync_l,
---    o_csync_l             => dbl_csync_l,
---    o_blank               => dbl_blank,
---    o_vid_rgb             => dbl_rgb
---  );
+  --  u_DblScan : entity work.Replay_DblScan
+  --  port map (
+  --    -- TODO: [Gary] clk_sys is 2x video generation, sufficient for doubler?
+  --    -- clocks
+  --    --i_clk                 => i_clk_sys,
+  --    --i_ena                 => '1', 
+  --    --i_rst                 => i_rst_sys,
+  --
+  --    --
+  --    i_bypass              => '1',
+  --    i_dblscan             => cfg_dblscan,
+  --    --
+  --    i_hsync_l             => dig_hsync,
+  --    i_vsync_l             => dig_vsync,
+  --    i_csync_l             => csync_l,  -- passed through
+  --    i_blank               => dig_de,   -- passed through
+  --    i_vid_rgb             => x"FF0000", -- r 23..16 g 15..8 b 7..0
+  --    --
+  --    o_hsync_l             => dbl_hsync_l,
+  --    o_vsync_l             => dbl_vsync_l,
+  --    o_csync_l             => dbl_csync_l,
+  --    o_blank               => dbl_blank,
+  --    o_vid_rgb             => dbl_rgb
+  --  );
 
   --
   -- some blinking LED thingy...
@@ -267,200 +479,4 @@ begin
   o_disk_led        <=     led;
   o_pwr_led         <= not led;
 
-
-  --
-  -- Acorn Electron Specific
-  --
-
-  -- IC9 clock div 13 (74LS163)
-  b_clk_div : block
-    signal cnt : unsigned( 3 downto 0 ) := (others => '0');
-  begin
-
-    p_ic9_div13 : process(i_clk_sys)
-    begin
-      if rising_edge(i_clk_sys) then
-        div13 <= '0';
-
-        cnt <= cnt + 1;        
-        if (cnt = 12) then
-          cnt <= (others => '0');
-          div13 <= '1';
-        end if;
-      end if;
-    end process;
-
-  end block;
-  
-  -- IC2 ROM 32kB (addressable via ARM bus)
-  -- 0x000 - 0x7FFF
-  -- Hitatchi HN613256 with tri-state output buffer
-  -- Ignored /CS tied to gnd.
-  rom_ic2 : entity work.RAM_D32K_W8
-  generic map (
-    g_addr => x"00000000",
-    g_mask => x"00008000"
-  )
-  port map (
-    -- ARM interface
-    i_memio_to_core  => i_memio_to_core,  -- not used
-    i_memio_fm_core  => z_Memio_fm_core,  -- first module
-    o_memio_fm_core  => o_memio_fm_core,  
-
-    i_clk_sys  => i_clk_sys,              -- ARM clock
-    i_ena_sys  => i_ena_sys,
-
-    -- Core interface
-    i_addr  => addr_bus(14 downto 0),
-    i_data  => x"00",                     -- ROM unused
-    i_wen   => '0',                       -- ROM unused
-    o_data  => rom_data,
-
-    -- TODO: [Gary] should this really be CPU out clock?
-    i_ena   => i_ena_sys,
-    i_clk   => i_clk_sys                  -- Core clock
-  );
-  -- rom data tri-state via OE
-  data_bus <= rom_data when rom_ena = '1' else (others => 'Z');
-
-  -- IC20 RAM 4x64K 1bit
-  -- 64k 0x000 - 0x3FFFF
-  ram_ic20 : entity work.TM4164EA3_64k_W4
-  port map (
-    -- clock for sync bram 
-    i_clk    => ula_clk,
-
-    i_addr   => ram_addr,
-
-    i_data   => ram_data,
-    o_data   => ram_data,
-  
-    i_n_we   => ram_n_we,
-    i_n_ras  => ram_n_ras,
-    i_n_cas  => ram_n_cas
-  );
-
-  -- TODO: [Gary] Sort this. 
-  -- IC3 T65 (6502-A)
---  ic3_6502 : entity T65
---  port map (
---    Mode    "00",               -- 6502
---    Res_n   : in  std_logic;
---    Enable  : in  std_logic;
---    Clk     : in  std_logic;
---    Rdy     : in  std_logic;
---    Abort_n : in  std_logic;
---    IRQ_n   : in  std_logic;
---    NMI_n   : in  std_logic;
---    SO_n    : in  std_logic;
---    R_W_n   : out std_logic;
---    Sync    : out std_logic;
---    EF      : out std_logic;
---    MF      : out std_logic;
---    XF      : out std_logic;
---    ML_n    : out std_logic;
---    VP_n    : out std_logic;
---    VDA     : out std_logic;
---    VPA     : out std_logic;
---    A       : out std_logic_vector(23 downto 0);
---    DI      : in  std_logic_vector(7 downto 0);
---    DO      : out std_logic_vector(7 downto 0);
---    DEBUG   : out T_t65_dbg
---  );
-  -- TODO: [Gary] multiplex di/do to just data_bus?
-
-  -- Keyboard
-  
-  -- TODO: [Gary] Finish wiring
-  -- IC1 ULA (Uncommitted Logic Array)
-  -- Handles RAM, Video, Cassette and sound
-  -- ULA uses 16MHz clock, derived from sys_clk / 2
-  ula_ic1 : entity work.ULA_12C021
-  port map (
-    --
-    -- Framework extras
-    --
-    o_n_vsync     => n_vsync_l,
-    o_de          => ula_de,               
-    o_rgb         => ula_rgb,
-
-    --
-    -- ULA
-    --
-
-    -- Cassette I/O (not yet supported)
-    i_cas         => '0',
-    o_cas         => open,
-    b_cas_rc      => open,                      -- RC high tone detection
-    o_cas_mo      => open,                      -- Motor relay
-       
-    -- Audio             
-    o_sound_op    => open,            
-       
-    -- Reset             
-    i_n_por       => n_por,                     -- /Power on reset
-       
-    -- Video             
-    o_n_csync     => n_csync_l,                 -- h/v sync
-    o_n_hsync     => n_hsync_l,                 -- h sync
-     
-    -- Clock   
-    i_clk         => ula_clk,
-    i_div_13      => div13,                     -- ula_clk div 13
-       
-    -- RAM (4x64k 1 bit)       
-    b_ram0        => ram_data(0),
-    b_ram1        => ram_data(1),
-    b_ram2        => ram_data(2),
-    b_ram3        => ram_data(3),
-       
-    o_n_we        => ram_n_we,                  -- /write, read
-    o_n_ras       => ram_n_ras,                 -- row address strobe  -ve edge
-    o_n_cas       => ram_n_cas,                 -- col address strobe  -ve edge
-
-    o_ra          => ram_addr,                  -- ram address
-
-    -- Keyboard
-    i_kbd         => "0000",
-    i_caps_lock   => '0',
-    i_n_reset     => n_reset,
-
-    -- ROM/CPU addressing
-    o_rom         => rom_ena,                   -- rom select enable   
-    i_addr        => addr_bus,
-    b_pd          => data_bus,                  -- CPU/ROM data
-
-    -- CPU
-    i_nmi         => '0',                       -- 1MHz RAM access detection
-    o_phi_out     => open,                      -- CPU clk, 2MHz, 1MHz or stopped
-    o_n_irq       => open,
-    i_n_w         => '0'                        -- Data direction, /write, read
-  );
-
-  n_por <= not i_halt;
-  n_reset <= not i_halt; -- TODO: [Gary] incl keyboard "break"
-
-  -- 16MHz from sys_clk / 2
-  ula_clk <= i_cph_sys(1) or i_cph_sys(3); 
-
-  o_vid_rgb <= ula_rgb;
-
-  o_vid_sync.dig_de <= ula_de;
-  o_vid_sync.dig_hs <= n_hsync_l;
-  o_vid_sync.dig_vs <= n_vsync_l;
-
-  -- Analog
-  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync
-  o_vid_sync.ana_de <= ula_de;
-  o_vid_sync.ana_hs <= n_csync_l;
-  o_vid_sync.ana_vs <= '1';
-
-
-  --
-  -- Electron to Lib Adapters
-  -- 
-
-  -- Cassette i/o adapter
-  -- Audio adapter
-  
 end RTL;

@@ -60,6 +60,9 @@ cp $REPLAY_LIB_COMMON_PATH/*.vhd ./
 cp $REPLAY_LIB_COMMON_PATH/*.ut ./
 cp $REPLAY_LIB_COMMON_PATH/replay_common.ucf ./
 
+# cpu
+cp $LIB_PATH/cpu/t65/T65*.vhd ./
+
 # chip scope
 cp ./../cs/*.edn ./
 cp ./../cs/*.ngc ./

@@ -36,10 +36,14 @@ vhdl    work    replay_clockgen_sync.vhd
 vhdl    work    replay_joy_quad.vhd
 vhdl    work    replay_joy_ps2.vhd
 vhdl    work    replay_audio.vhd
-
 vhdl    work    replay_videotiming.vhd
 
 vhdl    work    replay_lib_wrap_pack.vhd
+
+vhdl    work    T65_Pack.vhd
+vhdl    work    T65_MCode.vhd
+vhdl    work    T65_ALU.vhd
+vhdl    work    T65.vhd
 
 vhdl    work    core_pack.vhd
 vhdl    work    ram_d32k_w8.vhd
