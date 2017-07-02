@@ -544,7 +544,10 @@ begin
       cs_trig(60) <= ula_clk;
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
-      cs_trig(57 downto 0) <= (others => '0');
+      cs_trig(57 downto 42) <= addr_bus;
+      cs_trig(41 downto 34) <= cpu_data_out;
+      cs_trig(33 downto 26) <= cpu_data_in;
+      cs_trig(25 downto 0) <= (others => '0');
     end generate fileio_cs;
 
   end block cs_debug;

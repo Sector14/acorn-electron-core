@@ -132,7 +132,7 @@ architecture RTL of ULA_12C021 is
 begin
 
   -- bi-dir 'Z' state
-  b_pd <= (others => 'Z');
+  b_pd <= (others => 'Z');  
 
   -- Power up, perform reset
   rst <= not i_n_por;
@@ -265,9 +265,12 @@ begin
   -- ram enable/read/write
 
   -- rom enable
-
+  -- TODO: [Gary] More to it than this, just handling initial cpu reset
+  -- there's also cpu disable based on addr
+  o_rom <= '1' when i_addr(15) = '1' and 
+           (i_addr >= x"FFFC" and i_addr <= x"FFFD") else '0';
   -- memory contention for 1 and 2MHz switching
-  
+
   --
   -- Registers
   --
