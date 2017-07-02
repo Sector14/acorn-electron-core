@@ -368,7 +368,7 @@ begin
     b_pd          => data_bus,                  -- CPU/ROM data
 
     -- CPU
-    i_nmi         => n_nmi,                     -- 1MHz RAM access detection
+    i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
     o_phi_out     => ula_phi_out,               -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w                    -- Data direction, /write, read
@@ -408,6 +408,7 @@ begin
   -- Should be optional and route additional signals to allow a physical
   -- cassette to be interfaced via expansion port.
 
+  -- Expansion roms
 
   -- Audio adapter
 

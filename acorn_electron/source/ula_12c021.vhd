@@ -85,7 +85,7 @@ entity ULA_12C021 is
     b_pd          : inout word( 7 downto 0 );  -- CPU/ROM data
 
     -- CPU
-    i_nmi         : in bit1;                   -- 1MHz RAM access detection
+    i_n_nmi       : in bit1;                   -- 1MHz RAM access detection
     o_phi_out     : out bit1;                  -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
     i_n_w         : in bit1                    -- Data direction, /write, read
@@ -107,42 +107,55 @@ architecture RTL of ULA_12C021 is
   -- 
   -- Registers (AUG p206)
   --
+  -- Interrupt status and control (AUG p135)
+  constant ISR_MASTER_IRQ     : integer := 0;
+  constant ISR_POWER_ON_RESET : integer := 1;
+  constant ISR_FRAME_END      : integer := 2;
+  constant ISR_RTC            : integer := 3;
+  constant ISR_TX_EMPTY       : integer := 4;
+  constant ISR_RX_FULL        : integer := 5;
+  constant ISR_HIGH_TONE      : integer := 6;
+  signal isr_en               : word(6 downto 2);
+  signal isr_status           : word(6 downto 0);
+  
+  signal screen_start_addr    : word(14 downto 6);
+  signal cassette_data_shift  : word(7 downto 0);
+  
+  -- Interrupt clear & ROM Paging
+  subtype ISRC_ROM_PAGE is integer range 2 downto 0;
+  subtype ISRC_INTERRUPTS is integer range 7 downto 4;
+  constant IRSC_ROM_PAGE_ENABLE  : integer := 3;
+  constant ISRC_FRAME_END        : integer := 4;       
+  constant ISRC_RTC              : integer := 5; 
+  constant ISRC_HIGH_TONE        : integer := 6;       
+  constant ISRC_NMI              : integer := 7; -- not implemented yet
+  signal isrc_paging             : word(7 downto 0);
 
-  -- Addressed via page 0xFExx. 16 byte aliasing, ie 0xFE00 and 0xFE10 both refer to register 0.
-  --
-  -- 0xFE00 - Interrupt status and control (enable interrupts)
-  --     0=master irq, 1=por, 2=disp interrupt, 3=rtc, 4=transmit empty, 5=receive full, 6=high tone, 7=N/A
-  signal master_irq     : bit1;
-  signal power_on_reset : bit1; 
-  signal isr_en         : word( 6 downto 2 ) := (others => '0');
+  -- Multipurpose Counter
+  signal multi_counter           : word(7 downto 0);
 
-  -- 0xFE02 & 0xFE03 - screen start addr control
+  -- Misc control
+  subtype MISC_COMM_MODE is integer range 2 downto 1;
+  subtype MISC_DISPLAY_MODE is integer range 5 downto 3;
+  constant MISC_CASSETTE_MOTOR   : integer := 6;
+  constant MISC_CAPS_LOCK        : integer := 7;
+  signal misc_control            : word(7 downto 1);
 
-  -- 0xFE04 - Cassette data shift
-
-  -- 0xFE05 - Interrupt clear & ROM Paging
-
-  -- 0xFE06 - Multipurpose Counter
-
-  -- 0xFE07 - Misc control
-
-  -- 0xFE08 to 0xFE0F - Colour palette
-
-
+  -- Colour palettes
+  subtype t_colour_palette is word( 7 downto 0);
+  type t_colour_palettes is array(15 downto 8) of t_colour_palette;
+  signal colour_palettes : t_colour_palettes;
+   
 begin
-
-  -- bi-dir 'Z' state
-  b_pd <= (others => 'Z');  
 
   -- Power up, perform reset
   rst <= not i_n_por;
-  o_phi_out <= clk_1MHz;
   
   -- ====================================================================
   -- Master Timing
   -- ====================================================================
   -- 16MHz clock down to 2MHz & 1MHz generator
-  p_clk_gen : process
+  p_clk_gen : process(i_clk, rst)
     variable count : unsigned(3 downto 0) := (others => '0');
   begin
     if (rst = '1') then
@@ -176,7 +189,6 @@ begin
   --   5 - 160x256 four colour gfx, 20x32 text (10K)
   --   6 - 40x25 two colour text (8K)
   
-  -- TODO: [Gary] Need mode 6 going first for bootup.
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -226,7 +238,7 @@ begin
   o_de      <= ana_de;
 
   u_vid_rgb : process(i_clk)
-  begin
+  begin      
     if rising_edge(i_clk) then
       o_rgb <= x"000000";
       
@@ -241,14 +253,24 @@ begin
         o_rgb <= x"FFFFFF";
       elsif (vpix >= 16 and vpix < 16+256) then
 
+        -- TODO: [Gary] Need mode 6 going first for bootup.
+
         if (hpix <= 64) then
           o_rgb <= x"FF0000";
         elsif (hpix >= 832-96) then
           o_rgb <= x"00FF00";
         else
+          -- Test, Blue default and white for mode 6
           o_rgb <= x"0000FF";
+          if (misc_control(MISC_DISPLAY_MODE) = "110") then
+            o_rgb <= x"FFFFFF";
+          end if;
+          
         end if;        
       end if;
+
+
+      -- TODO: [Gary] Use screen_addr_start etc
 
     end if;
   end process;
@@ -256,24 +278,128 @@ begin
   -- ====================================================================
   -- RAM
   -- ====================================================================
+  -- Memory Layout (AUG p183-200)
+  -- 0000-7FFF RAM    - Shared between system/user and video
+  -- 8000-BFFF ROM    - Paged (initially basic)
+  -- C000-FBFF ROM    - OS
+  -- FC00-FCFF Fred   - Memory Mapped I/O (Expansions)
+  -- FD00-FDFF Jim    - Memory Mapped I/O (??)
+  -- FE00-FEFF Sheila - Memory Mapped I/O (ULA)
+  -- FF00-FFFF ROM    - OS
+
   --
   -- Ram Interface & Timing
   --
   -- 4164 ram is async, however this implementation is synchronous
   -- An actual ULA would need this interface logic rewriting to match timing requirements
 
+
   -- ram enable/read/write
 
-  -- rom enable
-  -- TODO: [Gary] More to it than this, just handling initial cpu reset
-  -- there's also cpu disable based on addr
-  o_rom <= '1' when i_addr(15) = '1' and 
-           (i_addr >= x"FFFC" and i_addr <= x"FFFD") else '0';
-  -- memory contention for 1 and 2MHz switching
 
+  -- rom enable
+  -- TODO: Rom page 8 or 9 for keyboard reading
+  o_rom <= '1' when i_addr(15) = '1' and 
+           ( (i_addr >= x"C000" and i_addr <= x"FBFF") or
+             (i_addr >= x"FF00" and i_addr <= x"FFFF") ) else '0';
+
+  -- memory contention for 1 and 2MHz switching
+  -- TODO: [Gary] ram contention
+  o_phi_out <= clk_1MHz;
+  
   --
-  -- Registers
+  --  Memory Mapped Registers (AUG p206)
   --
+  -- FEX0 - Interrupt status and control register
+  -- FEX2 - Video display start address (low byte)
+  -- FEX3 - Video display start address (high byte)
+  -- FEX4 - Cassette data register
+  -- FEX5 - Paged ROM control and interrupt control
+  -- FEX6 - Counter plus cassette control
+  -- FEX7 - Controls screen, sound, cassette and CAPS LED
+  -- FEX8-XF - Palette registers
+  -- 
+  -- Addressed via page 0xFExx. 16 byte aliasing, ie 0xFE00 and 0xFE10 both refer to register 0.
+  
+  -- Flag master irq for enabled and active interrupts only.
+  isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
+                                (isr_status(ISR_RTC) and isr_en(ISR_RTC)) or
+                                (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
+                                (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
+                                (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
+
+  -- Register data out
+  -- TODO: [Gary] Rom page 8 or 9 for keyboard reading
+  b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
+          '0' & isr_status                        when i_addr( 3 downto 0) = x"0" else
+          screen_start_addr(8 downto 6) & "00000" when i_addr( 3 downto 0) = x"2" else
+          "00" & screen_start_addr(14 downto 9)   when i_addr( 3 downto 0) = x"3" else
+          cassette_data_shift                     when i_addr( 3 downto 0) = x"4" else
+          isrc_paging                             when i_addr( 3 downto 0) = x"5" else
+          misc_control & '0'                      when i_addr( 3 downto 0) = x"7" else
+          (others => 'Z');
+
+  -- TODO: [Gary] i_n_nmi 
+  
+  -- FEX0
+  p_registers : process(i_clk, rst)
+  begin
+    if (rst = '1') then
+      isr_en <= (others => '0');
+      isr_status(6 downto 1) <= (ISR_POWER_ON_RESET => '1', others => '0');
+      isrc_paging <= (others => '0');
+      screen_start_addr <= (others => '0');
+      multi_counter <= (others => '0');
+      misc_control <= (others => '0');
+      colour_palettes <= (others => (others => '0'));
+    elsif rising_edge(i_clk) then
+      -- TODO: [Gary] Interrupt servicing priority?
+  -- TODO: [Gary] Clear ISR_POWER_ON_RESET once read
+      -- Register write      
+      if (i_addr(15 downto 8) = x"FE" and i_n_w = '0') then
+        case i_addr(3 downto 0) is
+          -- Interrupt status and control register
+          when x"0" => isr_en <= b_pd(6 downto 2);
+
+          -- do nothing
+          when x"1" => 
+
+          -- Video status address low
+          when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
+          -- Video status address low
+          when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
+          
+          -- Cassette
+          when x"4" => -- TODO: [Gary] not yet implemented
+            -- TODO: [Gary] Clear ISR_TX_EMPTY and ISR_TX_EMPTY on read/write
+
+          -- Paged ROM/Interrupt clear
+          when x"5" =>
+            -- TODO: [Gary] Rom Page handling not yet implemented (AUG p143)
+            -- Keyboard slot 8 & 9, Basic rom 10 & 11
+            --isrc_paging(IRSC_ROM_PAGE_ENABLE)
+            --isrc_paging(ISRC_ROM_PAGE)
+
+            -- Clear requested interrupts
+            isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not isrc_paging(ISRC_HIGH_TONE);
+            isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not isrc_paging(ISRC_RTC);
+            isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not isrc_paging(ISRC_FRAME_END);
+            isrc_paging(ISRC_INTERRUPTS) <= (others => '0');
+
+          -- Counter/Cassette control (write only)
+          when x"6" => multi_counter <= b_pd;
+
+          -- Controls
+          when x"7" => misc_control <= b_pd(7 downto 1);
+            -- TODO: What to do about mode change?
+          -- Palette 
+          when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
+
+        end case;        
+      end if;
+
+    end if;
+  end process;
 
   -- ====================================================================
   -- Interfacing
@@ -282,6 +408,11 @@ begin
   -- 
   -- Keyboard Interface
   --
+  
+  -- TODO: Keyboard reading
+  -- b_pd <= .... else (others => 'Z');
+
+  -- Capslock LED <= misc_control(MISC_CAPS_LOCK)
 
   -- 
   -- Sound Interface
@@ -290,5 +421,11 @@ begin
   --
   -- Cassette Interface
   --
+
+
+  -- TODO: [Gary] shift in new bit of data from cassette every ~2ms
+  -- read full interrupt every 8 bits
+
+  -- write empty after 8 bits output
 
 end;
