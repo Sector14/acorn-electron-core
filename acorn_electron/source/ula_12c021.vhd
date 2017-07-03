@@ -112,12 +112,14 @@ architecture RTL of ULA_12C021 is
   -- Registers (AUG p206)
   --
   -- Interrupt status and control (AUG p135)
+  -- TX/RX swapped based on:-
+  -- https://web.archive.org/web/20060206155259/http://electrem.emuunlim.com/techinfo.htm
   constant ISR_MASTER_IRQ     : integer := 0;
   constant ISR_POWER_ON_RESET : integer := 1;
   constant ISR_FRAME_END      : integer := 2;
   constant ISR_RTC            : integer := 3;
-  constant ISR_TX_EMPTY       : integer := 4;
-  constant ISR_RX_FULL        : integer := 5;
+  constant ISR_RX_FULL        : integer := 4;
+  constant ISR_TX_EMPTY       : integer := 5;
   constant ISR_HIGH_TONE      : integer := 6;
   signal isr_en               : word(6 downto 2);
   signal isr_status           : word(6 downto 0);
@@ -197,6 +199,7 @@ begin
   --   5 - 160x256 four colour gfx, 20x32 text (10K)
   --   6 - 40x25 two colour text (8K)
   
+  -- TODO: Did Electron generate offset/interlaced display or use matching fields for 256p?
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -252,29 +255,42 @@ begin
 
       display_period <= false;
       
+      -- TODO: [Gary] If start of frame, latch screen start addr
+      -- TODO: mdfs.net notes that if addr 0000 is loaded, it will be replaced by a
+      --       hardcoded per mode base address. Also used if address overflows back to 0.
+      --       3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
+            
+      -- TODO: Mode changes can occur mid scanline. Treat mode 7 as mode 4.
+      -- TODO: How to handle different modes?
+            
       -- 832 active "pixels" in the 51.95us display area. The 640
       -- display should use the central 40us giving a cycle timing of 62.5ns.
       -- Needs a 96 border both sides for centering or a start cycle of 288.
       -- ULA doc suggests off-center with start on 256 boundary, border of 64 and 128.
       --
-      -- In 320 mode use 2 cycles per pixel? or use middle 320 pixels?
+      
       if (vpix < 16 or vpix >= 16+256) then
         -- overscan
-        o_rgb <= x"FFFFFF";
+        o_rgb <= x"FF0000";
       elsif (vpix >= 16 and vpix < 16+256) then
 
         -- TODO: [Gary] Need mode 6 going first for bootup.
-
-        if (hpix <= 64) then
+        if (hpix <= 64 or hpix >= 832-96) then
           o_rgb <= x"FF0000";
-        elsif (hpix >= 832-96) then
-          o_rgb <= x"00FF00";
         else
           display_period <= true;
 
-          -- Test, Blue default and white for mode 6
+          -- Active Region 640x256
+          -- For 320 and 160 modes, repeat pixels.
+
+          -- TODO: Use data currently on ram bus? RAM access handled
+          -- in another process that skips trying to setup addr if nmi active.
+          -- whatever happens to be on the ram data bus will be output as video data.
+
+          -- Debug: using rgb out for a few quick sanity checks
           o_rgb <= x"0000FF";
-          if (misc_control(MISC_DISPLAY_MODE) = "110") then
+          if (isr_status(ISR_POWER_ON_RESET) = '1') then
+          -- if (misc_control(MISC_DISPLAY_MODE) = "110") then
             o_rgb <= x"FFFFFF";
           end if;
           
@@ -312,25 +328,28 @@ begin
   -- ram enable/read/write
 
 
-  -- rom enable
-  -- TODO: Rom page 8 or 9 for keyboard reading
-  -- TODO: 8000-BFFF only used when rom paged in and enabled?
-  rom_en <= '0' when i_addr(15) = '0' else
-            '1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else
-            '1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else
-            '1' when (i_addr >= x"8000" and i_addr <= x"BFFF") else
-            '0';            
-  o_rom <= rom_en;
+  -- ====================================================================
+  -- ROM
+  -- ====================================================================
+  -- Enable main board rom for OS access or BASIC rom if page enable
+  -- TODO: [Gary] reading any register other than 0 or 4 should read from os/basic rom.
+  o_rom <= '1' when (i_addr >= x"8000" and i_addr <= x"BFFF" and        -- ROM page 10 or 11
+                     isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
+                     isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
+           '1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
+           '1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
+           '0';
 
-  -- 2MHz rom, 1MHz RAM and stopped during rendering in mode 0..3
-  -- i_n_nmi gives priority to cpu, ULA must block.
-  -- REVIEW: should i_n_nmi be held once triggered until cleared by cpu clear register ?
-  -- TODO: [Gary] should 2MHz or 1MHz be the default?
+  -- CPU Variable clocking
   -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
-  o_phi_out <= clk_1MHz when nmi = '1' else
-               clk_2MHz when rom_en = '1' else 
-               '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else
-               clk_1MHz;
+  -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
+  --              in mode 0..3?? Investigate.
+  o_phi_out <= clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
+               clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
+               clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
+               clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
+               '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
+               clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
   
   --
   --  Memory Mapped Registers (AUG p206)
@@ -355,17 +374,16 @@ begin
   o_n_irq <= isr_status(ISR_MASTER_IRQ);
 
   -- Register data out
-  -- TODO: [Gary] Rom page 8 or 9 for keyboard reading
+  -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
           '0' & isr_status                        when i_addr( 3 downto 0) = x"0" else
-          screen_start_addr(8 downto 6) & "00000" when i_addr( 3 downto 0) = x"2" else
-          "00" & screen_start_addr(14 downto 9)   when i_addr( 3 downto 0) = x"3" else
+          --screen_start_addr(8 downto 6) & "00000" when i_addr( 3 downto 0) = x"2" else
+          --"00" & screen_start_addr(14 downto 9)   when i_addr( 3 downto 0) = x"3" else
           cassette_data_shift                     when i_addr( 3 downto 0) = x"4" else
-          isrc_paging                             when i_addr( 3 downto 0) = x"5" else
-          misc_control & '0'                      when i_addr( 3 downto 0) = x"7" else
+          --isrc_paging                             when i_addr( 3 downto 0) = x"5" else
+          --misc_control & '0'                      when i_addr( 3 downto 0) = x"7" else
           (others => 'Z');
 
-  -- FEX0
   p_registers : process(i_clk, rst)
   begin
     if (rst = '1') then
@@ -377,55 +395,72 @@ begin
       misc_control <= (others => '0');
       colour_palettes <= (others => (others => '0'));
     elsif rising_edge(i_clk) then
-      -- TODO: [Gary] Interrupt servicing priority?
-      -- TODO: [Gary] Clear ISR_POWER_ON_RESET once read
 
       if (i_n_nmi = '0') then
         nmi <= '1';
       end if;
       
-      -- Register write      
-      if (i_addr(15 downto 8) = x"FE" and i_n_w = '0') then
-        case i_addr(3 downto 0) is
-          -- Interrupt status and control register
-          when x"0" => isr_en <= b_pd(6 downto 2);
+      -- Register access
+      if (i_addr(15 downto 8) = x"FE") then
+      
+        if (i_n_w = '1') then
 
-          -- do nothing
-          when x"1" => 
+          if (i_addr(3 downto 0) = x"0") then
+            -- TODO: Will this be read without a one clock reset delay?
+            isr_status(ISR_POWER_ON_RESET) <= '0';
+          elsif (i_addr(3 downto 0) = x"4") then
+            isr_status(ISR_RX_FULL) <= '0';
+          end if;
 
-          -- Video status address low
-          when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
-          -- Video status address low
-          when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
-          
-          -- Cassette
-          when x"4" => -- TODO: [Gary] not yet implemented
-            -- TODO: [Gary] Clear ISR_RX_FULL on read and ISR_TX_EMPTY on write
+        else
+          case i_addr(3 downto 0) is
+            -- Interrupt status and control register
+            when x"0" => isr_en <= b_pd(6 downto 2);
 
-          -- Paged ROM/Interrupt clear
-          when x"5" =>
-            -- TODO: [Gary] Rom Page handling not yet implemented (AUG p143)
-            -- Keyboard slot 8 & 9, Basic rom 10 & 11
-            --isrc_paging(IRSC_ROM_PAGE_ENABLE)
-            --isrc_paging(ISRC_ROM_PAGE)
+            -- do nothing
+            when x"1" => 
 
-            -- Clear requested interrupts
-            nmi                       <= nmi and not isrc_paging(ISRC_NMI);
-            isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not isrc_paging(ISRC_HIGH_TONE);
-            isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not isrc_paging(ISRC_RTC);
-            isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not isrc_paging(ISRC_FRAME_END);
-            isrc_paging(ISRC_INTERRUPTS) <= (others => '0');
+            -- Video status address low
+            when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
+            -- Video status address low
+            when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
+            
+            -- Cassette
+            when x"4" => -- TODO: [Gary] not yet implemented
+              isr_status(ISR_TX_EMPTY) <= '0';
 
-          -- Counter/Cassette control (write only)
-          when x"6" => multi_counter <= b_pd;
+            -- Paged ROM/Interrupt clear
+            when x"5" =>
+              if (isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and isrc_paging(ISRC_ROM_PAGE'LEFT) = '0') then
+                -- Only 8-15 allowed when page 8-11 is active (ie kbd/basic rom pages AUG p211)
+                if (b_pd(3) = '1') then
+                  isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
+                  isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
+                end if;
+              else
+                isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(ISRC_ROM_PAGE_ENABLE); 
+                isrc_paging(ISRC_ROM_PAGE) <= b_pd(ISRC_ROM_PAGE);
+              end if;
+              
+              -- Clear requested interrupts
+              nmi                       <= nmi and not isrc_paging(ISRC_NMI);
+              isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not isrc_paging(ISRC_HIGH_TONE);
+              isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not isrc_paging(ISRC_RTC);
+              isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not isrc_paging(ISRC_FRAME_END);
+              isrc_paging(ISRC_INTERRUPTS) <= (others => '0');
 
-          -- Controls
-          when x"7" => misc_control <= b_pd(7 downto 1);
-          -- TODO: What to do about mode change?
-          -- Palette 
-          when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
+            -- Counter/Cassette control (write only)
+            when x"6" => multi_counter <= b_pd;
 
-        end case;        
+            -- Controls
+            when x"7" => misc_control <= b_pd(7 downto 1);
+            
+            -- Palette 
+            when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
+
+          end case;
+        end if;
+
       end if;
 
       -- Interrupt Generation
@@ -440,13 +475,16 @@ begin
   -- ====================================================================
   -- Interfacing
   -- ====================================================================
-
+  
   -- 
   -- Keyboard Interface
   --
   
-  -- TODO: Keyboard reading
+  -- TODO: [Gary] Normal keyboard reading handled via address lines 0..13 and read when ROM 8 or 9
+  -- is paged in.
+  -- TODO: [Gary] Also possible to read when paged in via mem mapping (AUG p216)
   -- b_pd <= .... else (others => 'Z');
+
 
   o_caps_lock <= misc_control(MISC_CAPS_LOCK);
 
@@ -457,6 +495,7 @@ begin
   --
   -- Cassette Interface
   --
+  -- TODO: mdfs.net notes bit take order is opposite to what the AUG states. Investigate.
 
   -- TODO: [Gary] shift in new bit of data from cassette every ~2ms
   -- read full interrupt every 8 bits
