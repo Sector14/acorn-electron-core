@@ -359,7 +359,7 @@ begin
 
     -- Keyboard
     i_kbd         => "0000",
-    i_caps_lock   => '0',
+    o_caps_lock   => open,
     i_n_reset     => n_reset,
 
     -- ROM/CPU addressing

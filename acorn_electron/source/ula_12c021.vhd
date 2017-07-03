@@ -76,7 +76,7 @@ entity ULA_12C021 is
 
     -- Keyboard
     i_kbd         : in word( 3 downto 0 ); 
-    i_caps_lock   : in bit1;
+    o_caps_lock   : out bit1;
     i_n_reset     : in bit1;
 
     -- ROM/CPU addressing
@@ -85,7 +85,7 @@ entity ULA_12C021 is
     b_pd          : inout word( 7 downto 0 );  -- CPU/ROM data
 
     -- CPU
-    i_n_nmi       : in bit1;                   -- 1MHz RAM access detection
+    i_n_nmi       : inout bit1;                -- 1MHz RAM access detection
     o_phi_out     : out bit1;                  -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
     i_n_w         : in bit1                    -- Data direction, /write, read
@@ -97,9 +97,13 @@ architecture RTL of ULA_12C021 is
   signal ana_hsync, ana_vsync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
-  signal vpix, hpix : word(13 downto 0);
+  signal vpix, hpix, vtotal : word(13 downto 0);
+  
+  signal display_period : boolean;
 
   signal rst : bit1;
+  signal rom_en : bit1;
+  signal nmi : bit1;
 
   -- Timing
   signal clk_2MHz, clk_1MHz  : bit1;
@@ -124,11 +128,11 @@ architecture RTL of ULA_12C021 is
   -- Interrupt clear & ROM Paging
   subtype ISRC_ROM_PAGE is integer range 2 downto 0;
   subtype ISRC_INTERRUPTS is integer range 7 downto 4;
-  constant IRSC_ROM_PAGE_ENABLE  : integer := 3;
+  constant ISRC_ROM_PAGE_ENABLE  : integer := 3;
   constant ISRC_FRAME_END        : integer := 4;       
   constant ISRC_RTC              : integer := 5; 
   constant ISRC_HIGH_TONE        : integer := 6;       
-  constant ISRC_NMI              : integer := 7; -- not implemented yet
+  constant ISRC_NMI              : integer := 7;
   signal isrc_paging             : word(7 downto 0);
 
   -- Multipurpose Counter
@@ -149,7 +153,12 @@ architecture RTL of ULA_12C021 is
 begin
 
   -- Power up, perform reset
+  -- TODO: Should ULA drive i_n_reset too to cause cpu reset? Is this
+  --       pin tri-state?
   rst <= not i_n_por;
+  
+  -- Internal weak pull-up
+  i_n_nmi <= 'H';
   
   -- ====================================================================
   -- Master Timing
@@ -166,7 +175,6 @@ begin
       clk_1MHz <= '0';
       clk_2MHz <= '0';
       
-      -- TODO: [Gary] On real ULA were both clocks in phase?
       if (count = "0000") then
         clk_2MHz <= '1';
         clk_1MHz <= '1';
@@ -205,7 +213,7 @@ begin
       --
       o_hactive             => open,
       o_hrep                => open,
-      o_vactive             => open,
+      o_vactive             => vtotal,
       --
       o_dig_hs              => dig_hsync,
       o_dig_vs              => dig_vsync,
@@ -241,13 +249,15 @@ begin
   begin      
     if rising_edge(i_clk) then
       o_rgb <= x"000000";
+
+      display_period <= false;
       
       -- 832 active "pixels" in the 51.95us display area. The 640
       -- display should use the central 40us giving a cycle timing of 62.5ns.
       -- Needs a 96 border both sides for centering or a start cycle of 288.
       -- ULA doc suggests off-center with start on 256 boundary, border of 64 and 128.
       --
-      -- In 320 mode use 2 cycles per pixel
+      -- In 320 mode use 2 cycles per pixel? or use middle 320 pixels?
       if (vpix < 16 or vpix >= 16+256) then
         -- overscan
         o_rgb <= x"FFFFFF";
@@ -260,6 +270,8 @@ begin
         elsif (hpix >= 832-96) then
           o_rgb <= x"00FF00";
         else
+          display_period <= true;
+
           -- Test, Blue default and white for mode 6
           o_rgb <= x"0000FF";
           if (misc_control(MISC_DISPLAY_MODE) = "110") then
@@ -293,19 +305,32 @@ begin
   -- 4164 ram is async, however this implementation is synchronous
   -- An actual ULA would need this interface logic rewriting to match timing requirements
 
+  -- Display modes 4,5,6 only need 1MHz ram access
+  -- Modes 0..3 need 2MHz?
+  -- if nmi = '1', ULA cannot access ram.
 
   -- ram enable/read/write
 
 
   -- rom enable
   -- TODO: Rom page 8 or 9 for keyboard reading
-  o_rom <= '1' when i_addr(15) = '1' and 
-           ( (i_addr >= x"C000" and i_addr <= x"FBFF") or
-             (i_addr >= x"FF00" and i_addr <= x"FFFF") ) else '0';
+  -- TODO: 8000-BFFF only used when rom paged in and enabled?
+  rom_en <= '0' when i_addr(15) = '0' else
+            '1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else
+            '1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else
+            '1' when (i_addr >= x"8000" and i_addr <= x"BFFF") else
+            '0';            
+  o_rom <= rom_en;
 
-  -- memory contention for 1 and 2MHz switching
-  -- TODO: [Gary] ram contention
-  o_phi_out <= clk_1MHz;
+  -- 2MHz rom, 1MHz RAM and stopped during rendering in mode 0..3
+  -- i_n_nmi gives priority to cpu, ULA must block.
+  -- REVIEW: should i_n_nmi be held once triggered until cleared by cpu clear register ?
+  -- TODO: [Gary] should 2MHz or 1MHz be the default?
+  -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
+  o_phi_out <= clk_1MHz when nmi = '1' else
+               clk_2MHz when rom_en = '1' else 
+               '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else
+               clk_1MHz;
   
   --
   --  Memory Mapped Registers (AUG p206)
@@ -327,6 +352,7 @@ begin
                                 (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
                                 (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
                                 (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
+  o_n_irq <= isr_status(ISR_MASTER_IRQ);
 
   -- Register data out
   -- TODO: [Gary] Rom page 8 or 9 for keyboard reading
@@ -339,8 +365,6 @@ begin
           misc_control & '0'                      when i_addr( 3 downto 0) = x"7" else
           (others => 'Z');
 
-  -- TODO: [Gary] i_n_nmi 
-  
   -- FEX0
   p_registers : process(i_clk, rst)
   begin
@@ -354,7 +378,12 @@ begin
       colour_palettes <= (others => (others => '0'));
     elsif rising_edge(i_clk) then
       -- TODO: [Gary] Interrupt servicing priority?
-  -- TODO: [Gary] Clear ISR_POWER_ON_RESET once read
+      -- TODO: [Gary] Clear ISR_POWER_ON_RESET once read
+
+      if (i_n_nmi = '0') then
+        nmi <= '1';
+      end if;
+      
       -- Register write      
       if (i_addr(15 downto 8) = x"FE" and i_n_w = '0') then
         case i_addr(3 downto 0) is
@@ -371,7 +400,7 @@ begin
           
           -- Cassette
           when x"4" => -- TODO: [Gary] not yet implemented
-            -- TODO: [Gary] Clear ISR_TX_EMPTY and ISR_TX_EMPTY on read/write
+            -- TODO: [Gary] Clear ISR_RX_FULL on read and ISR_TX_EMPTY on write
 
           -- Paged ROM/Interrupt clear
           when x"5" =>
@@ -381,6 +410,7 @@ begin
             --isrc_paging(ISRC_ROM_PAGE)
 
             -- Clear requested interrupts
+            nmi                       <= nmi and not isrc_paging(ISRC_NMI);
             isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not isrc_paging(ISRC_HIGH_TONE);
             isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not isrc_paging(ISRC_RTC);
             isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not isrc_paging(ISRC_FRAME_END);
@@ -391,13 +421,19 @@ begin
 
           -- Controls
           when x"7" => misc_control <= b_pd(7 downto 1);
-            -- TODO: What to do about mode change?
+          -- TODO: What to do about mode change?
           -- Palette 
           when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
 
         end case;        
       end if;
 
+      -- Interrupt Generation
+      if (vpix = vtotal) then
+        isr_status(ISR_FRAME_END) <= '1';
+      end if;
+
+      -- TODO: [Gary] Counter to generate 50Hz RTC interrupt every 320000 clocks
     end if;
   end process;
 
@@ -412,7 +448,7 @@ begin
   -- TODO: Keyboard reading
   -- b_pd <= .... else (others => 'Z');
 
-  -- Capslock LED <= misc_control(MISC_CAPS_LOCK)
+  o_caps_lock <= misc_control(MISC_CAPS_LOCK);
 
   -- 
   -- Sound Interface
@@ -422,10 +458,9 @@ begin
   -- Cassette Interface
   --
 
-
   -- TODO: [Gary] shift in new bit of data from cassette every ~2ms
   -- read full interrupt every 8 bits
-
-  -- write empty after 8 bits output
+  -- write empty interrupt after 8 bits output
+  -- High tone interrupt
 
 end;
