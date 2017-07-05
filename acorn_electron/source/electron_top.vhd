@@ -358,7 +358,7 @@ begin
     o_ra          => ram_addr,                  -- ram address
 
     -- Keyboard
-    i_kbd         => "0000",
+    i_kbd         => "1111",
     o_caps_lock   => open,
     i_n_reset     => n_reset,
 
@@ -547,8 +547,18 @@ begin
       cs_trig(58) <= ula_rom_ena;
       cs_trig(57 downto 42) <= addr_bus;
       cs_trig(41 downto 34) <= cpu_data_out;
-      cs_trig(33 downto 26) <= cpu_data_in;
-      cs_trig(25 downto 0) <= (others => '0');
+      cs_trig(33 downto 26) <= data_bus;
+
+      -- RAM
+      cs_trig(25 downto 18) <= ram_addr;
+      cs_trig(17 downto 14) <= ram_data;
+      cs_trig(13) <= ram_n_we;
+      cs_trig(12) <= ram_n_ras;
+      cs_trig(11) <= ram_n_cas;
+      -- ROM
+      cs_trig(10 downto 3) <= rom_data;
+      cs_trig(2) <= cpu_n_w;
+      cs_trig(1 downto 0) <= (others => '0');
     end generate fileio_cs;
 
   end block cs_debug;
