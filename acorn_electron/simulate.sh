@@ -58,7 +58,11 @@ cp ${REPLAY_LIB_BASE_PATH}/tb/*.vh ./sim
 cp ${REPLAY_LIB_BASE_PATH}/tb/*.v ./sim
 cp ${REPLAY_LIB_BASE_PATH}/tb/*.vhd ./sim
 
+# cpu
+cp ${LIB_PATH}/cpu/t65/T65*.vhd ./sim
+
 cp ./source/*.vhd ./sim
+cp ./source/override_lib/*.vhd ./sim
 cp ./tb/*.vhd ./sim
 
 cp ${NAME}.prj sim/${TB_NAME}.prj

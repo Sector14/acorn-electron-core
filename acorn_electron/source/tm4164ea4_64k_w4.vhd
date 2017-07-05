@@ -3,11 +3,10 @@
 -- Copyright Gary Preston 2017
 -- All Rights Reserved
 
--- Original 4164 RAM was async however the use of BRAM necessitates
--- a clock and synchronous access. This module therefore assumes all signals
+-- Original 4164 RAM was async however this module assumes all signals
 -- are clock synchronised and implements the read/write protocol that the
 -- temporary ULA is using. This will be revisited once more is understood about
--- the real workings of the ULA if needed.
+-- the real workings of the ULA.
 --
 -- Read
 --  1 - we, /ras = addr latched for row
@@ -61,74 +60,15 @@ architecture RTL of TM4164EA3_64k_W4 is
   signal n_cas_edge, n_cas_l    : bit1;
   signal n_ras_edge, n_ras_l    : bit1;
 
-  -- bank selection & data
-  signal en0,en1,en2,en3        : bit1;
-  signal d0,d1,d2,d3            : word(3 downto 0);
   signal read_data              : word(3 downto 0);
-  signal we_l                   : bit1;
-begin
-  -- Bank enable selection
-  en0 <= '1' when addr(15) = '0' and addr(14) = '0' else '0';
-  en1 <= '1' when addr(15) = '0' and addr(14) = '1' else '0';
-  en2 <= '1' when addr(15) = '1' and addr(14) = '0' else '0';
-  en3 <= '1' when addr(15) = '1' and addr(14) = '1' else '0';
 
-  read_data <= d0 when en0 = '1' else
-               d1 when en1 = '1' else
-               d2 when en2 = '1' else
-               d3 when en3 = '1' else
-               (others => 'Z');
+  -- Ran out of available BRAM. Allowing use of distributed ram until this can
+  -- be moved over to using the boards DRAM.
+  type ram_type is array (65534 downto 0) of word(3 downto 0);
+  shared variable RAM : ram_type;
 
+begin 
   o_data <= read_data when (i_n_ras = '0' and i_n_cas = '0' and i_n_we = '1') else (others => 'Z');
-
-  -- TE4164 was four 64k x 1bit however BRAM limit is 16k so four instances
-  -- are used via bank enable.
-  Ram : for i in 0 to 3 generate
-    u_Ram_bank0 : RAMB16_S1
-    port map (
-      DO   => d0(i downto i),
-      ADDR => addr(13 downto 0),
-      CLK  => i_clk,
-      DI   => i_data(i downto i),
-      EN   => en0,
-      SSR  => '0',
-      WE   => we_l
-    );
-
-    u_Ram_bank1 : RAMB16_S1
-    port map (
-      DO   => d1(i downto i),
-      ADDR => addr(13 downto 0),
-      CLK  => i_clk,
-      DI   => i_data(i downto i),
-      EN   => en1,
-      SSR  => '0',
-      WE   => we_l
-    );
-
-    u_Ram_bank2 : RAMB16_S1
-    port map (
-      DO   => d2(i downto i),
-      ADDR => addr(13 downto 0),
-      CLK  => i_clk,
-      DI   => i_data(i downto i),
-      EN   => en2,
-      SSR  => '0',
-      WE   => we_l
-    );
-
-    u_Ram_bank3 : RAMB16_S1
-    port map (
-      DO   => d3(i downto i),
-      ADDR => addr(13 downto 0),
-      CLK  => i_clk,
-      DI   => i_data(i downto i),
-      EN   => en3,
-      SSR  => '0',
-      WE   => we_l
-    );
-
-  end generate;
 
   -- edge detection of ras and cas signals
   p_edge_detect : process (i_clk)
@@ -148,9 +88,7 @@ begin
 
   p_ras_cas : process(i_clk)
   begin
-
     if rising_edge(i_clk) then
-      we_l <= '0';
       -- multiplexed address decoding
       if (n_ras_edge = '1') then
         row_addr <= i_addr;
@@ -159,8 +97,11 @@ begin
       if (n_cas_edge = '1') then
         -- Full nibble address
         addr <= row_addr & i_addr;
-        -- BRAM "we" sync'd to falling edge of cas not just "we" signal itself
-        we_l <= not i_n_we;
+
+        if (i_n_we = '0') then
+          RAM(to_integer(unsigned(i_addr))) := i_data;
+        end if;
+        read_data <= RAM(to_integer(unsigned(i_addr)));
       end if;
     end if;
 
@@ -174,5 +115,6 @@ begin
     --   * hidden refresh cycle
 
   end process;
+
 
 end;
