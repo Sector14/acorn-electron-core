@@ -10,4 +10,4 @@ run
 -keep_hierarchy yes
 -top Replay_Top
 -glob_opt ALLCLOCKNETS
-
+-auto_bram_packing yes

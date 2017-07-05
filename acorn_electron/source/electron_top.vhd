@@ -128,7 +128,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant fileio_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
 
   signal led                    : bit1;
   signal tick_pre1              : bit1;
@@ -244,7 +244,7 @@ begin
     o_data  => rom_data,
 
     -- TODO: [Gary] should this really be CPU out clock?
-    i_ena   => i_ena_sys,
+    i_ena   => '1',                       -- TODO: [Gary] Leave enabled all the time?
     i_clk   => i_clk_sys                  -- Core clock
   );
   -- rom data tri-state via OE
@@ -255,7 +255,7 @@ begin
   ram_ic20 : entity work.TM4164EA3_64k_W4
   port map (
     -- clock for sync bram 
-    i_clk    => ula_clk,
+    i_clk    => i_clk_sys,  -- TODO: [Gary] fake async could clk with ram_clk?
 
     i_addr   => ram_addr,
 
@@ -308,8 +308,8 @@ begin
   -- ====================================================================
 
   -- TODO: [Gary] Cassette and audio to sort. May be simpler to add extra
-  --       signals and alternative path rather than to save converting data
-  --       to intermediate only to then try to convert back again.
+  --       signals and alternative path to save converting data
+  --       to intermediate form only to then try to convert back again.
   -- IC1 ULA (Uncommitted Logic Array)
   -- Managed RAM, Video, Cassette and Sound
   ula_ic1 : entity work.ULA_12C021
@@ -525,7 +525,7 @@ begin
 
   begin -- cs_debug
 
-    fileio_cs : if fileio_cs_enable=true generate
+    electrontop_cs : if electrontop_cs_enable=true generate
 
       cs_icon : icon
       port map (
@@ -559,7 +559,7 @@ begin
       cs_trig(10 downto 3) <= rom_data;
       cs_trig(2) <= cpu_n_w;
       cs_trig(1 downto 0) <= (others => '0');
-    end generate fileio_cs;
+    end generate electrontop_cs;
 
   end block cs_debug;
 end RTL;
