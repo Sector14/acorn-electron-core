@@ -17,6 +17,7 @@
 
 library ieee;
   use ieee.std_logic_1164.all;
+  use ieee.std_logic_unsigned.all;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
@@ -107,6 +108,9 @@ architecture RTL of ULA_12C021 is
 
   -- Timing
   signal clk_2MHz, clk_1MHz  : bit1;
+  signal clk_phase : unsigned(3 downto 0);
+
+  signal rtc_count : unsigned(18 downto 0);
 
   -- 
   -- Registers (AUG p206)
@@ -167,23 +171,22 @@ begin
   -- ====================================================================
   -- 16MHz clock down to 2MHz & 1MHz generator
   p_clk_gen : process(i_clk, rst)
-    variable count : unsigned(3 downto 0) := (others => '0');
   begin
     if (rst = '1') then
-      count := (others => '0');
+      clk_phase <= (others => '0');
       clk_1MHz <= '0';
       clk_2MHz <= '0';
     elsif rising_edge(i_clk) then
       clk_1MHz <= '0';
       clk_2MHz <= '0';
       
-      if (count = "0000") then
+      if (clk_phase = "1111") then
         clk_2MHz <= '1';
         clk_1MHz <= '1';
-      elsif (count = "1000") then
+      elsif (clk_phase = "0111") then
         clk_2MHz <= '1';
       end if;
-      count := count + 1;
+      clk_phase <= clk_phase + 1;
     end if;
   end process;
 
@@ -289,8 +292,8 @@ begin
 
           -- Debug: using rgb out for a few quick sanity checks
           o_rgb <= x"0000FF";
-          if (isr_status(ISR_POWER_ON_RESET) = '1') then
-          -- if (misc_control(MISC_DISPLAY_MODE) = "110") then
+          --if (isr_status(ISR_POWER_ON_RESET) = '1') then
+          if (misc_control(MISC_DISPLAY_MODE) = "110") then
             o_rgb <= x"FFFFFF";
           end if;
           
@@ -342,15 +345,17 @@ begin
 
   -- CPU Variable clocking
   -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
+  --              Without this ram access timing slot may end up conflicting with the ULAs slot?
   -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
   --              in mode 0..3?? Investigate.
-  o_phi_out <= clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
-               clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
-               clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
-               clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
-               '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
-               clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
-  
+  --o_phi_out <= clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
+  --             clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
+  --             clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
+  --             clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
+  --             '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
+  --             clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
+  o_phi_out <= clk_1MHz;
+
   --
   --  Memory Mapped Registers (AUG p206)
   --
@@ -377,11 +382,7 @@ begin
   -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
           '0' & isr_status                        when i_addr( 3 downto 0) = x"0" else
-          --screen_start_addr(8 downto 6) & "00000" when i_addr( 3 downto 0) = x"2" else
-          --"00" & screen_start_addr(14 downto 9)   when i_addr( 3 downto 0) = x"3" else
           cassette_data_shift                     when i_addr( 3 downto 0) = x"4" else
-          --isrc_paging                             when i_addr( 3 downto 0) = x"5" else
-          --misc_control & '0'                      when i_addr( 3 downto 0) = x"7" else
           (others => 'Z');
 
   p_registers : process(i_clk, rst)
@@ -389,11 +390,13 @@ begin
     if (rst = '1') then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (ISR_POWER_ON_RESET => '1', others => '0');
-      isrc_paging <= (others => '0');
+      isrc_paging(ISRC_ROM_PAGE) <= "000";
+      isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
       multi_counter <= (others => '0');
       misc_control <= (others => '0');
       colour_palettes <= (others => (others => '0'));
+      rtc_count <= (others => '0');
     elsif rising_edge(i_clk) then
 
       if (i_n_nmi = '0') then
@@ -422,7 +425,7 @@ begin
 
             -- Video status address low
             when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
-            -- Video status address low
+            -- Video status address high
             when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
             
             -- Cassette
@@ -465,10 +468,16 @@ begin
 
       -- Interrupt Generation
       if (vpix = vtotal) then
-        isr_status(ISR_FRAME_END) <= '1';
+        isr_status(ISR_FRAME_END) <= '1';        
       end if;
 
-      -- TODO: [Gary] Counter to generate 50Hz RTC interrupt every 320000 clocks
+      -- 50Hz RTC interrupt every 320000 clocks      
+      if (rtc_count = 320000-1) then
+        rtc_count <= (others => '0');
+        isr_status(ISR_RTC) <= '1';
+      else
+        rtc_count <= rtc_count + 1;
+      end if;
     end if;
   end process;
 
