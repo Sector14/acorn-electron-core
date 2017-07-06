@@ -66,23 +66,33 @@ begin
   fpga_spi_miso <= spi_tb_miso when (fpga_ctrl_direct_l = '0') else 'H';
 
   p_spi : process
-	variable spi_read_data : word(7 downto 0);
+    variable spi_read_data : word(7 downto 0);
 
-	procedure spi (data:word(7 downto 0); disp:bit1:='0') is
-	begin
-	  spi(fpga_spi_clk, spi_tb_miso, fpga_ctrl_direct_l, fpga_spi_mosi, fpga_spi_miso, spi_read_data, data, disp);
-	end procedure;
+    procedure spi (data:word(7 downto 0); disp:bit1:='0') is
+    begin
+      spi(fpga_spi_clk, spi_tb_miso, fpga_ctrl_direct_l, fpga_spi_mosi, fpga_spi_miso, spi_read_data, data, disp);
+    end procedure;
 
-	procedure ena(sel:integer) is
-	begin
-	  spi_ena(fpga_ctrl, sel);
-	end procedure;
+    procedure ena(sel:integer) is
+    begin
+      spi_ena(fpga_ctrl, sel);
+    end procedure;
 
-	procedure dis is
-	begin
-	  spi_dis(fpga_ctrl);
-	end procedure;
+    procedure dis is
+    begin
+      spi_dis(fpga_ctrl);
+    end procedure;
 
+    procedure spi_readhex(filename:string) is
+    begin
+      spi_readhex(fpga_ctrl,fpga_spi_clk, spi_tb_miso, fpga_ctrl_direct_l, fpga_spi_mosi, fpga_spi_miso,filename);
+    end procedure;
+
+    procedure spi_readbin(filename:string;addr:word(31 downto 0);size:word(15 downto 0):=x"0000") is
+    begin
+      spi_readbin(fpga_ctrl,fpga_spi_clk, spi_tb_miso, fpga_ctrl_direct_l, fpga_spi_mosi, fpga_spi_miso,filename,addr,size);
+    end procedure;
+    
   begin
     spi_tb_miso   <= '1';
     fpga_spi_clk  <= '1';
@@ -114,6 +124,9 @@ begin
     spi(x"22"); --global config
     spi(x"01");
     dis;
+
+    -- SRAM
+    spi_readbin("../sdcard/os_basic.rom", x"80000000");
 
     ena(2);
     spi(x"11"); -- soft reset, remove halt
