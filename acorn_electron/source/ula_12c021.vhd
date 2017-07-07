@@ -386,6 +386,8 @@ begin
           (others => 'Z');
 
   p_registers : process(i_clk, rst)
+    -- delay POR reset until next CPU clock
+    variable delayed_por_reset : bit1 := '0';
   begin
     if (rst = '1') then
       isr_en <= (others => '0');
@@ -399,6 +401,13 @@ begin
       rtc_count <= (others => '0');
     elsif rising_edge(i_clk) then
 
+      -- Delayed POR reset pending?
+      -- TODO: [Gary] This needs to account for 1 or 2MHz cpu?
+      if (delayed_por_reset = '1' and clk_1MHz = '1') then
+        delayed_por_reset := '0';
+        isr_status(ISR_POWER_ON_RESET) <= '0';
+      end if;
+
       if (i_n_nmi = '0') then
         nmi <= '1';
       end if;
@@ -409,8 +418,12 @@ begin
         if (i_n_w = '1') then
 
           if (i_addr(3 downto 0) = x"0") then
-            -- TODO: Will this be read without a one clock reset delay?
-            isr_status(ISR_POWER_ON_RESET) <= '0';
+            -- CPU needs to be able to see the POR flag was active at the start
+            -- of the next clock edge when it reads this register. Without the
+            -- delay the next ULA clock will clear it long before CPU read occurs.
+            -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
+            -- TODO: [Gary] Should this reset only occur on the first read?
+            delayed_por_reset := '1';
           elsif (i_addr(3 downto 0) = x"4") then
             isr_status(ISR_RX_FULL) <= '0';
           end if;
@@ -489,12 +502,14 @@ begin
   -- Keyboard Interface
   --
   
-  -- TODO: [Gary] Normal keyboard reading handled via address lines 0..13 and read when ROM 8 or 9
-  -- is paged in.
+  -- TODO: [Gary] Normal keyboard reading handled via address lines 0..13 
+  -- and read when ROM 8 or 9 is paged in.
   -- TODO: [Gary] Also possible to read when paged in via mem mapping (AUG p216)
-  -- b_pd <= .... else (others => 'Z');
-
-
+  -- Keyboard rom active
+  b_pd <= x"0" & i_kbd when (i_addr >= x"8000" and i_addr <= x"BFFF" and
+                             isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
+                             isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
+                             (others => 'Z');
   o_caps_lock <= misc_control(MISC_CAPS_LOCK);
 
   -- 
