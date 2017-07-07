@@ -446,10 +446,10 @@ begin
               end if;
               
               -- Clear requested interrupts
-              nmi                       <= nmi and not isrc_paging(ISRC_NMI);
-              isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not isrc_paging(ISRC_HIGH_TONE);
-              isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not isrc_paging(ISRC_RTC);
-              isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not isrc_paging(ISRC_FRAME_END);
+              nmi                       <= nmi and not b_pd(ISRC_NMI);
+              isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not b_pd(ISRC_HIGH_TONE);
+              isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not b_pd(ISRC_RTC);
+              isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not b_pd(ISRC_FRAME_END);
               isrc_paging(ISRC_INTERRUPTS) <= (others => '0');
 
             -- Counter/Cassette control (write only)

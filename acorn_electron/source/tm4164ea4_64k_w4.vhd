@@ -69,7 +69,7 @@ architecture RTL of TM4164EA3_64k_W4 is
 
 begin 
   o_data <= read_data when (i_n_ras = '0' and i_n_cas = '0' and i_n_we = '1') else (others => 'Z');
-
+  
   -- edge detection of ras and cas signals
   p_edge_detect : process (i_clk)
   begin
@@ -103,6 +103,7 @@ begin
         end if;
         read_data <= RAM(to_integer(unsigned(i_addr)));
       end if;
+      
     end if;
 
     -- TODO: [Gary] Other modes that may be needed if used by ULA
