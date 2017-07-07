@@ -376,7 +376,7 @@ begin
                                 (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
                                 (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
                                 (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
-  o_n_irq <= isr_status(ISR_MASTER_IRQ);
+  o_n_irq <= not isr_status(ISR_MASTER_IRQ);
 
   -- Register data out
   -- TODO: [Gary] Is it just 0 and 4 that are readable?
