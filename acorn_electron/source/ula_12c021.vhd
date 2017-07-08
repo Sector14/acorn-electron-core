@@ -133,13 +133,12 @@ architecture RTL of ULA_12C021 is
   
   -- Interrupt clear & ROM Paging
   subtype ISRC_ROM_PAGE is integer range 2 downto 0;
-  subtype ISRC_INTERRUPTS is integer range 7 downto 4;
   constant ISRC_ROM_PAGE_ENABLE  : integer := 3;
   constant ISRC_FRAME_END        : integer := 4;       
   constant ISRC_RTC              : integer := 5; 
   constant ISRC_HIGH_TONE        : integer := 6;       
   constant ISRC_NMI              : integer := 7;
-  signal isrc_paging             : word(7 downto 0);
+  signal isrc_paging             : word(3 downto 0);
 
   -- Multipurpose Counter
   signal multi_counter           : word(7 downto 0);
@@ -463,7 +462,6 @@ begin
               isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not b_pd(ISRC_HIGH_TONE);
               isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not b_pd(ISRC_RTC);
               isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not b_pd(ISRC_FRAME_END);
-              isrc_paging(ISRC_INTERRUPTS) <= (others => '0');
 
             -- Counter/Cassette control (write only)
             when x"6" => multi_counter <= b_pd;
