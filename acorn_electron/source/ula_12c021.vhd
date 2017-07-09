@@ -18,7 +18,7 @@
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
-
+  
   use work.Replay_Pack.all;
   use work.Replay_VideoTiming_Pack.all;
 
@@ -279,7 +279,7 @@ begin
       --
       
       -- TODO: [Gary] how to sync the setup and read in time for next byte of data?
-      if (vpix = 0) then   
+      if (unsigned(vpix) = 0) then   
         -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
         -- hardcoded per mode base address. Also used if address overflows back to 0.
         -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
@@ -306,13 +306,13 @@ begin
         next_pix := ula_ram_data;
       end if;
 
-      if (vpix < 16 or vpix >= 16+256) then
+      if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
         -- overscan
         o_rgb <= x"FF0000";
-      elsif (vpix >= 16 and vpix < 16+256) then
+      elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
 
         -- TODO: [Gary] Need mode 6 going first for bootup.
-        if (hpix < 64 or hpix >= 704) then
+        if (unsigned(hpix) < 64 or unsigned(hpix) >= 704) then
           o_rgb <= x"FF0000";
           cur_pix := next_pix;
           count := 0;
@@ -336,7 +336,7 @@ begin
             count := 0;
             cur_pix := next_pix;
             -- next byte
-            read_addr := read_addr + '1';
+            read_addr := std_logic_vector(unsigned(read_addr) + 1);
             if (read_addr(15) = '1') then
               -- wrap around. Not sure where this should start again though?
               read_addr := (others => '0');
@@ -408,18 +408,13 @@ begin
       b_pd <= (others => 'Z');
     elsif rising_edge(i_clk) then
 
-      -- ULA reads ram during its time slot
-      --if (clk_phase >= 1000 and clk_phase <= "1111") then
-          --b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-      --end if;
+      b_pd <= (others => 'Z');
 
       -- Cpu accessing ram during its slot, or, ula slot.
       if (i_addr(15) = '0') then
         if (i_n_w = '1') then 
           b_pd <= cpu_ram_data;
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-        else
-          b_pd <= (others => 'Z');
         end if;
 
         -- TODO: [Gary] When nmi is active should cpu get both slots for 2MHz ram access?
@@ -504,8 +499,6 @@ begin
       if (clk_phase(3) = '1') then
         -- ULA reads internally only.
         b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-        -- TODO: [Gary] not needed for ula? Let cpu slot handle that?
-        b_pd <= (others => 'Z');
 
         case clk_phase is
           -- ULA Slot
@@ -702,7 +695,7 @@ begin
 
       -- Interrupt Generation
       -- TODO: [Gary] check -1, may be off by 1 depending on when vtotal inc occurs
-      if (vpix = vtotal-1) then
+      if (unsigned(vpix) = unsigned(vtotal)-1) then
         isr_status(ISR_FRAME_END) <= '1';        
       end if;
 
