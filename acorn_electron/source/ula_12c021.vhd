@@ -103,6 +103,10 @@ architecture RTL of ULA_12C021 is
   signal vpix, hpix, vtotal : word(13 downto 0);
   
   signal display_period : boolean;
+  
+  -- Adjusted screen base and wrap addr for current mode
+  signal mode_base_addr : word(14 downto 6);
+  signal mode_wrap_addr : word(14 downto 6);
 
   signal rst : bit1;
   signal nmi : bit1;
@@ -260,9 +264,7 @@ begin
     variable cur_pix, next_pix : word(7 downto 0);
     variable double : boolean := false;
     variable count : integer range 0 to 8;
-    -- TODO: [Gary] switch ula_read_addr to 15 bits? even though cur_addr ignores top bit
     variable read_addr : word(15 downto 0);
-    variable hardcoded_screen_start : word(15 downto 0);
   begin
     if rising_edge(i_clk) then
       o_rgb <= x"000000";
@@ -280,24 +282,9 @@ begin
       
       -- TODO: [Gary] how to sync the setup and read in time for next byte of data?
       if (unsigned(vpix) = 0) then   
-        -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
-        -- hardcoded per mode base address. Also used if address overflows back to 0.
-        -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
-        read_addr := (others => '0');
-
-        if screen_start_addr = x"00" & '0' then
-          case misc_control(MISC_DISPLAY_MODE) is
-            when "000" | "001" | "010" => hardcoded_screen_start := x"3000";
-            when "011" => hardcoded_screen_start := x"4000";
-            when "100" | "101" | "111" => hardcoded_screen_start := x"5800";
-            when "110" => hardcoded_screen_start := x"6000";
-            when others =>
-          end case;
-          read_addr := hardcoded_screen_start;
-        else
-          hardcoded_screen_start := '0' & screen_start_addr & "000000";
-          read_addr(14 downto 6) := screen_start_addr;
-        end if;
+        -- Latch mode adjusted screen start. Wrap is not latched as it's based
+        -- screen mode which can be changed mid frame.
+        read_addr := '0' & mode_base_addr & "000000";
       end if;
 
       if (clk_phase(3) = '0') then
@@ -312,6 +299,7 @@ begin
       elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
 
         -- TODO: [Gary] Need mode 6 going first for bootup.
+        -- TODO: [Gary] every 8 v lines should have two line gap
         if (unsigned(hpix) < 64 or unsigned(hpix) >= 704) then
           o_rgb <= x"FF0000";
           cur_pix := next_pix;
@@ -335,27 +323,16 @@ begin
           if (count = 8) then
             count := 0;
             cur_pix := next_pix;
+
             -- next byte
             read_addr := std_logic_vector(unsigned(read_addr) + 1);
+
+            -- Wrap due to overflow into rom
             if (read_addr(15) = '1') then
-              -- wrap around. Not sure where this should start again though?
-              read_addr := (others => '0');
-              read_addr := hardcoded_screen_start;
+              read_addr := '0' & mode_wrap_addr & "000000";
             end if;
           end if;
-
-          -- TODO: Use data currently on ram bus? RAM access handled
-          -- in another process that skips trying to setup addr if nmi active.
-          -- whatever happens to be on the ram data bus will be output as video data.
-
-          -- Debug: using rgb out for a few quick sanity checks
-          --o_rgb <= x"0000FF";
-          if (isr_status(ISR_POWER_ON_RESET) = '0') and
-             (misc_control(MISC_DISPLAY_MODE) = "110") and
-             (screen_start_addr = (x"0" & '0')) then
-            o_rgb <= x"00FF00";
-          end if;
-          
+         
         end if;        
       end if;
 
@@ -374,11 +351,6 @@ begin
   -- FD00-FDFF Jim    - Memory Mapped I/O (??)
   -- FE00-FEFF Sheila - Memory Mapped I/O (ULA)
   -- FF00-FFFF ROM    - OS
-
- 
-
-  --
-  -- Ram Interface & Timing
   --
   -- 4164 ram is async, however this implementation uses synchronous ram. 
   -- For a ULA replacement, exact timing requirements of 4164 would need to be
@@ -417,13 +389,13 @@ begin
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
         end if;
 
-        -- TODO: [Gary] When nmi is active should cpu get both slots for 2MHz ram access?
-        --              or does it still access at 1MHz but overrides the usual ULA block 
-        --              for active display during modes 0..3?
         -- TODO: [Gary] Is the 1 to 2 MHz clock transition in sync with this? as cpu needs to remain on the 0
         --       cycle access after transitioning back, not end up expecting to use 8+
-
-        -- TODO: [Gary] Adjust this to use READ/WRITE states rather than 16 cycle based states    
+        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3
+        -- TODO: [Gary] When nmi is active should cpu get both slots for 2MHz ram access?
+        --              or does it still access at 1MHz but overrides the usual ULA block 
+        --              for active display during modes 0..3? as ULA runs at 2MHz ram access
+        --              during that time.
 
         -- CPU Address and data available on falling edge of cycle 0?
         -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
@@ -484,8 +456,6 @@ begin
               cpu_ram_data(7) <= b_ram3;
             end if;
           when "0111" => 
-            -- TODO: [Gary] could this be moved elsewhere for reads? like the main b_pd assign?
-            b_pd <= cpu_ram_data; 
             o_n_ras <= '1';
             o_n_cas <= '1';  
             o_n_we <= '1';
@@ -529,7 +499,7 @@ begin
           when "1110" =>
             -- TODO: [Gary] with this separate var ula during nmi wouldn't
             -- display the cpu's ram reading as though it was ula data. No snow!
-            -- Need a more accurate representation of what the ULA may have done.            
+            -- Need a more accurate representation of what the ULA may have done. 
             ula_ram_data(1) <= b_ram0;
             ula_ram_data(3) <= b_ram1;
             ula_ram_data(5) <= b_ram2;
@@ -684,7 +654,9 @@ begin
 
             -- Controls
             when x"7" => misc_control <= b_pd(7 downto 1);
-            
+            -- TODO: [Gary] if mode changes, the base addr should change immediately.
+            -- should the wrap address not be latched in that case?
+
             -- Palette 
             when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
 
@@ -707,6 +679,35 @@ begin
         rtc_count <= rtc_count + 1;
       end if;
     end if;
+  end process;
+
+  p_screen_addr : process(screen_start_addr, misc_control)
+    variable base_addr : word(14 downto 6);
+  begin    
+    -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
+    -- hardcoded per mode base address. Also used if address overflows back to 0.
+    -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
+    case misc_control(MISC_DISPLAY_MODE) is
+      when "000" | "001" | "010" => base_addr := x"30" & '0';
+      when "011" => base_addr := x"40" & '0';
+      when "100" | "101" | "111" => base_addr := x"58" & '0';
+      when "110" => base_addr := x"60" & '0';
+      when others =>
+    end case;
+    
+    -- TODO: [Gary] May be more to it than this, pastraiser suggests anything
+    -- below 800H caused base_addr to be used (firmware skips clearing this region
+    -- of ram too on startup) as well as other variations/skips. This needs further
+    -- research.
+    if screen_start_addr = x"00" & '0' then
+      mode_base_addr <= base_addr;
+    else
+      mode_base_addr <= screen_start_addr;
+    end if;
+
+    -- Wrapping always starts from the hardcoded address regardless
+    -- of screen_start_addr.
+    mode_wrap_addr <= base_addr;
   end process;
 
   -- ====================================================================
