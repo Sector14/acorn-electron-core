@@ -27,7 +27,7 @@
          </top_modules>
       </db_ref>
    </db_ref_list>
-   <WVObjectSize size="22" />
+   <WVObjectSize size="23" />
    <wave_markers>
       <marker time="12306779320000" label="" />
       <marker time="12314776760000" label="" />
@@ -149,6 +149,12 @@
       <obj_property name="UseCustomSignalColor">true</obj_property>
       <obj_property name="CustomSignalColor">#ffffff</obj_property>
    </wvobject>
+   <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_2mhz" type="logic" db_ref_id="1">
+      <obj_property name="ElementShortName">clk_2mhz</obj_property>
+      <obj_property name="ObjectShortName">clk_2mhz</obj_property>
+      <obj_property name="UseCustomSignalColor">true</obj_property>
+      <obj_property name="CustomSignalColor">#ffffff</obj_property>
+   </wvobject>
    <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_phase" type="array" db_ref_id="1">
       <obj_property name="ElementShortName">clk_phase[3:0]</obj_property>
       <obj_property name="ObjectShortName">clk_phase[3:0]</obj_property>
@@ -156,12 +162,6 @@
    <wvobject fp_name="group328" type="group">
       <obj_property name="label">ULA</obj_property>
       <obj_property name="DisplayName">label</obj_property>
-      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_2mhz" type="logic" db_ref_id="1">
-         <obj_property name="ElementShortName">clk_2mhz</obj_property>
-         <obj_property name="ObjectShortName">clk_2mhz</obj_property>
-         <obj_property name="UseCustomSignalColor">true</obj_property>
-         <obj_property name="CustomSignalColor">#ffffff</obj_property>
-      </wvobject>
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/o_rom" type="logic" db_ref_id="1">
          <obj_property name="ElementShortName">o_rom</obj_property>
          <obj_property name="ObjectShortName">o_rom</obj_property>

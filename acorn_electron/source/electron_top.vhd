@@ -358,7 +358,7 @@ begin
     o_ra          => ram_addr,                  -- ram address
 
     -- Keyboard
-    i_kbd         => "1111",
+    i_kbd         => "0000",
     o_caps_lock   => open,
     i_n_reset     => n_reset,
 
