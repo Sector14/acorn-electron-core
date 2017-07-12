@@ -260,19 +260,26 @@ begin
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
 
-  u_vid_rgb : process(i_clk)
+  u_vid_rgb : process(i_clk, rst)
     variable cur_pix, next_pix : word(7 downto 0);
-    variable double : boolean := false;
-    variable count : integer range 0 to 8;
+    variable count : unsigned(3 downto 0);
     variable read_addr : word(15 downto 0);
   begin
-    if rising_edge(i_clk) then
+    if (rst = '1') then
+      cur_pix := (others => '0');
+      next_pix := (others => '0');
+      count := (others => '0');
+      read_addr := '0' & mode_base_addr & "000000";
+    elsif rising_edge(i_clk) then
       o_rgb <= x"000000";
 
       display_period <= false;
       
       -- TODO: Mode changes can occur mid scanline. Treat mode 7 as mode 4.
-      -- TODO: How to handle different modes?
+      --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
+      -- TODO: This is a rather messy bit of logic that needs generalising to allow
+      --       modes 0..6 to be correctly supported with line blanking for text modes,
+      --       and varied horiz width 640, 320, 160 as well as different bpp and palettes
             
       -- 832 active "pixels" in the 51.95us display area. The 640
       -- display should use the central 40us giving a cycle timing of 62.5ns.
@@ -300,31 +307,16 @@ begin
 
         -- TODO: [Gary] Need mode 6 going first for bootup.
         -- TODO: [Gary] every 8 v lines should have two line gap
+        -- 2 hpix per rendered pixel for mode 6 320
         if (unsigned(hpix) < 64 or unsigned(hpix) >= 704) then
           o_rgb <= x"FF0000";
-          cur_pix := next_pix;
-          count := 0;
-          double := false;
+          count := (others => '0');
         else
           display_period <= true;
 
-          -- Active Region 640x256
-          -- For 320 and 160 modes, repeat pixels.        
-          o_rgb <= x"0000FF";
-          if (cur_pix(7-count) = '1') then
-            o_rgb <= x"FFFFFF";
-          end if;
-
-          if (double) then
-            count := count + 1;
-          end if;
-          double := not double;
-          
-          if (count = 8) then
-            count := 0;
+          if (count = 0) then
             cur_pix := next_pix;
-
-            -- next byte
+            -- pre-fetch next pixel data from ram
             read_addr := std_logic_vector(unsigned(read_addr) + 1);
 
             -- Wrap due to overflow into rom
@@ -332,10 +324,21 @@ begin
               read_addr := '0' & mode_wrap_addr & "000000";
             end if;
           end if;
+
+          -- Active Region 640x256
+          -- For 320 and 160 modes, repeat pixels.        
+          o_rgb <= x"0000FF";
+          if (cur_pix(7 - to_integer(count(3 downto 1))) = '1') then
+            o_rgb <= x"FFFFFF";
+          end if;
          
+          count := count + 1;         
         end if;        
       end if;
 
+      if (screen_start_addr = x"60" & '0') then
+        o_rgb <= x"00FF00";
+      end if;
     end if;
   end process;
 
@@ -377,15 +380,12 @@ begin
       o_n_cas <= '1';
       o_n_ras <= '1';
       ula_ram_data <= (others => '0');
+      cpu_ram_data <= (others => '0');
       b_pd <= (others => 'Z');
     elsif rising_edge(i_clk) then
-
-      b_pd <= (others => 'Z');
-
       -- Cpu accessing ram during its slot, or, ula slot.
       if (i_addr(15) = '0') then
         if (i_n_w = '1') then 
-          b_pd <= cpu_ram_data;
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
         end if;
 
@@ -417,6 +417,8 @@ begin
             o_n_cas <= '0';
             o_n_we <= i_n_w;
             if (i_n_w = '0') then
+              -- TODO: [Gary] needed?
+              cpu_ram_data <= b_pd;
               b_ram0 <= b_pd(0);
               b_ram1 <= b_pd(2);
               b_ram2 <= b_pd(4);
@@ -482,7 +484,7 @@ begin
           when "1001" =>
             -- unused
           when "1010" =>
-            -- col latch
+            -- col latch            
             o_ra <= ula_ram_addr(6 downto 0) & '0';
             o_n_cas <= '0';
           when "1011" =>
@@ -516,13 +518,17 @@ begin
     end if;
   end process;
 
+  b_pd <= cpu_ram_data when i_n_w = '1' and i_addr(15) = '0' else (others => 'Z');
+
   -- ====================================================================
   -- ROM
   -- ====================================================================
   -- Enable main board rom for OS access or BASIC rom if page enable
   -- TODO: [Gary] reading any register other than 0 or 4 should read from os/basic rom.
-  o_rom <= '1' when (i_addr >= x"8000" and i_addr <= x"BFFF" and        -- ROM page 10 or 11
-                     isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
+  
+  --                (i_addr >= x"8000" and <= x"BFFF"
+  o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and        
+                     isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and        -- ROM page 10 or 11
                      isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
            '1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
            '1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
@@ -722,9 +728,10 @@ begin
   -- and read when ROM 8 or 9 is paged in.
   -- TODO: [Gary] Also possible to read when paged in via mem mapping (AUG p216)
   -- Keyboard rom active
-  b_pd <= x"0" & i_kbd when (i_addr >= x"8000" and i_addr <= x"BFFF" and
-                             isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
-                             isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
+  --b_pd <= x"0" & i_kbd when (i_addr >= x"8000" and i_addr <= x"BFFF" and
+  b_pd <= x"0" & i_kbd when  (i_addr(15) = '1' and i_addr(14) = '0' and
+                              isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
+                              isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
                              (others => 'Z');
   o_caps_lock <= misc_control(MISC_CAPS_LOCK);
 

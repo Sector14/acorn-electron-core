@@ -232,7 +232,7 @@ begin
     -- ARM interface
     i_memio_to_core  => i_memio_to_core,  -- not used
     i_memio_fm_core  => z_Memio_fm_core,  -- first module
-    o_memio_fm_core  => o_memio_fm_core,  
+    o_memio_fm_core  => o_memio_fm_core,
 
     i_clk_sys  => i_clk_sys,              -- ARM clock
     i_ena_sys  => i_ena_sys,
@@ -243,7 +243,6 @@ begin
     i_wen   => '0',                       -- ROM unused
     o_data  => rom_data,
 
-    -- TODO: [Gary] should this really be CPU out clock?
     i_ena   => '1',                       -- TODO: [Gary] Leave enabled all the time?
     i_clk   => i_clk_sys                  -- Core clock
   );
@@ -255,7 +254,7 @@ begin
   ram_ic20 : entity work.TM4164EA3_64k_W4
   port map (
     -- clock for sync bram 
-    i_clk    => i_clk_sys,  -- TODO: [Gary] fake async could clk with ram_clk?
+    i_clk    => i_clk_sys,
 
     i_addr   => ram_addr,
 
