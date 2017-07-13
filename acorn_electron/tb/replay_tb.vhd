@@ -100,8 +100,16 @@ begin
 
     dis;
 
-    wait for 1 us;
     -- see other testbenches for SPI examples
+    wait for 1 us;
+    
+    ena(2);
+    spi(x"23"); -- set phase
+    spi(x"68");
+    spi(x"02");
+    dis;
+    
+    wait for 5 us;
 
     -- send config bits to core
     ena(2);
@@ -125,8 +133,13 @@ begin
     spi(x"01");
     dis;
 
+    -- DDR
+    spi_readbin("../sdcard/os_basic.rom", x"00008000", x"8000");
+
     -- SRAM
-    spi_readbin("../sdcard/os_basic.rom", x"80000000");
+    -- NOTE: SRAM has a separate ROM module so starts at addr 0x0 unlike
+    -- DDR where room is left for RAM in the first 0x8000 bytes.
+    --spi_readbin("../sdcard/os_basic.rom", x"80000000");
 
     ena(2);
     spi(x"11"); -- soft reset, remove halt

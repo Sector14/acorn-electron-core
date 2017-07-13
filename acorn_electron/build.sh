@@ -11,6 +11,7 @@ LIB_PATH="./../../lib"
 function exit_cleanup {
   echo ""
   echo "Build log file available in build/build.log"
+  echo ""
 }
 
 trap "exit_cleanup" EXIT

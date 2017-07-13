@@ -159,6 +159,10 @@ begin
     i_kb_inhibit          => i_kb_ms_joy.kb_inhibit,
 
     --
+    o_ddr_hp_fm_core  => o_ddr.ddr_hp_fm_core,
+    i_ddr_hp_to_core  => i_ddr.ddr_hp_to_core,
+    
+    --
     i_fcha_cfg            => i_io.fcha_cfg,
     i_fcha_to_core        => i_io.fcha_to_core,
     o_fcha_fm_core        => o_io.fcha_fm_core,
@@ -195,7 +199,7 @@ begin
   o_av.vid_sync <= av.vid_sync;
 
 
-  o_ddr.ddr_hp_fm_core      <= z_DDR_hp_fm_core;
+  --o_ddr.ddr_hp_fm_core      <= z_DDR_hp_fm_core;
   o_ddr.ddr_vp_fm_core      <= z_DDR_vp_fm_core;
 
   o_kb_ms_joy.ms_load <= '0';

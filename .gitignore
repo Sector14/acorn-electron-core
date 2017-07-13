@@ -1,5 +1,7 @@
 # ROMS
 acorn_electron/sdcard/os_basic.rom
+acorn_electron/sdcard/basic.rom
+acorn_electron/sdcard/os.rom
 
 # Build files
 acorn_electron/sdcard/acorn_electron.bin

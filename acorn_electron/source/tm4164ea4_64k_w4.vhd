@@ -51,21 +51,19 @@ end;
 
 architecture RTL of TM4164EA3_64k_W4 is
   -- multiplexed addressing
-  signal row_addr               : word(7 downto 0);
-
-  -- active read/write address
-  signal addr                   : word(15 downto 0);
+  signal row_addr               : word(7 downto 0) := (others => '0');
 
   -- edge detection
-  signal n_cas_edge, n_cas_l    : bit1;
-  signal n_ras_edge, n_ras_l    : bit1;
+  signal n_cas_edge, n_cas_l    : bit1 := '0';
+  signal n_ras_edge, n_ras_l    : bit1 := '0';
 
-  signal read_data              : word(3 downto 0);
+  signal read_data              : word(3 downto 0) := (others => '0');
 
   -- Ran out of available BRAM. Allowing use of distributed ram until this can
   -- be moved over to using the boards DRAM.
-  type ram_type is array (65534 downto 0) of word(3 downto 0);
+  type ram_type is array (65535 downto 0) of word(3 downto 0);
   shared variable RAM : ram_type;
+  
 
 begin 
   o_data <= read_data when (i_n_ras = '0' and i_n_cas = '0' and i_n_we = '1') else (others => 'Z');
@@ -87,6 +85,8 @@ begin
   n_ras_edge <= (not i_n_ras) and n_ras_l;
 
   p_ras_cas : process(i_clk)
+    -- active read/write address
+    variable addr : word(15 downto 0) := (others => '0');
   begin
     if rising_edge(i_clk) then
       -- multiplexed address decoding
@@ -96,12 +96,12 @@ begin
 
       if (n_cas_edge = '1') then
         -- Full nibble address
-        addr <= row_addr & i_addr;
+        addr := row_addr & i_addr;
 
         if (i_n_we = '0') then
-          RAM(to_integer(unsigned(i_addr))) := i_data;
+          RAM(to_integer(unsigned(addr))) := i_data;
         end if;
-        read_data <= RAM(to_integer(unsigned(i_addr)));
+        read_data <= RAM(to_integer(unsigned(addr)));
       end if;
       
     end if;
