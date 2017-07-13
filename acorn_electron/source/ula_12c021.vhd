@@ -179,10 +179,11 @@ begin
   -- Master Timing
   -- ====================================================================
   -- 16MHz clock down to 2MHz & 1MHz generator
+  -- ULA ticks 0..15 with 1MHz active on clock 0 and 2MHz on 0 and 8
   p_clk_gen : process(i_clk, rst)
   begin
     if (rst = '1') then
-      clk_phase <= (others => '0');
+      clk_phase <= (others => '1');
       clk_1MHz <= '0';
       clk_2MHz <= '0';
     elsif rising_edge(i_clk) then

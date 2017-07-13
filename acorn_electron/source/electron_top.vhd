@@ -40,13 +40,12 @@
 -- Email support@fpgaarcade.com
 --
 
--- TODO: [Gary] RAM and ROM needs be moving to DRAM. Using up
--- 32 of 36 BRAMs which leaves too few for the framework.
--- Even more over if chipscope is enabled.
 --
--- Check timing if moved as ULA runs at 16MHz which is sys_clk / 2
--- whilst DRAM is set for a sys_clk / 4 read cycle. May not be an issue
--- however as internally ULA will be generating a 2MHz and 1MHz clock.
+-- DDR Layout
+--
+-- 0x0000 - 0x7FFF  RAM Not currently used
+-- 0x8000 - 0xFFFF  ROM (some mem mapped i/o interleaved too, see ULA notes)
+-- Rest of DDR space unused
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -94,6 +93,10 @@ entity Electron_Top is
     i_kb_ps2_we           : in  bit1;
     i_kb_ps2_data         : in  word( 7 downto 0);
     i_kb_inhibit          : in  bit1; -- OSD active
+
+    -- Mem interface high prio
+    o_ddr_hp_fm_core      : out   r_DDR_hp_fm_core;  -- connect to z_DDR_hp_fm_core if not used
+    i_ddr_hp_to_core      : in    r_DDR_hp_to_core;
 
     -- Fileio A
     i_fcha_cfg            : in  r_Cfg_fileio;
@@ -144,6 +147,7 @@ architecture RTL of Electron_Top is
 
   -- ROM
   signal rom_data    : word( 7 downto 0);
+  signal ddr_valid   : bit1;
 
   -- RAM  
   signal ram_addr    : word( 7 downto 0);
@@ -188,6 +192,8 @@ begin
   o_fcha_fm_core        <= z_Fileio_fm_core;
   o_fchb_fm_core        <= z_Fileio_fm_core;
 
+  o_memio_fm_core       <= z_Memio_fm_core;
+
   o_audio_l             <= (others => '0');
   o_audio_r             <= (others => '0');
 
@@ -222,32 +228,38 @@ begin
   -- IC2 ROM 32kB (addressable via ARM bus)
   -- Hitatchi HN613256 with tri-state output buffer
   -- 0x000 - 0x7FFF
+  -- NOTE: DDR samples address on sys_ena and will present result in time
+  -- for following sys_ena 4 sys_clk ticks later. 
+  -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
+  -- ULA controller ticks twice per ena_sys and must thus ensure at least
+  -- two 2 ULA ticks (ie 4 sys clocks) occur between setup and result.
+
   -- /CS not implemented, assume tied to gnd.
-  rom_ic2 : entity work.RAM_D32K_W8
-  generic map (
-    g_addr => x"00000000",
-    g_mask => x"00008000"
-  )
-  port map (
-    -- ARM interface
-    i_memio_to_core  => i_memio_to_core,  -- not used
-    i_memio_fm_core  => z_Memio_fm_core,  -- first module
-    o_memio_fm_core  => o_memio_fm_core,
-
-    i_clk_sys  => i_clk_sys,              -- ARM clock
-    i_ena_sys  => i_ena_sys,
-
-    -- Core interface
-    i_addr  => addr_bus(14 downto 0),
-    i_data  => x"00",                     -- ROM unused
-    i_wen   => '0',                       -- ROM unused
-    o_data  => rom_data,
-
-    i_ena   => '1',                       -- TODO: [Gary] Leave enabled all the time?
-    i_clk   => i_clk_sys                  -- Core clock
-  );
-  -- rom data tri-state via OE
-  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
+--  rom_ic2 : entity work.RAM_D32K_W8
+--  generic map (
+--    g_addr => x"00000000",
+--    g_mask => x"00008000"
+--  )
+--  port map (
+--    -- ARM interface
+--    i_memio_to_core  => i_memio_to_core,  -- not used
+--    i_memio_fm_core  => z_Memio_fm_core,  -- first module
+--    o_memio_fm_core  => o_memio_fm_core,
+--
+--    i_clk_sys  => i_clk_sys,              -- ARM clock
+--    i_ena_sys  => i_ena_sys,
+--
+--    -- Core interface
+--    i_addr  => addr_bus(14 downto 0),
+--    i_data  => x"00",                     -- ROM unused
+--    i_wen   => '0',                       -- ROM unused
+--    o_data  => rom_data,
+--
+--    i_ena   => '1',                       -- TODO: [Gary] Leave enabled all the time?
+--    i_clk   => i_clk_sys                  -- Core clock
+--  );
+--  -- rom data tri-state via OE
+--  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
 
   -- IC20 RAM 4x64K 1bit
   -- 64k 0x000 - 0x3FFFF
@@ -373,11 +385,32 @@ begin
     i_n_w         => cpu_n_w                    -- Data direction, /write, read
   );
 
-  n_por <= not i_halt;
-  n_reset <= not i_halt; -- TODO: [Gary] incl keyboard "break"
+  -- ULA clock begins ticking on cph(3) so that DDR access can be made every other
+  -- even tick. Two ULA ticks are needed due to running at sys_clk/2 rather than ena_sys
+  --
+  -- If DDR is to be shared between ROM and RAM more thought will need to be give
+  -- to timing as ULA assumes the two are on separate buses. Access to RAM is
+  -- at 2MHz max so there is ample time to interleave the two.
+  p_por : process(i_clk_sys, i_rst_sys, i_halt)
+  begin
+    if (i_rst_sys = '1' or i_halt = '1') then
+      n_por <= '0';
+    elsif rising_edge(i_clk_sys) then
+      -- Delay bringing out of reset until after cph(1) to align even ula_clk
+      -- cycles with cph(3). DDR can then be accessed every other even ula_clk cycle
+      if (i_cph_sys(2) = '1') then
+        n_por <= '1';
+      end if;
+    end if;
+  end process;
 
-  -- 16MHz from sys_clk / 2
-  ula_clk <= i_cph_sys(1) or i_cph_sys(3); 
+  n_reset <= n_por; -- TODO: [Gary] or keyboard "break"
+
+  -- TODO: [Gary] not keen on using POR in this way as ula_clk should
+  -- be running all the time. Switch to a one off flag set during
+  -- sys reset instead?
+  -- 16MHz from sys_clk / 2. ula_clk sync'd to cph(3) via por
+  ula_clk <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
   
   o_vid_rgb <= ula_rgb;
 
@@ -402,6 +435,59 @@ begin
   -- Framwork Interfacing
   -- ====================================================================
   
+  --
+  -- DDR 
+  --
+  -- TODO: [Gary] Would framework interfacing be better off in Core_Top with
+  -- a ram_data/addr, rom_data/addr interface into core?
+  --
+  -- This is semi wasteful as 4 bytes are requested each time even if 
+  -- the byte was in the cache from the previous read.
+  --
+  -- 32kB of ROM, 4 bytes returned per read.
+  o_ddr_hp_fm_core.valid  <= ddr_valid;
+  o_ddr_hp_fm_core.burst  <= "00";
+  o_ddr_hp_fm_core.addr(25 downto 16) <= (others => '0');
+  o_ddr_hp_fm_core.addr(15 downto  2) <= addr_bus(15 downto 2); 
+
+  -- read only
+  o_ddr_hp_fm_core.rw_l   <= '1';
+  o_ddr_hp_fm_core.w_be   <= "1111";
+  o_ddr_hp_fm_core.w_data <= (others => '0');
+
+  p_program_rom : process(i_clk_sys, i_rst_sys, i_halt)
+  begin
+    if (i_rst_sys = '1' or i_halt = '1') then
+      ddr_valid <= '0';
+      rom_data <= (others => '0');
+    elsif rising_edge(i_clk_sys) then
+      -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
+      -- ula_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses    
+      -- @ 2MHz or 8 @ 1MHz. Ample spare to interleave ULA RAM access.
+      if (i_ena_sys = '1') then
+        if (ddr_valid = '1') then
+          ddr_valid <= '0';
+          -- note, default is BE in the DRAM controller
+          rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
+          case addr_bus(1 downto 0) is
+            when "00" => rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
+            when "01" => rom_data <= i_ddr_hp_to_core.r_data(23 downto 16);
+            when "10" => rom_data <= i_ddr_hp_to_core.r_data(15 downto  8);
+            when "11" => rom_data <= i_ddr_hp_to_core.r_data( 7 downto  0);
+            when others => null;
+          end case;
+        end if;
+
+        if (ula_phi_out = '1' and ula_rom_ena = '1') then
+          ddr_valid <= '1';
+        end if;
+      end if;
+    end if;
+  end process;
+
+  -- rom data tri-state via OE
+  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
+
   -- Cassette i/o adapter
   -- Support loading via SD card rather than physical cassette.
   -- Should be optional and route additional signals to allow a physical
