@@ -369,6 +369,7 @@ begin
     end if;
   end process;
 
+  -- TODO: [Gary] ULA is supposed to drive this rather than base on por here?
   n_reset <= n_por; -- TODO: [Gary] or keyboard "break"
 
   -- TODO: [Gary] not keen on using POR in this way as ula_clk should

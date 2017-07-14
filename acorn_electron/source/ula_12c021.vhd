@@ -170,7 +170,7 @@ begin
   -- Power up, perform reset
   -- TODO: Should ULA drive i_n_reset too to cause cpu reset? Is this
   --       pin tri-state?
-  rst <= not i_n_por;
+  rst <= not i_n_por or not i_n_reset;
   
   -- Internal weak pull-up
   i_n_nmi <= 'H';
@@ -263,83 +263,103 @@ begin
 
   u_vid_rgb : process(i_clk, rst)
     variable cur_pix, next_pix : word(7 downto 0);
-    variable count : unsigned(3 downto 0);
+    variable pix_count : unsigned(3 downto 0);
+    -- screen byte address to read
     variable read_addr : word(15 downto 0);
+
+    -- start of row addr
+    variable row_addr  : word(15 downto 0);
+    -- 8 lines + 2 blank
+    variable row_count10 : unsigned(3 downto 0);
   begin
     if (rst = '1') then
       cur_pix := (others => '0');
       next_pix := (others => '0');
-      count := (others => '0');
-      read_addr := '0' & mode_base_addr & "000000";
+      pix_count := (others => '0');      
+
+      row_addr := '0' & mode_base_addr & "000000";
+      read_addr := row_addr;
+      row_count10 := "0000";
     elsif rising_edge(i_clk) then
       o_rgb <= x"000000";
 
       display_period <= false;
       
+      -- Mode 6 Memory layout assuming 0x6000 screen start
+      -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
+      -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
+      -- See AUG p240
+      --
+      -- 832 active "pixels" in the 51.95us display area. The 640
+      -- display should use the central 40us giving a cycle timing of 62.5ns.
+
       -- TODO: Mode changes can occur mid scanline. Treat mode 7 as mode 4.
       --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
       -- TODO: This is a rather messy bit of logic that needs generalising to allow
       --       modes 0..6 to be correctly supported with line blanking for text modes,
       --       and varied horiz width 640, 320, 160 as well as different bpp and palettes
             
-      -- 832 active "pixels" in the 51.95us display area. The 640
-      -- display should use the central 40us giving a cycle timing of 62.5ns.
-      -- Needs a 96 border both sides for centering or a start cycle of 288.
-      -- ULA doc suggests off-center with start on 256 boundary, border of 64 and 128.
-      --
-      
-      -- TODO: [Gary] how to sync the setup and read in time for next byte of data?
+     
       if (unsigned(vpix) = 0) then   
-        -- Latch mode adjusted screen start. Wrap is not latched as it's based
+        -- Latch mode adjusted screen start. Wrap is not latched as it's based on
         -- screen mode which can be changed mid frame.
-        read_addr := '0' & mode_base_addr & "000000";
+        row_addr := '0' & mode_base_addr & "000000";
+        read_addr := row_addr;
+        row_count10 := "0000";
       end if;
 
       if (clk_phase(3) = '0') then
+        -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         ula_ram_addr <= read_addr(14 downto 0);
+        if (read_addr(15) = '1') then
+          ula_ram_addr <= read_addr(14 downto 0) + (mode_wrap_addr & "000000");
+        end if;
       elsif (clk_phase = "1111") then
         next_pix := ula_ram_data;
       end if;
 
       if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
         -- overscan
-        o_rgb <= x"FF0000";
+        o_rgb <= x"000000";
       elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
 
-        -- TODO: [Gary] Need mode 6 going first for bootup.
-        -- TODO: [Gary] every 8 v lines should have two line gap
-        -- 2 hpix per rendered pixel for mode 6 320
-        if (unsigned(hpix) < 64 or unsigned(hpix) >= 704) then
-          o_rgb <= x"FF0000";
-          count := (others => '0');
+        -- Setup for first byte of new line
+        if (unsigned(hpix) = 704) then   
+          row_count10 := row_count10 + 1;
+          if (row_count10 = 10) then
+            row_addr := row_addr + 320;
+            row_count10 := (others => '0');
+          end if;
+          
+          read_addr := std_logic_vector(unsigned(row_addr) + row_count10);
+        end if;
+        
+        -- 2 hpix per rendered pixel for mode 6 320x256
+        if (unsigned(hpix) < 64 or unsigned(hpix) >= 704 or row_count10 >= 8) then
+          -- Border
+          pix_count := (others => '0');
+          o_rgb <= x"000000";
+          read_addr := std_logic_vector(unsigned(row_addr) + row_count10);
         else
           display_period <= true;
 
-          if (count = 0) then
+          if (unsigned(pix_count) = 0) then
             cur_pix := next_pix;
-            -- pre-fetch next pixel data from ram
-            read_addr := std_logic_vector(unsigned(read_addr) + 1);
-
-            -- Wrap due to overflow into rom
-            if (read_addr(15) = '1') then
-              read_addr := '0' & mode_wrap_addr & "000000";
-            end if;
+            -- pre-fetch next pixel data from ram with 8 byte horiz stride
+            read_addr := std_logic_vector(unsigned(read_addr) + 8);
           end if;
 
           -- Active Region 640x256
           -- For 320 and 160 modes, repeat pixels.        
-          o_rgb <= x"0000FF";
-          if (cur_pix(7 - to_integer(count(3 downto 1))) = '1') then
+          o_rgb <= x"000000";
+          if (cur_pix(7 - to_integer(pix_count(3 downto 1))) = '1') then
             o_rgb <= x"FFFFFF";
           end if;
          
-          count := count + 1;         
+          pix_count := pix_count + 1;         
         end if;        
       end if;
 
-      if (screen_start_addr = x"60" & '0') then
-        o_rgb <= x"00FF00";
-      end if;
     end if;
   end process;
 
@@ -527,12 +547,17 @@ begin
   -- Enable main board rom for OS access or BASIC rom if page enable
   -- TODO: [Gary] reading any register other than 0 or 4 should read from os/basic rom.
   
-  --                (i_addr >= x"8000" and <= x"BFFF"
+  -- ROM enabled for 0x8000 - 0xBFFF when page 10 or 11 active, or for
+  -- 0xC000 - 0xFFFF except for the memory mapped i/o in 0xFCXX, 0xFDXX, 0xFEXX
   o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and        
                      isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and        -- ROM page 10 or 11
                      isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
-           '1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
-           '1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
+           --'1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
+           --'1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
+           '1' when (i_addr(15) = '1' and i_addr(14) = '1') and         -- ROM OS except mem mapped i/o
+                    (i_addr(15 downto 8) /= x"FC") and
+                    (i_addr(15 downto 8) /= x"FD") and
+                    (i_addr(15 downto 8) /= x"FE") else
            '0';
 
   -- CPU Variable clocking
@@ -689,16 +714,16 @@ begin
   end process;
 
   p_screen_addr : process(screen_start_addr, misc_control)
-    variable base_addr : word(14 downto 6);
+    variable base_addr : word(15 downto 6);
   begin    
     -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
     -- hardcoded per mode base address. Also used if address overflows back to 0.
     -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
     case misc_control(MISC_DISPLAY_MODE) is
-      when "000" | "001" | "010" => base_addr := x"30" & '0';
-      when "011" => base_addr := x"40" & '0';
-      when "100" | "101" | "111" => base_addr := x"58" & '0';
-      when "110" => base_addr := x"60" & '0';
+      when "000" | "001" | "010" => base_addr := x"30" & "00";
+      when "011" => base_addr := x"40" & "00";
+      when "100" | "101" | "111" => base_addr := x"58" & "00";
+      when "110" => base_addr := x"60" & "00";
       when others =>
     end case;
     
@@ -707,14 +732,14 @@ begin
     -- of ram too on startup) as well as other variations/skips. This needs further
     -- research.
     if screen_start_addr = x"00" & '0' then
-      mode_base_addr <= base_addr;
+      mode_base_addr <= base_addr(14 downto 6);
     else
       mode_base_addr <= screen_start_addr;
     end if;
 
     -- Wrapping always starts from the hardcoded address regardless
     -- of screen_start_addr.
-    mode_wrap_addr <= base_addr;
+    mode_wrap_addr <= base_addr(14 downto 6);
   end process;
 
   -- ====================================================================

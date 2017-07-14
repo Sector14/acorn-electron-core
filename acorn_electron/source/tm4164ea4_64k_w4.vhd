@@ -59,11 +59,8 @@ architecture RTL of TM4164EA3_64k_W4 is
 
   signal read_data              : word(3 downto 0) := (others => '0');
 
-  -- Ran out of available BRAM. Allowing use of distributed ram until this can
-  -- be moved over to using the boards DRAM.
   type ram_type is array (65535 downto 0) of word(3 downto 0);
   shared variable RAM : ram_type;
-  
 
 begin 
   o_data <= read_data when (i_n_ras = '0' and i_n_cas = '0' and i_n_we = '1') else (others => 'Z');
