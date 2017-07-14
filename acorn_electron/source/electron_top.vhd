@@ -201,6 +201,10 @@ begin
   -- Misc
   -- ====================================================================
 
+  -- TODO: [Gary] Should sys_clk be passed into the ULA to allow
+  -- div13 and the ula_clk to be used as clock enables rather than new
+  -- clocks? Are there timing issues with how it is setup now?
+
   -- IC9 clock div 13 (74LS163)
   b_clk_div : block
     signal cnt : unsigned( 3 downto 0 ) := (others => '0');
@@ -222,44 +226,8 @@ begin
   end block;
   
   -- ====================================================================
-  -- RAM/ROM
+  -- RAM
   -- ====================================================================
-
-  -- IC2 ROM 32kB (addressable via ARM bus)
-  -- Hitatchi HN613256 with tri-state output buffer
-  -- 0x000 - 0x7FFF
-  -- NOTE: DDR samples address on sys_ena and will present result in time
-  -- for following sys_ena 4 sys_clk ticks later. 
-  -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
-  -- ULA controller ticks twice per ena_sys and must thus ensure at least
-  -- two 2 ULA ticks (ie 4 sys clocks) occur between setup and result.
-
-  -- /CS not implemented, assume tied to gnd.
---  rom_ic2 : entity work.RAM_D32K_W8
---  generic map (
---    g_addr => x"00000000",
---    g_mask => x"00008000"
---  )
---  port map (
---    -- ARM interface
---    i_memio_to_core  => i_memio_to_core,  -- not used
---    i_memio_fm_core  => z_Memio_fm_core,  -- first module
---    o_memio_fm_core  => o_memio_fm_core,
---
---    i_clk_sys  => i_clk_sys,              -- ARM clock
---    i_ena_sys  => i_ena_sys,
---
---    -- Core interface
---    i_addr  => addr_bus(14 downto 0),
---    i_data  => x"00",                     -- ROM unused
---    i_wen   => '0',                       -- ROM unused
---    o_data  => rom_data,
---
---    i_ena   => '1',                       -- TODO: [Gary] Leave enabled all the time?
---    i_clk   => i_clk_sys                  -- Core clock
---  );
---  -- rom data tri-state via OE
---  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
 
   -- IC20 RAM 4x64K 1bit
   -- 64k 0x000 - 0x3FFFF
@@ -385,10 +353,7 @@ begin
     i_n_w         => cpu_n_w                    -- Data direction, /write, read
   );
 
-  -- ULA clock begins ticking on cph(3) so that DDR access can be made every other
-  -- even tick. Two ULA ticks are needed due to running at sys_clk/2 rather than ena_sys
-  --
-  -- If DDR is to be shared between ROM and RAM more thought will need to be give
+  -- TODO: [Gary] If DDR is to be shared between ROM and RAM more thought will need to be given
   -- to timing as ULA assumes the two are on separate buses. Access to RAM is
   -- at 2MHz max so there is ample time to interleave the two.
   p_por : process(i_clk_sys, i_rst_sys, i_halt)
@@ -434,17 +399,24 @@ begin
   -- ====================================================================
   -- Framwork Interfacing
   -- ====================================================================
+
+  -- TODO: [Gary] Would framework interfacing be better off in Core_Top with
+  -- a ram_data/addr, rom_data/addr interface into core?
+  --
   
   --
   -- DDR 
   --
-  -- TODO: [Gary] Would framework interfacing be better off in Core_Top with
-  -- a ram_data/addr, rom_data/addr interface into core?
+  -- IC2 ROM 32kB (addressable via ARM bus)
+  -- Original ROM, Hitatchi HN613256 with tri-state output buffer
+  -- DDR ROM addressable 0x8000 - 0xFFFF
+  -- 
+  -- NOTE: DDR samples address after sys_ena and will present result in time
+  -- for following sys_ena 4 sys_clk ticks later. 
+  -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
+  -- ULA controller ticks twice per ena_sys and must thus ensure at least
   --
-  -- This is semi wasteful as 4 bytes are requested each time even if 
-  -- the byte was in the cache from the previous read.
-  --
-  -- 32kB of ROM, 4 bytes returned per read.
+  -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;
   o_ddr_hp_fm_core.burst  <= "00";
   o_ddr_hp_fm_core.addr(25 downto 16) <= (others => '0');
@@ -463,11 +435,11 @@ begin
     elsif rising_edge(i_clk_sys) then
       -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
       -- ula_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses    
-      -- @ 2MHz or 8 @ 1MHz. Ample spare to interleave ULA RAM access.
+      -- @ 2MHz or 8 @ 1MHz. Ample spare time to interleave ULA RAM access.
       if (i_ena_sys = '1') then
         if (ddr_valid = '1') then
           ddr_valid <= '0';
-          -- note, default is BE in the DRAM controller
+          -- note, default is big endian in the DRAM controller
           rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
           case addr_bus(1 downto 0) is
             when "00" => rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
