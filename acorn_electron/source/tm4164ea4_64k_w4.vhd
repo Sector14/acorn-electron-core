@@ -103,12 +103,12 @@ begin
       
     end if;
 
-    -- TODO: [Gary] Other modes that may be needed if used by ULA
+    -- Other modes that may be needed if used by ULA
     --   * read-write/read-modify-write cycles
     --   * page mode read cycle
     --   * page mode write cycle
 
-    -- TODO: [Gary] Implementation not needed just ensure it doesn't break anything if used:
+    -- Implementation not needed just ensure it doesn't break anything if used:
     --   * ras only refresh cycle 
     --   * hidden refresh cycle
 

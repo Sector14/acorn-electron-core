@@ -11,8 +11,6 @@
 #   To run the Acorn Electron ram only test bench.
 #
 #   ./simulate.sh ram_d32k_w8_tb
-#
-# TODO: -view and -run switches not implemented
 
 NAME="replay"
 TB_NAME="${1:-${NAME}_tb}"

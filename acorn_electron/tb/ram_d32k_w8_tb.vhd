@@ -2,7 +2,6 @@
 --
 -- Tests read/write of ram from the FPGA side
 --
--- TODO: Simulate the ARM side and write from ARM read from FPGA too
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -19,7 +18,7 @@ end;
 architecture rtl of a_RAM_D32K_W8_tb is
   
   -- TODO: Adjust to match core
-  constant c_clk_sys_period : time := 1 us / 114.545; -- MHz
+  constant c_clk_sys_period : time := 1 us / 128.000; -- MHz
   
   -- memio_to_core : r_Memio_to_core;
   -- memio_fm_core : r_Memio_fm_core;
@@ -95,8 +94,6 @@ begin
 
   rw_process : process
   begin    
-    -- TODO: Sort out a more realistic test case using similar clock setup as the core.
-    
     --
     -- Bank 0 address 0 & 1 write/read
     --
