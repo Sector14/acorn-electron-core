@@ -49,8 +49,10 @@ vhdl    work    core_pack.vhd
 vhdl    work    ram_d32k_w8.vhd
 vhdl    work    tm4164ea4_64k_w4.vhd
 vhdl    work    ula_12c021.vhd
+vhdl    work    ps2_translate.vhd
 vhdl    work    electron_top.vhd
 vhdl    work    core_top.vhd
+
 vhdl    work    replay_lib_wrap.vhd
 vhdl    work    replay_top_entity.vhd
 vhdl    work    replay_top.vhd

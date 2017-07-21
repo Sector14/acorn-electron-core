@@ -737,6 +737,10 @@ begin
       mode_base_addr <= screen_start_addr;
     end if;
 
+    -- TODO: [Gary] Bug after using CLS, any new text typed will show after
+    -- cursor but also down in the bottom right of the screen. Wrap addr issue
+    -- or start addr?
+
     -- Wrapping always starts from the hardcoded address regardless
     -- of screen_start_addr.
     mode_wrap_addr <= base_addr(14 downto 6);
@@ -749,18 +753,15 @@ begin
   -- 
   -- Keyboard Interface
   --
-  
-  -- TODO: [Gary] Normal keyboard reading handled via address lines 0..13 
-  -- and read when ROM 8 or 9 is paged in.
-  -- TODO: [Gary] Also possible to read when paged in via mem mapping (AUG p216)
-  -- Keyboard rom active
-  --b_pd <= x"0" & i_kbd when (i_addr >= x"8000" and i_addr <= x"BFFF" and
-  b_pd <= x"0" & i_kbd when  (i_addr(15) = '1' and i_addr(14) = '0' and
-                              isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
-                              isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
-                             (others => 'Z');
-  o_caps_lock <= misc_control(MISC_CAPS_LOCK);
 
+  -- Keyboard rom active
+  -- Invert key state to give 1 for pressed
+  b_pd <= (x"0" & not i_kbd) when  (i_addr(15) = '1' and i_addr(14) = '0' and  
+                                   isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
+                                   isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
+                                  (others => 'Z');
+  o_caps_lock <= misc_control(MISC_CAPS_LOCK);
+  
   -- 
   -- Sound Interface
   --
