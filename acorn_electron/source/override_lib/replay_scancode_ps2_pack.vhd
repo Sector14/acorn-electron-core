@@ -78,7 +78,18 @@ Package Replay_ScanCode_PS2_Pack is
   constant c_PS2_ENTER            : word (8 downto 0) := '0' & X"5A";
   constant c_PS2_ESC              : word (8 downto 0) := '0' & X"76";
   constant c_PS2_SPACE            : word (8 downto 0) := '0' & X"29";
-
+  constant c_PS2_DELETE           : word (8 downto 0) := '1' & X"71";
+  constant c_PS2_BACKSPACE        : word (8 downto 0) := '0' & X"66";
+  
+  constant c_PS2_LEFT_BRACKET     : word (8 downto 0) := '0' & X"54";
+  constant c_PS2_RIGHT_BRACKET    : word (8 downto 0) := '0' & X"5B";
+  constant c_PS2_SEMICOLON        : word (8 downto 0) := '0' & X"4C";
+  constant c_PS2_FWDSLASH         : word (8 downto 0) := '0' & X"4A";
+  constant c_PS2_MINUS            : word (8 downto 0) := '0' & X"4E";
+  constant c_PS2_DOT              : word (8 downto 0) := '0' & X"49";
+  constant c_PS2_COMMA            : word (8 downto 0) := '0' & X"41";
+  constant c_PS2_EQUALS           : word (8 downto 0) := '0' & X"55";
+    
   constant c_PS2_CAPS_LOCK        : word (8 downto 0) := '0' & X"58";
   constant c_PS2_NUM_LOCK         : word (8 downto 0) := '0' & X"77";
   constant c_PS2_SCROLL_LOCK      : word (8 downto 0) := '0' & X"7E";
@@ -144,4 +155,5 @@ end;
 
 package body Replay_ScanCode_PS2_Pack is
 end;
+
 

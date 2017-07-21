@@ -115,37 +115,30 @@ begin
             when c_PS2_8 => key_state(5)(0) <= key_release;
             when c_PS2_I => key_state(5)(1) <= key_release;
             when c_PS2_K => key_state(5)(2) <= key_release;
-            --when c_PS2_COMMA => key_state(5)(3) <= key_release;
+            when c_PS2_COMMA => key_state(5)(3) <= key_release;
 
             when c_PS2_9 => key_state(4)(0) <= key_release;
             when c_PS2_O => key_state(4)(1) <= key_release;
             when c_PS2_L => key_state(4)(2) <= key_release;
-            -- when c_PS2_DOT => key_state(4)(3) <= key_release;
+            when c_PS2_DOT => key_state(4)(3) <= key_release;
 
             when c_PS2_0 => key_state(3)(0) <= key_release;
             when c_PS2_P => key_state(3)(1) <= key_release;
-            --when c_PS2_PLUS => key_state(3)(2) <= key_release;
-            --when c_PS2_SLASH => key_state(3)(3) <= key_release;
+            when c_PS2_SEMICOLON => key_state(3)(2) <= key_release;
+            when c_PS2_FWDSLASH  => key_state(3)(3) <= key_release;
 
-            --when c_PS2_MINUS => key_state(2)(0) <= key_release;
-            when c_PS2_UP => key_state(2)(1) <= key_release;
-            --when c_PS2_STAR => key_state(2)(2) <= key_release;
+            when c_PS2_MINUS => key_state(2)(0) <= key_release;
+            when c_PS2_UP    => key_state(2)(1) <= key_release;
+            when c_PS2_EQUALS => key_state(2)(2) <= key_release; -- : *
             --when UNUSED => key_state(2)(3) <= key_release;
 
             when c_PS2_LEFT => key_state(1)(0) <= key_release;
             when c_PS2_DOWN => key_state(1)(1) <= key_release;
             when c_PS2_ENTER => key_state(1)(2) <= key_release;
+            when c_PS2_DELETE | c_PS2_BACKSPACE => key_state(1)(3) <= key_release;
 
-            
-            -- two new keys, both untested
-            -- TODO: [Gary] testing for DELETE key causes core not to start?
-            --constant c_PS2_DELETE           : word (8 downto 0) := '1' & X"71";
-            --constant c_PS2_BACKSPACE        : word (8 downto 0) := '0' & X"66";
-            --when '1' & x"71" => key_state(1)(3) <= key_release;
-            --when c_PS2_DELETE => key_state(1)(3) <= key_release;
-
-            when c_PS2_RIGHT => key_state(0)(0) <= key_release;
-            --when c_PS2_COPY => key_state(0)(1) <= key_release;
+            when c_PS2_RIGHT => key_state(0)(0) <= key_release;            
+            when c_PS2_LEFT_BRACKET => key_state(0)(1) <= key_release; -- COPY
             --when UNUSED => key_state(0)(2) <= key_release;
             when c_PS2_SPACE => key_state(0)(3) <= key_release;
 
