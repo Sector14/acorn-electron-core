@@ -321,7 +321,7 @@ begin
     i_n_w         => cpu_n_w                    -- Data direction, /write, read
   );
 
-  -- TODO: [Gary] If DDR is to be shared between ROM and RAM more thought will need to be given
+  -- TODO: [Gary] If DDR is to be shared between ROM and RAM, more thought will need to be given
   -- to timing as ULA assumes the two are on separate buses. Access to RAM is
   -- at 2MHz max so there is ample time to interleave the two.
   p_por : process(i_clk_sys, i_rst_sys, i_halt)
@@ -456,10 +456,8 @@ begin
   --
   -- Scanline Doubling
   --
-  -- TODO: [Gary] Sort high BRAM usage due to RAM/ROM before enabling this.
   --  u_DblScan : entity work.Replay_DblScan
   --  port map (
-  --    -- TODO: [Gary] clk_sys is 2x video generation, sufficient for doubler?
   --    -- clocks
   --    --i_clk                 => i_clk_sys,
   --    --i_ena                 => '1', 

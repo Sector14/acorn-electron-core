@@ -17,7 +17,6 @@ end;
 
 architecture rtl of a_RAM_D32K_W8_tb is
   
-  -- TODO: Adjust to match core
   constant c_clk_sys_period : time := 1 us / 128.000; -- MHz
   
   -- memio_to_core : r_Memio_to_core;
@@ -156,12 +155,13 @@ begin
       severity FAILURE;
 
     --
-    -- TODO: Test ARM write/read, both banks
+    -- Test ARM write/read, both banks
     --
 
     --
-    -- TODO: Test ARM port write then FPGA read, both banks
+    -- Test ARM port write then FPGA read, both banks
     --
+    
   end process;
 
 end;

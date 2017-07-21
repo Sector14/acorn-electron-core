@@ -168,8 +168,8 @@ architecture RTL of ULA_12C021 is
 begin
 
   -- Power up, perform reset
-  -- TODO: Should ULA drive i_n_reset too to cause cpu reset? Is this
-  --       pin tri-state?
+  -- TODO: [Gary] Should ULA drive i_n_reset too to cause cpu reset? Is this
+  --       pin tri-state on real ULA?
   rst <= not i_n_por or not i_n_reset;
   
   -- Internal weak pull-up
@@ -212,7 +212,7 @@ begin
   --   5 - 160x256 four colour gfx, 20x32 text (10K)
   --   6 - 40x25 two colour text (8K)
   
-  -- TODO: Did Electron generate offset/interlaced display or use matching fields for 256p?
+  -- TODO: [Gary] Did Electron generate offset/interlaced display or use matching fields for 256p?
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -293,12 +293,11 @@ begin
       -- 832 active "pixels" in the 51.95us display area. The 640
       -- display should use the central 40us giving a cycle timing of 62.5ns.
 
-      -- TODO: Mode changes can occur mid scanline. Treat mode 7 as mode 4.
+      -- TODO: [Gary] Mode changes can occur mid scanline. Treat mode 7 as mode 4.
       --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
-      -- TODO: This is a rather messy bit of logic that needs generalising to allow
+      -- TODO: [Gary] This is a rather messy bit of logic that needs generalising to allow
       --       modes 0..6 to be correctly supported with line blanking for text modes,
-      --       and varied horiz width 640, 320, 160 as well as different bpp and palettes
-            
+      --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
      
       if (unsigned(vpix) = 0) then   
         -- Latch mode adjusted screen start. Wrap is not latched as it's based on
@@ -308,14 +307,16 @@ begin
         row_count10 := "0000";
       end if;
 
+      if (clk_phase = "0000") then
+        next_pix := ula_ram_data;
+      end if;
+
       if (clk_phase(3) = '0') then
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         ula_ram_addr <= read_addr(14 downto 0);
         if (read_addr(15) = '1') then
           ula_ram_addr <= read_addr(14 downto 0) + (mode_wrap_addr & "000000");
         end if;
-      elsif (clk_phase = "1111") then
-        next_pix := ula_ram_data;
       end if;
 
       if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
@@ -387,10 +388,6 @@ begin
   --  2. When nmi is signalled during which time the ULA suspends its ram access.
   -- CPU Gets first 8 cycles, ULA second 8.
 
-  
-  -- TODO: [Gary] with dram usage, 2 ula_clk cycles need to be allowed between
-  -- setting read addr and data available, rather than the 1 that a sys_clk/4
-  -- enable gate would have allowed.
   p_ram_access : process(i_clk, rst)
     variable ram_even_tmp  : word(3 downto 0);
   begin
@@ -412,13 +409,9 @@ begin
 
         -- TODO: [Gary] Is the 1 to 2 MHz clock transition in sync with this? as cpu needs to remain on the 0
         --       cycle access after transitioning back, not end up expecting to use 8+
-        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3
-        -- TODO: [Gary] When nmi is active should cpu get both slots for 2MHz ram access?
-        --              or does it still access at 1MHz but overrides the usual ULA block 
-        --              for active display during modes 0..3? as ULA runs at 2MHz ram access
-        --              during that time.
-
-        -- CPU Address and data available on falling edge of cycle 0?
+        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
+        --              CPU should get 1MHz access regardless if NMI
+        
         -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
         case clk_phase is
           -- CPU Slot
@@ -430,30 +423,28 @@ begin
             o_n_cas <= '1';
             o_n_we <= '1';
           when "0001" =>
-            -- unused row delay
-
+            -- Unused, future DRAM delay 
           when "0010" =>
             -- col latch
             o_ra <= i_addr(6 downto 0) & '0';
             o_n_cas <= '0';
             o_n_we <= i_n_w;
             if (i_n_w = '0') then
-              -- TODO: [Gary] needed?
-              cpu_ram_data <= b_pd;
               b_ram0 <= b_pd(0);
               b_ram1 <= b_pd(2);
               b_ram2 <= b_pd(4);
               b_ram3 <= b_pd(6);
             end if;
           when "0011" =>
-            o_n_we <= '1';
+            -- Unused, future DRAM delay
+          when "0100" =>
             if (i_n_w = '1') then
               ram_even_tmp(0) := b_ram0;              
               ram_even_tmp(1) := b_ram1;
               ram_even_tmp(2) := b_ram2;
               ram_even_tmp(3) := b_ram3;
             end if;
-          when "0100" =>
+            o_n_we <= '1';
             o_n_cas <= '1';          
           when "0101" =>
             -- second nibble cycle
@@ -467,7 +458,8 @@ begin
               b_ram3 <= b_pd(7);
             end if;
           when "0110" =>
-            o_n_we <= '1';
+            -- Unused, future DRAM delay
+          when "0111" => 
             if (i_n_w = '1') then
               cpu_ram_data(0) <= ram_even_tmp(0);
               cpu_ram_data(1) <= b_ram0;
@@ -478,7 +470,6 @@ begin
               cpu_ram_data(6) <= ram_even_tmp(3);
               cpu_ram_data(7) <= b_ram3;
             end if;
-          when "0111" => 
             o_n_ras <= '1';
             o_n_cas <= '1';  
             o_n_we <= '1';
@@ -503,23 +494,26 @@ begin
             o_n_cas <= '1';
             o_n_we <= '1';
           when "1001" =>
-            -- unused
+            -- Unused, future DRAM delay
           when "1010" =>
             -- col latch            
             o_ra <= ula_ram_addr(6 downto 0) & '0';
             o_n_cas <= '0';
           when "1011" =>
+            -- Unused, future DRAM delay
+          when "1100" =>
             ula_ram_data(0) <= b_ram0;
             ula_ram_data(2) <= b_ram1;
             ula_ram_data(4) <= b_ram2;
             ula_ram_data(6) <= b_ram3;
-          when "1100" =>
             o_n_cas <= '1';          
           when "1101" =>
             -- second nibble cycle
             o_ra <= ula_ram_addr(6 downto 0) & '1';
             o_n_cas <= '0';
           when "1110" =>
+            -- Unused, future DRAM delay
+          when "1111" => 
             -- TODO: [Gary] with this separate var ula during nmi wouldn't
             -- display the cpu's ram reading as though it was ula data. No snow!
             -- Need a more accurate representation of what the ULA may have done. 
@@ -527,7 +521,6 @@ begin
             ula_ram_data(3) <= b_ram1;
             ula_ram_data(5) <= b_ram2;
             ula_ram_data(7) <= b_ram3;
-          when "1111" => 
             o_n_ras <= '1';
             o_n_cas <= '1';  
             o_n_we <= '1';
@@ -639,7 +632,6 @@ begin
             -- of the next clock edge when it reads this register. Without the
             -- delay the next ULA clock will clear it long before CPU read occurs.
             -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
-            -- TODO: [Gary] Should this reset only occur on the first read?
             delayed_por_reset := '1';
           elsif (i_addr(3 downto 0) = x"4") then
             isr_status(ISR_RX_FULL) <= '0';
@@ -686,8 +678,6 @@ begin
 
             -- Controls
             when x"7" => misc_control <= b_pd(7 downto 1);
-            -- TODO: [Gary] if mode changes, the base addr should change immediately.
-            -- should the wrap address not be latched in that case?
 
             -- Palette 
             when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
