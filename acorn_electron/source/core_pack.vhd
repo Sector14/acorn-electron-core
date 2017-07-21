@@ -47,7 +47,7 @@ library ieee;
 
 Package Core_Pack is
   constant c_clk_sys_divider      : natural := 32;   -- divide clk_sys down to 1MHz
-  constant c_clk_ctl_for_video    : boolean := false;
+  constant c_clk_ctl_for_video    : boolean := true;
   constant c_use_dram             : boolean := true; -- enabled DRAM block
   constant c_use_fileio           : boolean := true; -- enabled FILEIO block
 

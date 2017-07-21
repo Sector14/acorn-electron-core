@@ -178,7 +178,6 @@ begin
       report "Unexpected data read from address 0x4a38"& vec2str(o_data)
       severity ERROR;
 
-      -- TODO: Should read data remain valid until ras/cas return high?
   end process;
 
 end;

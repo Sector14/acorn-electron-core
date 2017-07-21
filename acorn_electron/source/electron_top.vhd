@@ -1,44 +1,6 @@
 --
--- WWW.FPGAArcade.COM
---
--- REPLAY Retro Gaming Platform
--- No Emulation No Compromise
---
--- All rights reserved
--- Mike Johnson
---
--- Redistribution and use in source and synthezised forms, with or without
--- modification, are permitted provided that the following conditions are met:
---
--- Redistributions of source code must retain the above copyright notice,
--- this list of conditions and the following disclaimer.
---
--- Redistributions in synthesized form must reproduce the above copyright
--- notice, this list of conditions and the following disclaimer in the
--- documentation and/or other materials provided with the distribution.
---
--- Neither the name of the author nor the names of other contributors may
--- be used to endorse or promote products derived from this software without
--- specific prior written permission.
---
--- THIS CODE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
--- AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
--- THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
--- PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE
--- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
--- CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
--- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
--- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
--- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
--- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
--- POSSIBILITY OF SUCH DAMAGE.
---
--- You are responsible for any legal issues arising from your use of this code.
---
--- The latest version of this file can be found at: www.FPGAArcade.com
---
--- Email support@fpgaarcade.com
---
+-- Copyright Gary Preston 2017
+-- All Rights Reserved
 
 --
 -- DDR Layout
@@ -131,7 +93,9 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
+  -- TODO: [Gary] This should come from config.
+  --constant cfg_dblscan : bit1 := '1';
 
   signal led                    : bit1;
   signal tick_pre1              : bit1;
@@ -161,12 +125,15 @@ architecture RTL of Electron_Top is
   signal cpu_data_in  : word(7 downto 0);
   signal cpu_data_out : word(7 downto 0);
   signal cpu_addr     : word(23 downto 0);
+
   -- ULA
   signal ula_clk     : bit1;
   signal ula_rom_ena : bit1;
 
   signal ula_phi_out : bit1;
   signal ula_n_irq   : bit1;
+
+  signal ula_caps_lock : bit1;
 
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;
@@ -180,14 +147,15 @@ architecture RTL of Electron_Top is
   -- CPU/ULA Glue
   signal n_nmi        : bit1;
   
-  -- TODO: [Gary] This should come from config.
-  --constant cfg_dblscan : bit1 := '1';
+  -- Keyboard
+  signal kbd_n_break  : bit1;
+  signal kbd_data     : word(3 downto 0);
+
 begin
   
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
-  o_kb_ps2_leds         <= "000";
 
   o_fcha_fm_core        <= z_Fileio_fm_core;
   o_fchb_fm_core        <= z_Fileio_fm_core;
@@ -337,8 +305,8 @@ begin
     o_ra          => ram_addr,                  -- ram address
 
     -- Keyboard
-    i_kbd         => "0000",
-    o_caps_lock   => open,
+    i_kbd         => kbd_data,
+    o_caps_lock   => ula_caps_lock,
     i_n_reset     => n_reset,
 
     -- ROM/CPU addressing
@@ -353,7 +321,7 @@ begin
     i_n_w         => cpu_n_w                    -- Data direction, /write, read
   );
 
-  -- TODO: [Gary] If DDR is to be shared between ROM and RAM more thought will need to be given
+  -- TODO: [Gary] If DDR is to be shared between ROM and RAM, more thought will need to be given
   -- to timing as ULA assumes the two are on separate buses. Access to RAM is
   -- at 2MHz max so there is ample time to interleave the two.
   p_por : process(i_clk_sys, i_rst_sys, i_halt)
@@ -369,8 +337,9 @@ begin
     end if;
   end process;
 
-  -- TODO: [Gary] ULA is supposed to drive this rather than base on por here?
-  n_reset <= n_por; -- TODO: [Gary] or keyboard "break"
+  -- ULA is supposed to drive n_reset for the POR case but unless
+  -- the ULA needs to drive n_reset in any other case just handle it here
+  n_reset <= n_por and kbd_n_break;
 
   -- TODO: [Gary] not keen on using POR in this way as ula_clk should
   -- be running all the time. Switch to a one off flag set during
@@ -393,17 +362,30 @@ begin
   -- ====================================================================
   -- Input
   -- ====================================================================
-
-  -- TODO: [Gary] Hook up keyboard
   
+  -- Framework PS2 to ULA format.
+  u_ps2_translate : entity work.PS2_Translate
+    port map (
+      i_clk_sys         => i_clk_sys,
+      i_rst_sys         => i_rst_sys,
+
+      -- Keyboard framework interface
+      i_kb_ps2_we       => i_kb_ps2_we,
+      i_kb_ps2_data     => i_kb_ps2_data,
+      i_kb_inhibit      => i_kb_inhibit,
+
+      -- Electron keyboard interface
+      i_addr            => addr_bus(13 downto 0),
+      o_data            => kbd_data,
+      o_n_break         => kbd_n_break
+    );
+  
+  -- caps, num, scroll lock
+  o_kb_ps2_leds <= ula_caps_lock & "00";
 
   -- ====================================================================
   -- Framwork Interfacing
   -- ====================================================================
-
-  -- TODO: [Gary] Would framework interfacing be better off in Core_Top with
-  -- a ram_data/addr, rom_data/addr interface into core?
-  --
   
   --
   -- DDR 
@@ -474,10 +456,8 @@ begin
   --
   -- Scanline Doubling
   --
-  -- TODO: [Gary] Sort high BRAM usage due to RAM/ROM before enabling this.
   --  u_DblScan : entity work.Replay_DblScan
   --  port map (
-  --    -- TODO: [Gary] clk_sys is 2x video generation, sufficient for doubler?
   --    -- clocks
   --    --i_clk                 => i_clk_sys,
   --    --i_ena                 => '1', 
@@ -555,7 +535,7 @@ begin
     end if;
   end process;
 
-  o_disk_led        <=     led;
+  o_disk_led        <= led;
   o_pwr_led         <= not led;
 
   -- ====================================================================
@@ -604,7 +584,8 @@ begin
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
       cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(41 downto 34) <= cpu_data_out;
+      cs_trig(41 downto 38) <= "0000"; -- kbd_data;
+      cs_trig(37 downto 34) <= (others => '0');
       cs_trig(33 downto 26) <= data_bus;
 
       -- RAM
