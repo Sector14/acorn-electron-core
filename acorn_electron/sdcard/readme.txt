@@ -20,6 +20,13 @@ Electron you get a "(". The "*" symbol is actually on the "shift+:" key.
 
 Exceptions to this are:
 
-  - COPY key is bound to "["
   - : and * are moved to the equals key "="
+  - COPY key is bound to "["
+
+Note, as the BREAK key has no release scancode it has been configured
+as a toggle based key. Two keypresses will thus be needed to actually
+reset the electron.
   
+As with the original electron, capslock is toggled via shift+capslock, whilst 
+holding capslock will result in the function key, i.e capslock+e will output
+"ELSE"

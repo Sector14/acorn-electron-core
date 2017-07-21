@@ -93,8 +93,9 @@ Package Replay_ScanCode_PS2_Pack is
   constant c_PS2_CAPS_LOCK        : word (8 downto 0) := '0' & X"58";
   constant c_PS2_NUM_LOCK         : word (8 downto 0) := '0' & X"77";
   constant c_PS2_SCROLL_LOCK      : word (8 downto 0) := '0' & X"7E";
-  constant c_PS2_BREAK            : word (8 downto 0) := '1' & X"14";
-  --
+  -- Break is an E1 based sequence
+  -- constant c_PS2_BREAK            : word (8 downto 0) := '1' & X"14";
+
   constant c_PS2_A                : word (8 downto 0) := '0' & X"1C";
   constant c_PS2_B                : word (8 downto 0) := '0' & X"32";
   constant c_PS2_C                : word (8 downto 0) := '0' & X"21";

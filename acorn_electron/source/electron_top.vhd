@@ -94,6 +94,8 @@ end;
 architecture RTL of Electron_Top is
 
   constant electrontop_cs_enable : boolean := true;
+  -- TODO: [Gary] This should come from config.
+  --constant cfg_dblscan : bit1 := '1';
 
   signal led                    : bit1;
   signal tick_pre1              : bit1;
@@ -123,6 +125,7 @@ architecture RTL of Electron_Top is
   signal cpu_data_in  : word(7 downto 0);
   signal cpu_data_out : word(7 downto 0);
   signal cpu_addr     : word(23 downto 0);
+
   -- ULA
   signal ula_clk     : bit1;
   signal ula_rom_ena : bit1;
@@ -130,7 +133,6 @@ architecture RTL of Electron_Top is
   signal ula_phi_out : bit1;
   signal ula_n_irq   : bit1;
 
-  signal ula_kbd     : word(3 downto 0);
   signal ula_caps_lock : bit1;
 
   -- ULA/Framework extras
@@ -145,8 +147,10 @@ architecture RTL of Electron_Top is
   -- CPU/ULA Glue
   signal n_nmi        : bit1;
   
-  -- TODO: [Gary] This should come from config.
-  --constant cfg_dblscan : bit1 := '1';
+  -- Keyboard
+  signal kbd_n_break  : bit1;
+  signal kbd_data     : word(3 downto 0);
+
 begin
   
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -301,7 +305,7 @@ begin
     o_ra          => ram_addr,                  -- ram address
 
     -- Keyboard
-    i_kbd         => ula_kbd,
+    i_kbd         => kbd_data,
     o_caps_lock   => ula_caps_lock,
     i_n_reset     => n_reset,
 
@@ -333,8 +337,9 @@ begin
     end if;
   end process;
 
-  -- TODO: [Gary] ULA is supposed to drive this rather than base on por here?
-  n_reset <= n_por; -- TODO: [Gary] or keyboard "break"
+  -- ULA is supposed to drive n_reset for the POR case but unless
+  -- the ULA needs to drive n_reset in any other case just handle it here
+  n_reset <= n_por and kbd_n_break;
 
   -- TODO: [Gary] not keen on using POR in this way as ula_clk should
   -- be running all the time. Switch to a one off flag set during
@@ -371,7 +376,8 @@ begin
 
       -- Electron keyboard interface
       i_addr            => addr_bus(13 downto 0),
-      o_data            => ula_kbd
+      o_data            => kbd_data,
+      o_n_break         => kbd_n_break
     );
   
   -- caps, num, scroll lock
@@ -580,7 +586,7 @@ begin
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
       cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(41 downto 38) <= "0000"; -- ula_kbd;
+      cs_trig(41 downto 38) <= "0000"; -- kbd_data;
       cs_trig(37 downto 34) <= (others => '0');
       cs_trig(33 downto 26) <= data_bus;
 

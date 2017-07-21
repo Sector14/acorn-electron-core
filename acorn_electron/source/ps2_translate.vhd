@@ -27,7 +27,9 @@ entity PS2_Translate is
 
     -- Electron keyboard interface
     i_addr            : in word(13 downto 0);   -- active low
-    o_data            : out word(3 downto 0)    -- active low
+    o_data            : out word(3 downto 0);   -- active low
+
+    o_n_break         : out bit1
   );
 end;
 
@@ -42,9 +44,10 @@ architecture RTL of PS2_Translate is
   type t_key_state is array (13 downto 0) of t_key_row_state;
 
   signal key_state    : t_key_state := (others => (others => '1'));
-
   signal key_release  : bit1;
   signal key_extended : bit1;
+  
+  signal key_n_pausebreak : bit1;
 
 begin
 
@@ -57,18 +60,19 @@ begin
       key_extended <= '0';
       key_release <= '0';
       key_state <= (others => (others => '1'));
+      key_n_pausebreak <= '1';
     elsif rising_edge(i_clk_sys) then
       -- Framework strobes only on activity
       if (i_kb_ps2_we = '1' and i_kb_inhibit = '0') then
 
-        if (i_kb_ps2_data = c_KEY_RELEASE) then
+        if (i_kb_ps2_data = c_KEY_PAUSE) then
+          -- No release code, use as a toggle key for now. 
+          key_n_pausebreak <= not key_n_pausebreak;
+        elsif (i_kb_ps2_data = c_KEY_RELEASE) then
           key_release <= '1'; 
         elsif (i_kb_ps2_data = c_KEY_EXTENDED) then
           key_extended <= '1';
         else
-
-          -- TODO: [Gary] detect BREAK key and output as separate bit1
-          -- as this needs feeding direct into the ULA.
 
           -- keys in scancode_ps2 are ext bit & scancode
           case key_extended & i_kb_ps2_data is
@@ -130,7 +134,7 @@ begin
             when c_PS2_MINUS => key_state(2)(0) <= key_release;
             when c_PS2_UP    => key_state(2)(1) <= key_release;
             when c_PS2_EQUALS => key_state(2)(2) <= key_release; -- : *
-            --when UNUSED => key_state(2)(3) <= key_release;
+            -- when UNUSED => key_state(2)(3) <= key_release;
 
             when c_PS2_LEFT => key_state(1)(0) <= key_release;
             when c_PS2_DOWN => key_state(1)(1) <= key_release;
@@ -139,7 +143,7 @@ begin
 
             when c_PS2_RIGHT => key_state(0)(0) <= key_release;            
             when c_PS2_LEFT_BRACKET => key_state(0)(1) <= key_release; -- COPY
-            --when UNUSED => key_state(0)(2) <= key_release;
+            -- when UNUSED => key_state(0)(2) <= key_release;
             when c_PS2_SPACE => key_state(0)(3) <= key_release;
 
             when others =>
@@ -166,5 +170,7 @@ begin
 
     o_data <= result;
   end process;
+
+  o_n_break <= key_n_pausebreak;
 
 end RTL;
