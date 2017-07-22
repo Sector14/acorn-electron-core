@@ -18,7 +18,7 @@
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
-  
+
   use work.Replay_Pack.all;
   use work.Replay_VideoTiming_Pack.all;
 
@@ -105,8 +105,8 @@ architecture RTL of ULA_12C021 is
   signal display_period : boolean;
   
   -- Adjusted screen base and wrap addr for current mode
-  signal mode_base_addr : word(14 downto 6);
-  signal mode_wrap_addr : word(14 downto 6);
+  signal mode_base_addr : unsigned(14 downto 6);
+  signal mode_wrap_addr : unsigned(14 downto 6);
 
   signal rst : bit1;
   signal nmi : bit1;
@@ -265,10 +265,10 @@ begin
     variable cur_pix, next_pix : word(7 downto 0);
     variable pix_count : unsigned(3 downto 0);
     -- screen byte address to read
-    variable read_addr : word(15 downto 0);
+    variable read_addr : unsigned(15 downto 0);
 
     -- start of row addr
-    variable row_addr  : word(15 downto 0);
+    variable row_addr  : unsigned(15 downto 0);
     -- 8 lines + 2 blank
     variable row_count10 : unsigned(3 downto 0);
   begin
@@ -313,9 +313,9 @@ begin
 
       if (clk_phase(3) = '0') then
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
-        ula_ram_addr <= read_addr(14 downto 0);
+        ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
         if (read_addr(15) = '1') then
-          ula_ram_addr <= read_addr(14 downto 0) + (mode_wrap_addr & "000000");
+          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
         end if;
       end if;
 
@@ -332,7 +332,7 @@ begin
             row_count10 := (others => '0');
           end if;
           
-          read_addr := std_logic_vector(unsigned(row_addr) + row_count10);
+          read_addr := row_addr + row_count10;
         end if;
         
         -- 2 hpix per rendered pixel for mode 6 320x256
@@ -340,14 +340,14 @@ begin
           -- Border
           pix_count := (others => '0');
           o_rgb <= x"000000";
-          read_addr := std_logic_vector(unsigned(row_addr) + row_count10);
+          read_addr := row_addr + row_count10;
         else
           display_period <= true;
 
           if (unsigned(pix_count) = 0) then
             cur_pix := next_pix;
             -- pre-fetch next pixel data from ram with 8 byte horiz stride
-            read_addr := std_logic_vector(unsigned(read_addr) + 8);
+            read_addr := read_addr + 8;
           end if;
 
           -- Active Region 640x256
@@ -722,9 +722,9 @@ begin
     -- of ram too on startup) as well as other variations/skips. This needs further
     -- research.
     if screen_start_addr = x"00" & '0' then
-      mode_base_addr <= base_addr(14 downto 6);
+      mode_base_addr <= unsigned(base_addr(14 downto 6));
     else
-      mode_base_addr <= screen_start_addr;
+      mode_base_addr <= unsigned(screen_start_addr);
     end if;
 
     -- TODO: [Gary] Bug after using CLS, any new text typed will show after
@@ -733,7 +733,7 @@ begin
 
     -- Wrapping always starts from the hardcoded address regardless
     -- of screen_start_addr.
-    mode_wrap_addr <= base_addr(14 downto 6);
+    mode_wrap_addr <= unsigned(base_addr(14 downto 6));
   end process;
 
   -- ====================================================================
