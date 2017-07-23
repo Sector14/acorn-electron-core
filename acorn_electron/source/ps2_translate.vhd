@@ -54,7 +54,7 @@ begin
   -- Keys and address are active low
   -- See AUG p216 or Keyboard matrix in service manual.
   -- Grid is (a0 || k0) && (a1 + k1) && (a2 || k2)... for each bit
-  p_kbd_scan : process(i_clk_sys, i_rst_sys)
+  p_kbd_scan : process(i_clk_sys, i_rst_sys, i_kb_inhibit)
   begin
     if (i_rst_sys = '1' or i_kb_inhibit = '1') then
       key_extended <= '0';
