@@ -35,6 +35,11 @@ entity ULA_12C021 is
 
     o_rgb         : out word(23 downto 0);
 
+    -- ULA is clock enabled on clk_sys rather than a new clock domain
+    i_clk_sys     : in bit1;
+    i_clk_ena     : in bit1;                    
+    i_div13_ena   : in bit1;
+
     --
     -- ULA
     -- 
@@ -57,10 +62,10 @@ entity ULA_12C021 is
     --o_red         : out bit1;            
     --o_green       : out bit1;            
     --o_blue        : out bit1; 
-       
-    -- Clock             
-    i_clk         : in bit1;                    
-    i_div_13      : in bit1;                   -- clk div 13
+  
+    -- Clock
+    -- i_clk      : in bit1;
+    -- i_div13    : in bit1;
        
     -- RAM (4x64k 1 bit)       
     b_ram0        : inout bit1;                -- RAM Data ic 0
@@ -180,25 +185,34 @@ begin
   -- ====================================================================
   -- 16MHz clock down to 2MHz & 1MHz generator
   -- ULA ticks 0..15 with 1MHz active on clock 0 and 2MHz on 0 and 8
-  p_clk_gen : process(i_clk, rst)
+  p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      clk_phase <= (others => '1');
+      -- 2 ULA clocks to happen before 1&2MHz clk high to align with sys cph(3)
+      clk_phase <= "1110";
       clk_1MHz <= '0';
       clk_2MHz <= '0';
-    elsif rising_edge(i_clk) then
+    elsif rising_edge(i_clk_sys) then
       clk_1MHz <= '0';
       clk_2MHz <= '0';
-      
-      if (clk_phase = "1111") then
-        clk_2MHz <= '1';
-        clk_1MHz <= '1';
-      elsif (clk_phase = "0111") then
-        clk_2MHz <= '1';
+
+      -- TODO: [Gary] Sync between clk_phase 0000 and sys cph 3 for DRAM
+      -- access is a tad messy. Move 1&2MHz clock gen out to Top ?
+      -- Due to 1 in 2 enable, tick to next clock phase when not enabled
+      -- so that the 1&2MHz high aligns with clk_ena 1. Hacky! Move 
+      -- clock gen into top instead? or expose sys phase to ula.
+      if (i_clk_ena = '0') then        
+        if (clk_phase = "1111") then
+          clk_2MHz <= '1';
+          clk_1MHz <= '1';
+        elsif (clk_phase = "0111") then
+          clk_2MHz <= '1';
+        end if;
+        clk_phase <= clk_phase + 1;
       end if;
-      clk_phase <= clk_phase + 1;
     end if;
   end process;
+
 
   -- ====================================================================
   -- Video
@@ -219,8 +233,8 @@ begin
       g_param               => c_Vidparam_832x287p_50_16MHz
       )
     port map (
-      i_clk                 => i_clk,
-      i_ena                 => '1',
+      i_clk                 => i_clk_sys,
+      i_ena                 => i_clk_ena,
       i_rst                 => rst,
       --
       i_param               => c_Vidparam_832x287p_50_16MHz,
@@ -261,7 +275,7 @@ begin
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
 
-  u_vid_rgb : process(i_clk, rst)
+  u_vid_rgb : process(i_clk_sys, rst)
     variable cur_pix, next_pix : word(7 downto 0);
     variable pix_count : unsigned(3 downto 0);
     -- screen byte address to read
@@ -280,85 +294,88 @@ begin
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
       row_count10 := "0000";
-    elsif rising_edge(i_clk) then
-      o_rgb <= x"000000";
+    elsif rising_edge(i_clk_sys) then
 
-      display_period <= false;
-      
-      -- Mode 6 Memory layout assuming 0x6000 screen start
-      -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
-      -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
-      -- See AUG p240
-      --
-      -- 832 active "pixels" in the 51.95us display area. The 640
-      -- display should use the central 40us giving a cycle timing of 62.5ns.
-
-      -- TODO: [Gary] Mode changes can occur mid scanline. Treat mode 7 as mode 4.
-      --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
-      -- TODO: [Gary] This is a rather messy bit of logic that needs generalising to allow
-      --       modes 0..6 to be correctly supported with line blanking for text modes,
-      --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
-     
-      if (unsigned(vpix) = 0) then   
-        -- Latch mode adjusted screen start. Wrap is not latched as it's based on
-        -- screen mode which can be changed mid frame.
-        row_addr := '0' & mode_base_addr & "000000";
-        read_addr := row_addr;
-        row_count10 := "0000";
-      end if;
-
-      if (clk_phase = "0000") then
-        next_pix := ula_ram_data;
-      end if;
-
-      if (clk_phase(3) = '0') then
-        -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
-        ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
-        if (read_addr(15) = '1') then
-          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
-        end if;
-      end if;
-
-      if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
-        -- overscan
+      if (i_clk_ena = '1') then
         o_rgb <= x"000000";
-      elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
 
-        -- Setup for first byte of new line
-        if (unsigned(hpix) = 704) then   
-          row_count10 := row_count10 + 1;
-          if (row_count10 = 10) then
-            row_addr := row_addr + 320;
-            row_count10 := (others => '0');
+        display_period <= false;
+        
+        -- Mode 6 Memory layout assuming 0x6000 screen start
+        -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
+        -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
+        -- See AUG p240
+        --
+        -- 832 active "pixels" in the 51.95us display area. The 640
+        -- display should use the central 40us giving a cycle timing of 62.5ns.
+
+        -- TODO: [Gary] Mode changes can occur mid scanline. Treat mode 7 as mode 4.
+        --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
+        -- TODO: [Gary] This is a rather messy bit of logic that needs generalising to allow
+        --       modes 0..6 to be correctly supported with line blanking for text modes,
+        --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
+      
+        if (unsigned(vpix) = 0) then   
+          -- Latch mode adjusted screen start. Wrap is not latched as it's based on
+          -- screen mode which can be changed mid frame.
+          row_addr := '0' & mode_base_addr & "000000";
+          read_addr := row_addr;
+          row_count10 := "0000";
+        end if;
+
+        if (clk_phase = "0000") then
+          next_pix := ula_ram_data;
+        end if;
+
+        if (clk_phase(3) = '0') then
+          -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
+          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
+          if (read_addr(15) = '1') then
+            ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
+          end if;
+        end if;
+
+        if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
+          -- overscan
+          o_rgb <= x"000000";
+        elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
+
+          -- Setup for first byte of new line
+          if (unsigned(hpix) = 704) then   
+            row_count10 := row_count10 + 1;
+            if (row_count10 = 10) then
+              row_addr := row_addr + 320;
+              row_count10 := (others => '0');
+            end if;
+            
+            read_addr := row_addr + row_count10;
           end if;
           
-          read_addr := row_addr + row_count10;
+          -- 2 hpix per rendered pixel for mode 6 320x256
+          if (unsigned(hpix) < 64 or unsigned(hpix) >= 704 or row_count10 >= 8) then
+            -- Border
+            pix_count := (others => '0');
+            o_rgb <= x"000000";
+            read_addr := row_addr + row_count10;
+          else
+            display_period <= true;
+
+            if (unsigned(pix_count) = 0) then
+              cur_pix := next_pix;
+              -- pre-fetch next pixel data from ram with 8 byte horiz stride
+              read_addr := read_addr + 8;
+            end if;
+
+            -- Active Region 640x256
+            -- For 320 and 160 modes, repeat pixels.        
+            o_rgb <= x"000000";
+            if (cur_pix(7 - to_integer(pix_count(3 downto 1))) = '1') then
+              o_rgb <= x"FFFFFF";
+            end if;
+          
+            pix_count := pix_count + 1;         
+          end if;        
         end if;
-        
-        -- 2 hpix per rendered pixel for mode 6 320x256
-        if (unsigned(hpix) < 64 or unsigned(hpix) >= 704 or row_count10 >= 8) then
-          -- Border
-          pix_count := (others => '0');
-          o_rgb <= x"000000";
-          read_addr := row_addr + row_count10;
-        else
-          display_period <= true;
-
-          if (unsigned(pix_count) = 0) then
-            cur_pix := next_pix;
-            -- pre-fetch next pixel data from ram with 8 byte horiz stride
-            read_addr := read_addr + 8;
-          end if;
-
-          -- Active Region 640x256
-          -- For 320 and 160 modes, repeat pixels.        
-          o_rgb <= x"000000";
-          if (cur_pix(7 - to_integer(pix_count(3 downto 1))) = '1') then
-            o_rgb <= x"FFFFFF";
-          end if;
-         
-          pix_count := pix_count + 1;         
-        end if;        
       end if;
 
     end if;
@@ -388,7 +405,7 @@ begin
   --  2. When nmi is signalled during which time the ULA suspends its ram access.
   -- CPU Gets first 8 cycles, ULA second 8.
 
-  p_ram_access : process(i_clk, rst)
+  p_ram_access : process(i_clk_sys, rst)
     variable ram_even_tmp  : word(3 downto 0);
   begin
     cur_nibble_signal <= ram_even_tmp;
@@ -400,133 +417,136 @@ begin
       ula_ram_data <= (others => '0');
       cpu_ram_data <= (others => '0');
       b_pd <= (others => 'Z');
-    elsif rising_edge(i_clk) then
-      -- Cpu accessing ram during its slot, or, ula slot.
-      if (i_addr(15) = '0') then
-        if (i_n_w = '1') then 
-          b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
+    elsif rising_edge(i_clk_sys) then
+      if (i_clk_ena = '1') then
+
+        -- Cpu accessing ram during its slot, or, ula slot.
+        if (i_addr(15) = '0') then
+          if (i_n_w = '1') then 
+            b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
+          end if;
+
+          -- TODO: [Gary] Is the 1 to 2 MHz clock transition in sync with this? as cpu needs to remain on the 0
+          --       cycle access after transitioning back, not end up expecting to use 8+
+          -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
+          --              CPU should get 1MHz access regardless if NMI
+          
+          -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
+          case clk_phase is
+            -- CPU Slot
+            when "0000" =>
+              -- row latch
+              o_ra <= i_addr(14 downto 7);
+              o_n_ras <= '0';
+
+              o_n_cas <= '1';
+              o_n_we <= '1';
+            when "0001" =>
+              -- Unused, future DRAM delay 
+            when "0010" =>
+              -- col latch
+              o_ra <= i_addr(6 downto 0) & '0';
+              o_n_cas <= '0';
+              o_n_we <= i_n_w;
+              if (i_n_w = '0') then
+                b_ram0 <= b_pd(0);
+                b_ram1 <= b_pd(2);
+                b_ram2 <= b_pd(4);
+                b_ram3 <= b_pd(6);
+              end if;
+            when "0011" =>
+              -- Unused, future DRAM delay
+            when "0100" =>
+              if (i_n_w = '1') then
+                ram_even_tmp(0) := b_ram0;              
+                ram_even_tmp(1) := b_ram1;
+                ram_even_tmp(2) := b_ram2;
+                ram_even_tmp(3) := b_ram3;
+              end if;
+              o_n_we <= '1';
+              o_n_cas <= '1';          
+            when "0101" =>
+              -- second nibble cycle
+              o_ra <= i_addr(6 downto 0) & '1';
+              o_n_cas <= '0';
+              o_n_we <= i_n_w;
+              if (i_n_w = '0') then
+                b_ram0 <= b_pd(1);
+                b_ram1 <= b_pd(3);
+                b_ram2 <= b_pd(5);
+                b_ram3 <= b_pd(7);
+              end if;
+            when "0110" =>
+              -- Unused, future DRAM delay
+            when "0111" => 
+              if (i_n_w = '1') then
+                cpu_ram_data(0) <= ram_even_tmp(0);
+                cpu_ram_data(1) <= b_ram0;
+                cpu_ram_data(2) <= ram_even_tmp(1);
+                cpu_ram_data(3) <= b_ram1;
+                cpu_ram_data(4) <= ram_even_tmp(2);
+                cpu_ram_data(5) <= b_ram2;
+                cpu_ram_data(6) <= ram_even_tmp(3);
+                cpu_ram_data(7) <= b_ram3;
+              end if;
+              o_n_ras <= '1';
+              o_n_cas <= '1';  
+              o_n_we <= '1';
+
+            when others =>
+
+          end case;
         end if;
 
-        -- TODO: [Gary] Is the 1 to 2 MHz clock transition in sync with this? as cpu needs to remain on the 0
-        --       cycle access after transitioning back, not end up expecting to use 8+
-        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
-        --              CPU should get 1MHz access regardless if NMI
-        
-        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
-        case clk_phase is
-          -- CPU Slot
-          when "0000" =>
-            -- row latch
-            o_ra <= i_addr(14 downto 7);
-            o_n_ras <= '0';
+        -- ULA Slot
+        if (clk_phase(3) = '1') then
+          -- ULA reads internally only.
+          b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
 
-            o_n_cas <= '1';
-            o_n_we <= '1';
-          when "0001" =>
-            -- Unused, future DRAM delay 
-          when "0010" =>
-            -- col latch
-            o_ra <= i_addr(6 downto 0) & '0';
-            o_n_cas <= '0';
-            o_n_we <= i_n_w;
-            if (i_n_w = '0') then
-              b_ram0 <= b_pd(0);
-              b_ram1 <= b_pd(2);
-              b_ram2 <= b_pd(4);
-              b_ram3 <= b_pd(6);
-            end if;
-          when "0011" =>
-            -- Unused, future DRAM delay
-          when "0100" =>
-            if (i_n_w = '1') then
-              ram_even_tmp(0) := b_ram0;              
-              ram_even_tmp(1) := b_ram1;
-              ram_even_tmp(2) := b_ram2;
-              ram_even_tmp(3) := b_ram3;
-            end if;
-            o_n_we <= '1';
-            o_n_cas <= '1';          
-          when "0101" =>
-            -- second nibble cycle
-            o_ra <= i_addr(6 downto 0) & '1';
-            o_n_cas <= '0';
-            o_n_we <= i_n_w;
-            if (i_n_w = '0') then
-              b_ram0 <= b_pd(1);
-              b_ram1 <= b_pd(3);
-              b_ram2 <= b_pd(5);
-              b_ram3 <= b_pd(7);
-            end if;
-          when "0110" =>
-            -- Unused, future DRAM delay
-          when "0111" => 
-            if (i_n_w = '1') then
-              cpu_ram_data(0) <= ram_even_tmp(0);
-              cpu_ram_data(1) <= b_ram0;
-              cpu_ram_data(2) <= ram_even_tmp(1);
-              cpu_ram_data(3) <= b_ram1;
-              cpu_ram_data(4) <= ram_even_tmp(2);
-              cpu_ram_data(5) <= b_ram2;
-              cpu_ram_data(6) <= ram_even_tmp(3);
-              cpu_ram_data(7) <= b_ram3;
-            end if;
-            o_n_ras <= '1';
-            o_n_cas <= '1';  
-            o_n_we <= '1';
+          case clk_phase is
+            -- ULA Slot
+            when "1000" =>
+              -- row latch
+              o_ra <= ula_ram_addr(14 downto 7);
+              o_n_ras <= '0';
 
-          when others =>
+              o_n_cas <= '1';
+              o_n_we <= '1';
+            when "1001" =>
+              -- Unused, future DRAM delay
+            when "1010" =>
+              -- col latch            
+              o_ra <= ula_ram_addr(6 downto 0) & '0';
+              o_n_cas <= '0';
+            when "1011" =>
+              -- Unused, future DRAM delay
+            when "1100" =>
+              ula_ram_data(0) <= b_ram0;
+              ula_ram_data(2) <= b_ram1;
+              ula_ram_data(4) <= b_ram2;
+              ula_ram_data(6) <= b_ram3;
+              o_n_cas <= '1';          
+            when "1101" =>
+              -- second nibble cycle
+              o_ra <= ula_ram_addr(6 downto 0) & '1';
+              o_n_cas <= '0';
+            when "1110" =>
+              -- Unused, future DRAM delay
+            when "1111" => 
+              -- TODO: [Gary] with this separate var ula during nmi wouldn't
+              -- display the cpu's ram reading as though it was ula data. No snow!
+              -- Need a more accurate representation of what the ULA may have done. 
+              ula_ram_data(1) <= b_ram0;
+              ula_ram_data(3) <= b_ram1;
+              ula_ram_data(5) <= b_ram2;
+              ula_ram_data(7) <= b_ram3;
+              o_n_ras <= '1';
+              o_n_cas <= '1';  
+              o_n_we <= '1';
+            when others =>
+          end case;
 
-        end case;
-      end if;
-
-      -- ULA Slot
-      if (clk_phase(3) = '1') then
-        -- ULA reads internally only.
-        b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-
-        case clk_phase is
-          -- ULA Slot
-          when "1000" =>
-            -- row latch
-            o_ra <= ula_ram_addr(14 downto 7);
-            o_n_ras <= '0';
-
-            o_n_cas <= '1';
-            o_n_we <= '1';
-          when "1001" =>
-            -- Unused, future DRAM delay
-          when "1010" =>
-            -- col latch            
-            o_ra <= ula_ram_addr(6 downto 0) & '0';
-            o_n_cas <= '0';
-          when "1011" =>
-            -- Unused, future DRAM delay
-          when "1100" =>
-            ula_ram_data(0) <= b_ram0;
-            ula_ram_data(2) <= b_ram1;
-            ula_ram_data(4) <= b_ram2;
-            ula_ram_data(6) <= b_ram3;
-            o_n_cas <= '1';          
-          when "1101" =>
-            -- second nibble cycle
-            o_ra <= ula_ram_addr(6 downto 0) & '1';
-            o_n_cas <= '0';
-          when "1110" =>
-            -- Unused, future DRAM delay
-          when "1111" => 
-            -- TODO: [Gary] with this separate var ula during nmi wouldn't
-            -- display the cpu's ram reading as though it was ula data. No snow!
-            -- Need a more accurate representation of what the ULA may have done. 
-            ula_ram_data(1) <= b_ram0;
-            ula_ram_data(3) <= b_ram1;
-            ula_ram_data(5) <= b_ram2;
-            ula_ram_data(7) <= b_ram3;
-            o_n_ras <= '1';
-            o_n_cas <= '1';  
-            o_n_we <= '1';
-          when others =>
-        end case;
-
+        end if;
       end if;
 
     end if;
@@ -595,7 +615,7 @@ begin
           cassette_data_shift                     when i_addr( 3 downto 0) = x"4" else
           (others => 'Z');
 
-  p_registers : process(i_clk, rst)
+  p_registers : process(i_clk_sys, rst)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
   begin
@@ -609,97 +629,99 @@ begin
       misc_control <= (others => '0');
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
-    elsif rising_edge(i_clk) then
+    elsif rising_edge(i_clk_sys) then
+      if (i_clk_ena = '1') then
+        -- Delayed POR reset pending?
+        -- TODO: [Gary] This needs to account for 1 or 2MHz cpu?
+        if (delayed_por_reset = '1' and clk_1MHz = '1') then
+          delayed_por_reset := '0';
+          isr_status(ISR_POWER_ON_RESET) <= '0';
+        end if;
 
-      -- Delayed POR reset pending?
-      -- TODO: [Gary] This needs to account for 1 or 2MHz cpu?
-      if (delayed_por_reset = '1' and clk_1MHz = '1') then
-        delayed_por_reset := '0';
-        isr_status(ISR_POWER_ON_RESET) <= '0';
-      end if;
+        if (i_n_nmi = '0') then
+          nmi <= '1';
+        end if;
+        
+        -- Register access
+        if (i_addr(15 downto 8) = x"FE") then
+        
+          if (i_n_w = '1') then
 
-      if (i_n_nmi = '0') then
-        nmi <= '1';
-      end if;
-      
-      -- Register access
-      if (i_addr(15 downto 8) = x"FE") then
-      
-        if (i_n_w = '1') then
+            if (i_addr(3 downto 0) = x"0") then
+              -- CPU needs to be able to see the POR flag was active at the start
+              -- of the next clock edge when it reads this register. Without the
+              -- delay the next ULA clock will clear it long before CPU read occurs.
+              -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
+              delayed_por_reset := '1';
+            elsif (i_addr(3 downto 0) = x"4") then
+              isr_status(ISR_RX_FULL) <= '0';
+            end if;
 
-          if (i_addr(3 downto 0) = x"0") then
-            -- CPU needs to be able to see the POR flag was active at the start
-            -- of the next clock edge when it reads this register. Without the
-            -- delay the next ULA clock will clear it long before CPU read occurs.
-            -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
-            delayed_por_reset := '1';
-          elsif (i_addr(3 downto 0) = x"4") then
-            isr_status(ISR_RX_FULL) <= '0';
-          end if;
+          else
+            case i_addr(3 downto 0) is
+              -- Interrupt status and control register
+              when x"0" => isr_en <= b_pd(6 downto 2);
 
-        else
-          case i_addr(3 downto 0) is
-            -- Interrupt status and control register
-            when x"0" => isr_en <= b_pd(6 downto 2);
+              -- do nothing
+              when x"1" => 
 
-            -- do nothing
-            when x"1" => 
+              -- Video status address low
+              when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
+              -- Video status address high
+              when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
+              
+              -- Cassette
+              when x"4" => -- TODO: [Gary] not yet implemented
+                isr_status(ISR_TX_EMPTY) <= '0';
 
-            -- Video status address low
-            when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
-            -- Video status address high
-            when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
-            
-            -- Cassette
-            when x"4" => -- TODO: [Gary] not yet implemented
-              isr_status(ISR_TX_EMPTY) <= '0';
-
-            -- Paged ROM/Interrupt clear
-            when x"5" =>
-              if (isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and isrc_paging(ISRC_ROM_PAGE'LEFT) = '0') then
-                -- Only 8-15 allowed when page 8-11 is active (ie kbd/basic rom pages AUG p211)
-                if (b_pd(3) = '1') then
+              -- Paged ROM/Interrupt clear
+              when x"5" =>
+                if (isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and isrc_paging(ISRC_ROM_PAGE'LEFT) = '0') then
+                  -- Only 8-15 allowed when page 8-11 is active (ie kbd/basic rom pages AUG p211)
+                  if (b_pd(3) = '1') then
+                    isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
+                    isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
+                  end if;
+                else
                   isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
                   isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
                 end if;
-              else
-                isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
-                isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
-              end if;
-              
-              -- Clear requested interrupts
-              nmi                       <= nmi and not b_pd(ISRC_NMI);
-              isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not b_pd(ISRC_HIGH_TONE);
-              isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not b_pd(ISRC_RTC);
-              isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not b_pd(ISRC_FRAME_END);
+                
+                -- Clear requested interrupts
+                nmi                       <= nmi and not b_pd(ISRC_NMI);
+                isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not b_pd(ISRC_HIGH_TONE);
+                isr_status(ISR_RTC)       <= isr_status(ISR_RTC) and not b_pd(ISRC_RTC);
+                isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not b_pd(ISRC_FRAME_END);
 
-            -- Counter/Cassette control (write only)
-            when x"6" => multi_counter <= b_pd;
+              -- Counter/Cassette control (write only)
+              when x"6" => multi_counter <= b_pd;
 
-            -- Controls
-            when x"7" => misc_control <= b_pd(7 downto 1);
+              -- Controls
+              when x"7" => misc_control <= b_pd(7 downto 1);
 
-            -- Palette 
-            when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
+              -- Palette 
+              when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
 
-          end case;
+            end case;
+          end if;
+
         end if;
 
+        -- Interrupt Generation
+        -- TODO: [Gary] check -1, may be off by 1 depending on when vtotal inc occurs
+        if (unsigned(vpix) = unsigned(vtotal)-1) then
+          isr_status(ISR_FRAME_END) <= '1';        
+        end if;
+
+        -- 50Hz RTC interrupt every 320000 clocks      
+        if (rtc_count = 320000-1) then
+          rtc_count <= (others => '0');
+          isr_status(ISR_RTC) <= '1';
+        else
+          rtc_count <= rtc_count + 1;
+        end if;
       end if;
 
-      -- Interrupt Generation
-      -- TODO: [Gary] check -1, may be off by 1 depending on when vtotal inc occurs
-      if (unsigned(vpix) = unsigned(vtotal)-1) then
-        isr_status(ISR_FRAME_END) <= '1';        
-      end if;
-
-      -- 50Hz RTC interrupt every 320000 clocks      
-      if (rtc_count = 320000-1) then
-        rtc_count <= (others => '0');
-        isr_status(ISR_RTC) <= '1';
-      else
-        rtc_count <= rtc_count + 1;
-      end if;
     end if;
   end process;
 

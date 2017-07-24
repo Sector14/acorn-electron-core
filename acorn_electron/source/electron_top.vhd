@@ -93,7 +93,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 
@@ -169,15 +169,12 @@ begin
   -- Misc
   -- ====================================================================
 
-  -- TODO: [Gary] Should sys_clk be passed into the ULA to allow
-  -- div13 and the ula_clk to be used as clock enables rather than new
-  -- clocks? Are there timing issues with how it is setup now?
-
   -- IC9 clock div 13 (74LS163)
   b_clk_div : block
     signal cnt : unsigned( 3 downto 0 ) := (others => '0');
   begin
 
+    -- TODO: [Gary] This should be ula_clk / 13 not sys_clk.
     p_ic9_div13 : process(i_clk_sys)
     begin
       if rising_edge(i_clk_sys) then
@@ -268,6 +265,11 @@ begin
     o_de          => ula_de,               
     o_rgb         => ula_rgb,
 
+    -- Clock   
+    i_clk_sys     => i_clk_sys,
+    i_clk_ena     => ula_clk,                   -- 1 in 2, 16MHz
+    i_div13_ena   => div13,                     -- ula_clk div 13
+    
     --
     -- ULA
     --
@@ -288,9 +290,6 @@ begin
     o_n_csync     => ula_n_csync,               -- h/v sync
     o_n_hsync     => ula_n_hsync,               -- h sync
      
-    -- Clock   
-    i_clk         => ula_clk,                   -- 16MHz
-    i_div_13      => div13,                     -- ula_clk div 13
        
     -- RAM (4x64k 1 bit)       
     b_ram0        => ram_data(0),
