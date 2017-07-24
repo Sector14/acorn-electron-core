@@ -93,13 +93,15 @@ entity ULA_12C021 is
     i_n_nmi       : inout bit1;                -- 1MHz RAM access detection
     o_phi_out     : out bit1;                  -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
-    i_n_w         : in bit1                    -- Data direction, /write, read
+    i_n_w         : in bit1;                    -- Data direction, /write, read
+
+    o_debug_trig      : out bit1;
+    o_debug_clk_phase : out unsigned(3 downto 0)
+
   );
 end;
 
 architecture RTL of ULA_12C021 is
-  -- Debug
-  signal cur_nibble_signal : word(3 downto 0);
 
   -- Framework Video
   signal ana_hsync, ana_vsync, ana_de : bit1;
@@ -172,6 +174,8 @@ architecture RTL of ULA_12C021 is
    
 begin
 
+  o_debug_clk_phase <= clk_phase;
+
   -- Power up, perform reset
   -- TODO: [Gary] Should ULA drive i_n_reset too to cause cpu reset? Is this
   --       pin tri-state on real ULA?
@@ -183,25 +187,23 @@ begin
   -- ====================================================================
   -- Master Timing
   -- ====================================================================
-  -- 16MHz clock down to 2MHz & 1MHz generator
-  -- ULA ticks 0..15 with 1MHz active on clock 0 and 2MHz on 0 and 8
+  -- 2MHz & 1MHz generator based on 16MHz clock
+  -- ULA ticks 0..15 with 1MHz active on clock 0, 2MHz on 0 and 8
+  -- Note: Even clocks are aligned with sys_cph(3) for DRAM access
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      -- 2 ULA clocks to happen before 1&2MHz clk high to align with sys cph(3)
-      clk_phase <= "1110";
+      -- align pixel clock start (hpix 0) with clkphase 0000
+      clk_phase <= "1111";
       clk_1MHz <= '0';
       clk_2MHz <= '0';
     elsif rising_edge(i_clk_sys) then
       clk_1MHz <= '0';
       clk_2MHz <= '0';
 
-      -- TODO: [Gary] Sync between clk_phase 0000 and sys cph 3 for DRAM
-      -- access is a tad messy. Move 1&2MHz clock gen out to Top ?
-      -- Due to 1 in 2 enable, tick to next clock phase when not enabled
-      -- so that the 1&2MHz high aligns with clk_ena 1. Hacky! Move 
-      -- clock gen into top instead? or expose sys phase to ula.
-      if (i_clk_ena = '0') then        
+      -- ula_clk is a 1 in 2 enabled sys_clk, transition made on the off
+      -- clock to align generated clocks and clk_phase with clk_ena
+      if (i_clk_ena = '0') then    
         if (clk_phase = "1111") then
           clk_2MHz <= '1';
           clk_1MHz <= '1';
@@ -212,7 +214,6 @@ begin
       end if;
     end if;
   end process;
-
 
   -- ====================================================================
   -- Video
@@ -294,6 +295,8 @@ begin
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
       row_count10 := "0000";
+
+      o_debug_trig <= '0';
     elsif rising_edge(i_clk_sys) then
 
       if (i_clk_ena = '1') then
@@ -301,6 +304,11 @@ begin
 
         display_period <= false;
         
+        o_debug_trig <= '0';
+
+        if (unsigned(hpix) = 0) then
+          o_debug_trig <= '1';
+        end if;
         -- Mode 6 Memory layout assuming 0x6000 screen start
         -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
         -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
@@ -314,7 +322,9 @@ begin
         -- TODO: [Gary] This is a rather messy bit of logic that needs generalising to allow
         --       modes 0..6 to be correctly supported with line blanking for text modes,
         --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
-      
+        -- TODO: [Gary] The timing between clk_phase and video pixels is rather brittle
+        -- hpix 0 occurs on clk_phase 1.
+
         if (unsigned(vpix) = 0) then   
           -- Latch mode adjusted screen start. Wrap is not latched as it's based on
           -- screen mode which can be changed mid frame.
@@ -323,6 +333,9 @@ begin
           row_count10 := "0000";
         end if;
 
+        -- TODO: [Gary] Once 2MHz support added for all modes that require it, will need
+        --       to fetch one byte from ram_data at start of each 8 cycle read
+        -- hpix 0 is aligned with clk_phase 0000.
         if (clk_phase = "0000") then
           next_pix := ula_ram_data;
         end if;
@@ -356,11 +369,13 @@ begin
             -- Border
             pix_count := (others => '0');
             o_rgb <= x"000000";
+
+            -- Setup for read one byte prior to needing it
             read_addr := row_addr + row_count10;
           else
             display_period <= true;
 
-            if (unsigned(pix_count) = 0) then
+            if (pix_count = 0) then
               cur_pix := next_pix;
               -- pre-fetch next pixel data from ram with 8 byte horiz stride
               read_addr := read_addr + 8;
@@ -408,7 +423,6 @@ begin
   p_ram_access : process(i_clk_sys, rst)
     variable ram_even_tmp  : word(3 downto 0);
   begin
-    cur_nibble_signal <= ram_even_tmp;
 
     if (rst = '1') then
       o_n_we <= '1';

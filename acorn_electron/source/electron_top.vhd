@@ -93,7 +93,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 
@@ -151,6 +151,9 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
+  -- Debug
+  signal debug_trig : bit1;
+  signal debug_clk_phase : unsigned(3 downto 0);
 begin
   
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -317,20 +320,20 @@ begin
     i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
     o_phi_out     => ula_phi_out,               -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
-    i_n_w         => cpu_n_w                    -- Data direction, /write, read
+    i_n_w         => cpu_n_w,                    -- Data direction, /write, read
+
+    o_debug_trig  => debug_trig,
+    o_debug_clk_phase => debug_clk_phase
   );
 
-  -- TODO: [Gary] If DDR is to be shared between ROM and RAM, more thought will need to be given
-  -- to timing as ULA assumes the two are on separate buses. Access to RAM is
-  -- at 2MHz max so there is ample time to interleave the two.
   p_por : process(i_clk_sys, i_rst_sys, i_halt)
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
       n_por <= '0';
     elsif rising_edge(i_clk_sys) then
-      -- Delay bringing out of reset until after cph(1) to align even ula_clk
+      -- Ensure first ULA clock tick occurs on cph(1) to align even ula_clk
       -- cycles with cph(3). DDR can then be accessed every other even ula_clk cycle
-      if (i_cph_sys(2) = '1') then
+      if (i_cph_sys(0) = '1') then
         n_por <= '1';
       end if;
     end if;
@@ -340,9 +343,7 @@ begin
   -- the ULA needs to drive n_reset in any other case just handle it here
   n_reset <= n_por and kbd_n_break;
 
-  -- TODO: [Gary] not keen on using POR in this way as ula_clk should
-  -- be running all the time. Switch to a one off flag set during
-  -- sys reset instead?
+  -- Orig ULA would clock regardless of por, this is a compromise for DDR access
   -- 16MHz from sys_clk / 2. ula_clk sync'd to cph(3) via por
   ula_clk <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
   
@@ -583,8 +584,9 @@ begin
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
       cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(41 downto 38) <= "0000"; -- kbd_data;
-      cs_trig(37 downto 34) <= (others => '0');
+      cs_trig(41 downto 38) <= std_logic_vector(debug_clk_phase);
+      cs_trig(37) <= debug_trig;      
+      cs_trig(36 downto 34) <= (others => '0');
       cs_trig(33 downto 26) <= data_bus;
 
       -- RAM
