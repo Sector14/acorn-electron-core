@@ -133,6 +133,9 @@ architecture RTL of Electron_Top is
   signal ula_phi_out : bit1;
   signal ula_n_irq   : bit1;
 
+  signal ula_n_reset_in   : bit1;
+  signal ula_n_reset_out  : bit1;
+
   signal ula_caps_lock : bit1;
 
   -- ULA/Framework extras
@@ -142,8 +145,7 @@ architecture RTL of Electron_Top is
   -- ULA Glue
   signal div13       : bit1;
   signal n_por       : bit1;
-  signal n_reset     : bit1;
-
+  
   -- CPU/ULA Glue
   signal n_nmi        : bit1;
   
@@ -222,7 +224,7 @@ begin
   ic3_6502 : entity work.T65
   port map (
     Mode    => "00",               -- 6502
-    Res_n   => n_reset,
+    Res_n   => ula_n_reset_out,
     Enable  => '1',
     Clk     => ula_phi_out,
     Rdy     => '1',
@@ -309,7 +311,8 @@ begin
     -- Keyboard
     i_kbd         => kbd_data,
     o_caps_lock   => ula_caps_lock,
-    i_n_reset     => n_reset,
+    i_n_reset     => ula_n_reset_in,
+    o_n_reset     => ula_n_reset_out,
 
     -- ROM/CPU addressing
     o_rom         => ula_rom_ena,               -- rom select enable   
@@ -326,27 +329,30 @@ begin
     o_debug_clk_phase => debug_clk_phase
   );
 
-  p_por : process(i_clk_sys, i_rst_sys, i_halt)
+  p_por : process(i_clk_sys, i_rst_sys, i_halt, kbd_n_break)
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
       n_por <= '0';
+    elsif (kbd_n_break = '0') then
+      ula_n_reset_in <= '0';
     elsif rising_edge(i_clk_sys) then
+      -- soft or hard reset
       -- Ensure first ULA clock tick occurs on cph(1) to align even ula_clk
       -- cycles with cph(3). DDR can then be accessed every other even ula_clk cycle
       if (i_cph_sys(0) = '1') then
         n_por <= '1';
+        if (kbd_n_break = '1') then
+          ula_n_reset_in <= '1';
+        end if;
       end if;
+
     end if;
   end process;
-
-  -- ULA is supposed to drive n_reset for the POR case but unless
-  -- the ULA needs to drive n_reset in any other case just handle it here
-  n_reset <= n_por and kbd_n_break;
 
   -- Orig ULA would clock regardless of por, this is a compromise for DDR access
   -- 16MHz from sys_clk / 2. ula_clk sync'd to cph(3) via por
   ula_clk <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
-  
+
   o_vid_rgb <= ula_rgb;
 
   o_vid_sync.dig_de <= ula_de;
@@ -360,9 +366,13 @@ begin
   o_vid_sync.ana_vs <= '1';
 
   -- ====================================================================
-  -- Input
+  -- Framwork Interfacing
   -- ====================================================================
   
+  --
+  -- Keyboard Input
+  --
+    
   -- Framework PS2 to ULA format.
   u_ps2_translate : entity work.PS2_Translate
     port map (
@@ -383,10 +393,6 @@ begin
   -- caps, num, scroll lock
   o_kb_ps2_leds <= ula_caps_lock & "00";
 
-  -- ====================================================================
-  -- Framwork Interfacing
-  -- ====================================================================
-  
   --
   -- DDR 
   --

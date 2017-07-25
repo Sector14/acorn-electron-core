@@ -83,6 +83,7 @@ entity ULA_12C021 is
     i_kbd         : in word( 3 downto 0 ); 
     o_caps_lock   : out bit1;
     i_n_reset     : in bit1;
+    o_n_reset     : out bit1;
 
     -- ROM/CPU addressing
     o_rom         : out bit1;                  -- rom select enable   
@@ -176,10 +177,9 @@ begin
 
   o_debug_clk_phase <= clk_phase;
 
-  -- Power up, perform reset
-  -- TODO: [Gary] Should ULA drive i_n_reset too to cause cpu reset? Is this
-  --       pin tri-state on real ULA?
-  rst <= not i_n_por or not i_n_reset;
+  -- Hard/Soft Reset
+  rst <= not i_n_reset or not i_n_por;  
+  o_n_reset <= i_n_por and i_n_reset;
   
   -- Internal weak pull-up
   i_n_nmi <= 'H';
@@ -635,7 +635,7 @@ begin
   begin
     if (rst = '1') then
       isr_en <= (others => '0');
-      isr_status(6 downto 1) <= (ISR_POWER_ON_RESET => '1', others => '0');
+      isr_status(6 downto 1) <= (others => '0');
       isrc_paging(ISRC_ROM_PAGE) <= "000";
       isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
@@ -643,6 +643,10 @@ begin
       misc_control <= (others => '0');
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
+
+      if (i_n_por = '0') then
+        isr_status(ISR_POWER_ON_RESET) <= '1';
+      end if;
     elsif rising_edge(i_clk_sys) then
       if (i_clk_ena = '1') then
         -- Delayed POR reset pending?
