@@ -93,7 +93,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 
@@ -127,7 +127,7 @@ architecture RTL of Electron_Top is
   signal cpu_addr     : word(23 downto 0);
 
   -- ULA
-  signal ula_clk     : bit1;
+  signal ena_ula     : bit1;
   signal ula_rom_ena : bit1;
 
   signal ula_phi_out : bit1;
@@ -179,7 +179,7 @@ begin
     signal cnt : unsigned( 3 downto 0 ) := (others => '0');
   begin
 
-    -- TODO: [Gary] This should be ula_clk / 13 not sys_clk.
+    -- TODO: [Gary] This should be ena_ula / 13 not sys_clk.
     p_ic9_div13 : process(i_clk_sys)
     begin
       if rising_edge(i_clk_sys) then
@@ -219,6 +219,10 @@ begin
   -- ====================================================================
   -- CPU
   -- ====================================================================
+
+  -- TODO: [Gary] using i_clk_sys and gating on ula_phi_out isn't working
+  -- phi_out as an enable occurs on cph_sys(3), why does this only work if
+  -- used as a direct clock source rather than enable?
 
   -- IC3 T65 (6502-A)
   ic3_6502 : entity work.T65
@@ -272,8 +276,9 @@ begin
 
     -- Clock   
     i_clk_sys     => i_clk_sys,
-    i_clk_ena     => ula_clk,                   -- 1 in 2, 16MHz
-    i_div13_ena   => div13,                     -- ula_clk div 13
+    i_cph_sys     => i_cph_sys,
+    i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
+    i_div13_ena   => div13,                     -- ena_ula div 13
     
     --
     -- ULA
@@ -337,8 +342,8 @@ begin
       ula_n_reset_in <= '0';
     elsif rising_edge(i_clk_sys) then
       -- soft or hard reset
-      -- Ensure first ULA clock tick occurs on cph(1) to align even ula_clk
-      -- cycles with cph(3). DDR can then be accessed every other even ula_clk cycle
+      -- Ensure first ULA clock tick occurs on cph(1) to align even ena_ula
+      -- cycles with cph(3). DDR can then be accessed every other even ena_ula cycle
       if (i_cph_sys(0) = '1') then
         n_por <= '1';
         if (kbd_n_break = '1') then
@@ -350,8 +355,8 @@ begin
   end process;
 
   -- Orig ULA would clock regardless of por, this is a compromise for DDR access
-  -- 16MHz from sys_clk / 2. ula_clk sync'd to cph(3) via por
-  ula_clk <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
+  -- 16MHz from sys_clk / 2
+  ena_ula <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
 
   o_vid_rgb <= ula_rgb;
 
@@ -584,27 +589,29 @@ begin
         );
 
       cs_clk  <= i_clk_ram;
+
       cs_trig(62) <= i_clk_sys;
       cs_trig(61) <= i_ena_sys;
-      cs_trig(60) <= ula_clk;
+      cs_trig(60) <= ena_ula;
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
-      cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(41 downto 38) <= std_logic_vector(debug_clk_phase);
-      cs_trig(37) <= debug_trig;      
-      cs_trig(36 downto 34) <= (others => '0');
-      cs_trig(33 downto 26) <= data_bus;
+      -- cs_trig(57 downto 42) <= addr_bus;
+      -- cs_trig(41 downto 38) <= std_logic_vector(debug_clk_phase);
+      -- cs_trig(37) <= debug_trig;      
+      -- cs_trig(36 downto 34) <= (others => '0');
+      -- cs_trig(33 downto 26) <= data_bus;
 
-      -- RAM
-      cs_trig(25 downto 18) <= ram_addr;
-      cs_trig(17 downto 14) <= ram_data;
-      cs_trig(13) <= ram_n_we;
-      cs_trig(12) <= ram_n_ras;
-      cs_trig(11) <= ram_n_cas;
-      -- ROM
-      cs_trig(10 downto 3) <= rom_data;
-      cs_trig(2) <= cpu_n_w;
-      cs_trig(1 downto 0) <= (others => '0');
+      -- -- RAM
+      -- cs_trig(25 downto 18) <= ram_addr;
+      -- cs_trig(17 downto 14) <= ram_data;
+      -- cs_trig(13) <= ram_n_we;
+      -- cs_trig(12) <= ram_n_ras;
+      -- cs_trig(11) <= ram_n_cas;
+      -- -- ROM
+      -- cs_trig(10 downto 3) <= rom_data;
+      -- cs_trig(2) <= cpu_n_w;
+
+      cs_trig(57 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

@@ -37,7 +37,9 @@ entity ULA_12C021 is
 
     -- ULA is clock enabled on clk_sys rather than a new clock domain
     i_clk_sys     : in bit1;
-    i_clk_ena     : in bit1;                    
+    i_cph_sys     : in word(3 downto 0);
+
+    i_ena_ula     : in bit1;                    
     i_div13_ena   : in bit1;
 
     --
@@ -189,7 +191,7 @@ begin
   -- ====================================================================
   -- 2MHz & 1MHz generator based on 16MHz clock
   -- ULA ticks 0..15 with 1MHz active on clock 0, 2MHz on 0 and 8
-  -- Note: Even clocks are aligned with sys_cph(3) for DRAM access
+  -- Note: Even ula ticks are aligned with sys_cph(3) for DRAM access
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
@@ -201,9 +203,8 @@ begin
       clk_1MHz <= '0';
       clk_2MHz <= '0';
 
-      -- ula_clk is a 1 in 2 enabled sys_clk, transition made on the off
-      -- clock to align generated clocks and clk_phase with clk_ena
-      if (i_clk_ena = '0') then    
+      -- ula_clk is a 1 in 2 enabled sys_clk, even clk_phase aligned with cph(3)
+      if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then    
         if (clk_phase = "1111") then
           clk_2MHz <= '1';
           clk_1MHz <= '1';
@@ -235,7 +236,7 @@ begin
       )
     port map (
       i_clk                 => i_clk_sys,
-      i_ena                 => i_clk_ena,
+      i_ena                 => i_ena_ula,
       i_rst                 => rst,
       --
       i_param               => c_Vidparam_832x287p_50_16MHz,
@@ -299,7 +300,7 @@ begin
       o_debug_trig <= '0';
     elsif rising_edge(i_clk_sys) then
 
-      if (i_clk_ena = '1') then
+      if (i_ena_ula = '1') then
         o_rgb <= x"000000";
 
         display_period <= false;
@@ -432,7 +433,7 @@ begin
       cpu_ram_data <= (others => '0');
       b_pd <= (others => 'Z');
     elsif rising_edge(i_clk_sys) then
-      if (i_clk_ena = '1') then
+      if (i_ena_ula = '1') then
 
         -- Cpu accessing ram during its slot, or, ula slot.
         if (i_addr(15) = '0') then
@@ -629,11 +630,11 @@ begin
           cassette_data_shift                     when i_addr( 3 downto 0) = x"4" else
           (others => 'Z');
 
-  p_registers : process(i_clk_sys, rst)
+  p_registers : process(i_clk_sys, i_n_reset, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
   begin
-    if (rst = '1') then
+    if (i_n_reset = '0') or (i_n_por = '0') then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
       isrc_paging(ISRC_ROM_PAGE) <= "000";
@@ -648,7 +649,7 @@ begin
         isr_status(ISR_POWER_ON_RESET) <= '1';
       end if;
     elsif rising_edge(i_clk_sys) then
-      if (i_clk_ena = '1') then
+      if (i_ena_ula = '1') then
         -- Delayed POR reset pending?
         -- TODO: [Gary] This needs to account for 1 or 2MHz cpu?
         if (delayed_por_reset = '1' and clk_1MHz = '1') then
