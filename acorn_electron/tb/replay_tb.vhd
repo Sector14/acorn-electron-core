@@ -134,6 +134,9 @@ begin
     dis;
 
     -- DDR
+    -- TODO: [Gary] Check amiga core for dram shortcut or
+    -- upload just a couple of segments of rom e.g the reset vector region
+    -- and initial boot code/mem clearing rather than full ROM
     spi_readbin("../sdcard/os_basic.rom", x"00008000", x"8000");
 
     -- SRAM

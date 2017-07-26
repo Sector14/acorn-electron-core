@@ -93,7 +93,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 
@@ -181,7 +181,7 @@ begin
 
     -- TODO: [Gary] This should be ena_ula / 13 not sys_clk.
     p_ic9_div13 : process(i_clk_sys)
-    begin
+    begin      
       if rising_edge(i_clk_sys) then
         div13 <= '0';
 
@@ -220,15 +220,19 @@ begin
   -- CPU
   -- ====================================================================
 
-  -- TODO: [Gary] using i_clk_sys and gating on ula_phi_out isn't working
+  -- TODO: [Gary] using i_clk_sys and gating on ula_phi_out isn't working.
   -- phi_out as an enable occurs on cph_sys(3), why does this only work if
   -- used as a direct clock source rather than enable?
+  -- There's also a difference in chipscope and isim output for o_debug_trig
+  -- see ula todo.
 
   -- IC3 T65 (6502-A)
   ic3_6502 : entity work.T65
   port map (
     Mode    => "00",               -- 6502
     Res_n   => ula_n_reset_out,
+    -- Enable  => ula_phi_out,
+    -- Clk     => i_clk_sys,
     Enable  => '1',
     Clk     => ula_phi_out,
     Rdy     => '1',
@@ -344,7 +348,7 @@ begin
       -- soft or hard reset
       -- Ensure first ULA clock tick occurs on cph(1) to align even ena_ula
       -- cycles with cph(3). DDR can then be accessed every other even ena_ula cycle
-      if (i_cph_sys(0) = '1') then
+      if (i_cph_sys(2) = '1') then
         n_por <= '1';
         if (kbd_n_break = '1') then
           ula_n_reset_in <= '1';
@@ -588,16 +592,16 @@ begin
         TRIG0   => cs_trig
         );
 
-      cs_clk  <= i_clk_ram;
+      cs_clk  <= i_clk_sys;
 
-      cs_trig(62) <= i_clk_sys;
+      cs_trig(62) <= '0'; --i_clk_sys;
       cs_trig(61) <= i_ena_sys;
       cs_trig(60) <= ena_ula;
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
       -- cs_trig(57 downto 42) <= addr_bus;
-      -- cs_trig(41 downto 38) <= std_logic_vector(debug_clk_phase);
-      -- cs_trig(37) <= debug_trig;      
+      cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
+      cs_trig(53) <= debug_trig;      
       -- cs_trig(36 downto 34) <= (others => '0');
       -- cs_trig(33 downto 26) <= data_bus;
 
@@ -611,7 +615,7 @@ begin
       -- cs_trig(10 downto 3) <= rom_data;
       -- cs_trig(2) <= cpu_n_w;
 
-      cs_trig(57 downto 0) <= (others => '0');
+      cs_trig(52 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

@@ -177,7 +177,11 @@ architecture RTL of ULA_12C021 is
    
 begin
 
+  -- TODO: [Gary] On chipscope debug_trig which represents hpix = 0
+  -- shows as occuring inline with the the phase "0000" tick.
+  -- In isim however it shows as occuring two ula_ena later during "0010"??
   o_debug_clk_phase <= clk_phase;
+  o_debug_trig <= '1' when hpix = (x"000" & "00") else '0';
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -196,25 +200,18 @@ begin
   begin
     if (rst = '1') then
       -- align pixel clock start (hpix 0) with clkphase 0000
-      clk_phase <= "1111";
-      clk_1MHz <= '0';
-      clk_2MHz <= '0';
+      clk_phase <= "0000";
     elsif rising_edge(i_clk_sys) then
-      clk_1MHz <= '0';
-      clk_2MHz <= '0';
-
-      -- ula_clk is a 1 in 2 enabled sys_clk, even clk_phase aligned with cph(3)
-      if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then    
-        if (clk_phase = "1111") then
-          clk_2MHz <= '1';
-          clk_1MHz <= '1';
-        elsif (clk_phase = "0111") then
-          clk_2MHz <= '1';
-        end if;
+      if (i_ena_ula = '1') then
         clk_phase <= clk_phase + 1;
       end if;
     end if;
   end process;
+
+  clk_2MHz <= '1' when (i_ena_ula = '1') and 
+                       (clk_phase = "0000" or clk_phase = "1000") else '0';
+  clk_1MHz <= '1' when (i_ena_ula = '1') and 
+                       (clk_phase = "0000") else '0';
 
   -- ====================================================================
   -- Video
@@ -296,8 +293,6 @@ begin
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
       row_count10 := "0000";
-
-      o_debug_trig <= '0';
     elsif rising_edge(i_clk_sys) then
 
       if (i_ena_ula = '1') then
@@ -305,11 +300,6 @@ begin
 
         display_period <= false;
         
-        o_debug_trig <= '0';
-
-        if (unsigned(hpix) = 0) then
-          o_debug_trig <= '1';
-        end if;
         -- Mode 6 Memory layout assuming 0x6000 screen start
         -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
         -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
@@ -324,7 +314,6 @@ begin
         --       modes 0..6 to be correctly supported with line blanking for text modes,
         --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
         -- TODO: [Gary] The timing between clk_phase and video pixels is rather brittle
-        -- hpix 0 occurs on clk_phase 1.
 
         if (unsigned(vpix) = 0) then   
           -- Latch mode adjusted screen start. Wrap is not latched as it's based on
