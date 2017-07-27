@@ -127,7 +127,9 @@ architecture RTL of ULA_12C021 is
   signal cpu_ram_data : word(7 downto 0);
 
   -- Timing
-  signal clk_2MHz, clk_1MHz  : bit1;
+  signal phi_out   : bit1;
+  signal clk_1MHz  : bit1;
+  signal clk_2MHz  : bit1;
   signal clk_phase : unsigned(3 downto 0);
 
   signal rtc_count : unsigned(18 downto 0);
@@ -208,10 +210,25 @@ begin
     end if;
   end process;
 
-  clk_2MHz <= '1' when (i_cph_sys(1) = '1' or i_cph_sys(3) = '1') and 
+  clk_2MHz <= '1' when (i_cph_sys(3) = '1') and 
                        (clk_phase = "0000" or clk_phase = "1000") else '0';
   clk_1MHz <= '1' when (i_cph_sys(3) = '1') and 
                        (clk_phase = "0000") else '0';
+
+  -- CPU Variable clocking
+  -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
+  --              Without this ram access timing slot may end up conflicting with the ULAs slot?
+  -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
+  --              in mode 0..3?? Investigate.
+  -- phi_out <= clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
+  --            clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
+  --            clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
+  --            clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
+  --            '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
+  --            clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
+  phi_out <= clk_1MHz;
+  
+  o_phi_out <= phi_out;
 
   -- ====================================================================
   -- Video
@@ -577,19 +594,6 @@ begin
                     (i_addr(15 downto 8) /= x"FE") else
            '0';
 
-  -- CPU Variable clocking
-  -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
-  --              Without this ram access timing slot may end up conflicting with the ULAs slot?
-  -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
-  --              in mode 0..3?? Investigate.
-  --o_phi_out <= clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
-  --             clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
-  --             clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
-  --             clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
-  --             '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
-  --             clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
-  o_phi_out <= clk_1MHz;
-
   --
   --  Memory Mapped Registers (AUG p206)
   --
@@ -640,8 +644,7 @@ begin
     elsif rising_edge(i_clk_sys) then
       if (i_ena_ula = '1') then
         -- Delayed POR reset pending?
-        -- TODO: [Gary] This needs to account for 1 or 2MHz cpu?
-        if (delayed_por_reset = '1' and clk_1MHz = '1') then
+        if (delayed_por_reset = '1' and phi_out = '1') then
           delayed_por_reset := '0';
           isr_status(ISR_POWER_ON_RESET) <= '0';
         end if;
