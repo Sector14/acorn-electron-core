@@ -159,7 +159,7 @@ begin
     end if;
   end process;
 
-  p_addr_scan : process(i_addr)
+  p_addr_scan : process(i_addr, key_state)
       variable result : t_key_row_state := (others => '1');
   begin
     result := (others => '1');

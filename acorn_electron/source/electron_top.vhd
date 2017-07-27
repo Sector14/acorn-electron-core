@@ -346,7 +346,7 @@ begin
       ula_n_reset_in <= '0';
     elsif rising_edge(i_clk_sys) then
       -- soft or hard reset
-      -- Ensure first ULA clock tick occurs on cph(1) to align even ena_ula
+      -- Ensure first ULA clock tick occurs on cph(3) to align even ena_ula
       -- cycles with cph(3). DDR can then be accessed every other even ena_ula cycle
       if (i_cph_sys(2) = '1') then
         n_por <= '1';
@@ -413,6 +413,7 @@ begin
   -- for following sys_ena 4 sys_clk ticks later. 
   -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
   -- ULA controller ticks twice per ena_sys and must thus ensure at least
+  -- two ula ticks have occurred between the request and result.
   --
   -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;

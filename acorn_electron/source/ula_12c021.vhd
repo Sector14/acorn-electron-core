@@ -274,7 +274,7 @@ begin
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
 
-  u_vid_rgb : process(i_clk_sys, rst)
+  u_vid_rgb : process(i_clk_sys, rst, mode_base_addr)
     variable cur_pix, next_pix : word(7 downto 0);
     variable pix_count : unsigned(3 downto 0);
     -- screen byte address to read
