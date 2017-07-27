@@ -360,7 +360,7 @@ begin
 
   -- Orig ULA would clock regardless of por, this is a compromise for DDR access
   -- 16MHz from sys_clk / 2
-  ena_ula <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
+  ena_ula <= i_cph_sys(1) or i_cph_sys(3);
 
   o_vid_rgb <= ula_rgb;
 

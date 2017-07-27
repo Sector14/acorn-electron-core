@@ -202,15 +202,15 @@ begin
       -- align pixel clock start (hpix 0) with clkphase 0000
       clk_phase <= "0000";
     elsif rising_edge(i_clk_sys) then
-      if (i_ena_ula = '1') then
+      if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
       end if;
     end if;
   end process;
 
-  clk_2MHz <= '1' when (i_ena_ula = '1') and 
+  clk_2MHz <= '1' when (i_cph_sys(1) = '1' or i_cph_sys(3) = '1') and 
                        (clk_phase = "0000" or clk_phase = "1000") else '0';
-  clk_1MHz <= '1' when (i_ena_ula = '1') and 
+  clk_1MHz <= '1' when (i_cph_sys(3) = '1') and 
                        (clk_phase = "0000") else '0';
 
   -- ====================================================================
