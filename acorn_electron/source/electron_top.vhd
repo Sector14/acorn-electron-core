@@ -127,11 +127,14 @@ architecture RTL of Electron_Top is
   signal cpu_addr     : word(23 downto 0);
 
   -- ULA
-  signal ula_clk     : bit1;
+  signal ena_ula     : bit1;
   signal ula_rom_ena : bit1;
 
   signal ula_phi_out : bit1;
   signal ula_n_irq   : bit1;
+
+  signal ula_n_reset_in   : bit1;
+  signal ula_n_reset_out  : bit1;
 
   signal ula_caps_lock : bit1;
 
@@ -142,8 +145,7 @@ architecture RTL of Electron_Top is
   -- ULA Glue
   signal div13       : bit1;
   signal n_por       : bit1;
-  signal n_reset     : bit1;
-
+  
   -- CPU/ULA Glue
   signal n_nmi        : bit1;
   
@@ -151,6 +153,9 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
+  -- Debug
+  signal debug_trig : bit1;
+  signal debug_clk_phase : unsigned(3 downto 0);
 begin
   
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -169,17 +174,14 @@ begin
   -- Misc
   -- ====================================================================
 
-  -- TODO: [Gary] Should sys_clk be passed into the ULA to allow
-  -- div13 and the ula_clk to be used as clock enables rather than new
-  -- clocks? Are there timing issues with how it is setup now?
-
   -- IC9 clock div 13 (74LS163)
   b_clk_div : block
     signal cnt : unsigned( 3 downto 0 ) := (others => '0');
   begin
 
+    -- TODO: [Gary] This should be ena_ula / 13 not sys_clk.
     p_ic9_div13 : process(i_clk_sys)
-    begin
+    begin      
       if rising_edge(i_clk_sys) then
         div13 <= '0';
 
@@ -218,11 +220,19 @@ begin
   -- CPU
   -- ====================================================================
 
+  -- TODO: [Gary] using i_clk_sys and gating on ula_phi_out isn't working.
+  -- phi_out as an enable occurs on cph_sys(3), why does this only work if
+  -- used as a direct clock source rather than enable?
+  -- There's also a difference in chipscope and isim output for o_debug_trig
+  -- see ula todo.
+
   -- IC3 T65 (6502-A)
   ic3_6502 : entity work.T65
   port map (
     Mode    => "00",               -- 6502
-    Res_n   => n_reset,
+    Res_n   => ula_n_reset_out,
+    -- Enable  => ula_phi_out,
+    -- Clk     => i_clk_sys,
     Enable  => '1',
     Clk     => ula_phi_out,
     Rdy     => '1',
@@ -268,6 +278,12 @@ begin
     o_de          => ula_de,               
     o_rgb         => ula_rgb,
 
+    -- Clock   
+    i_clk_sys     => i_clk_sys,
+    i_cph_sys     => i_cph_sys,
+    i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
+    i_div13_ena   => div13,                     -- ena_ula div 13
+    
     --
     -- ULA
     --
@@ -288,9 +304,6 @@ begin
     o_n_csync     => ula_n_csync,               -- h/v sync
     o_n_hsync     => ula_n_hsync,               -- h sync
      
-    -- Clock   
-    i_clk         => ula_clk,                   -- 16MHz
-    i_div_13      => div13,                     -- ula_clk div 13
        
     -- RAM (4x64k 1 bit)       
     b_ram0        => ram_data(0),
@@ -307,7 +320,8 @@ begin
     -- Keyboard
     i_kbd         => kbd_data,
     o_caps_lock   => ula_caps_lock,
-    i_n_reset     => n_reset,
+    i_n_reset     => ula_n_reset_in,
+    o_n_reset     => ula_n_reset_out,
 
     -- ROM/CPU addressing
     o_rom         => ula_rom_ena,               -- rom select enable   
@@ -318,35 +332,36 @@ begin
     i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
     o_phi_out     => ula_phi_out,               -- CPU clk, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
-    i_n_w         => cpu_n_w                    -- Data direction, /write, read
+    i_n_w         => cpu_n_w,                    -- Data direction, /write, read
+
+    o_debug_trig  => debug_trig,
+    o_debug_clk_phase => debug_clk_phase
   );
 
-  -- TODO: [Gary] If DDR is to be shared between ROM and RAM, more thought will need to be given
-  -- to timing as ULA assumes the two are on separate buses. Access to RAM is
-  -- at 2MHz max so there is ample time to interleave the two.
-  p_por : process(i_clk_sys, i_rst_sys, i_halt)
+  p_por : process(i_clk_sys, i_rst_sys, i_halt, kbd_n_break)
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
       n_por <= '0';
+    elsif (kbd_n_break = '0') then
+      ula_n_reset_in <= '0';
     elsif rising_edge(i_clk_sys) then
-      -- Delay bringing out of reset until after cph(1) to align even ula_clk
-      -- cycles with cph(3). DDR can then be accessed every other even ula_clk cycle
+      -- soft or hard reset
+      -- Ensure first ULA clock tick occurs on cph(3) to align even ena_ula
+      -- cycles with cph(3). DDR can then be accessed every other even ena_ula cycle
       if (i_cph_sys(2) = '1') then
         n_por <= '1';
+        if (kbd_n_break = '1') then
+          ula_n_reset_in <= '1';
+        end if;
       end if;
+
     end if;
   end process;
 
-  -- ULA is supposed to drive n_reset for the POR case but unless
-  -- the ULA needs to drive n_reset in any other case just handle it here
-  n_reset <= n_por and kbd_n_break;
+  -- Orig ULA would clock regardless of por, this is a compromise for DDR access
+  -- 16MHz from sys_clk / 2
+  ena_ula <= i_cph_sys(1) or i_cph_sys(3);
 
-  -- TODO: [Gary] not keen on using POR in this way as ula_clk should
-  -- be running all the time. Switch to a one off flag set during
-  -- sys reset instead?
-  -- 16MHz from sys_clk / 2. ula_clk sync'd to cph(3) via por
-  ula_clk <= i_cph_sys(1) or i_cph_sys(3) when n_por = '1' else '0';
-  
   o_vid_rgb <= ula_rgb;
 
   o_vid_sync.dig_de <= ula_de;
@@ -360,9 +375,13 @@ begin
   o_vid_sync.ana_vs <= '1';
 
   -- ====================================================================
-  -- Input
+  -- Framwork Interfacing
   -- ====================================================================
   
+  --
+  -- Keyboard Input
+  --
+    
   -- Framework PS2 to ULA format.
   u_ps2_translate : entity work.PS2_Translate
     port map (
@@ -383,10 +402,6 @@ begin
   -- caps, num, scroll lock
   o_kb_ps2_leds <= ula_caps_lock & "00";
 
-  -- ====================================================================
-  -- Framwork Interfacing
-  -- ====================================================================
-  
   --
   -- DDR 
   --
@@ -398,6 +413,7 @@ begin
   -- for following sys_ena 4 sys_clk ticks later. 
   -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
   -- ULA controller ticks twice per ena_sys and must thus ensure at least
+  -- two ula ticks have occurred between the request and result.
   --
   -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;
@@ -577,27 +593,30 @@ begin
         TRIG0   => cs_trig
         );
 
-      cs_clk  <= i_clk_ram;
-      cs_trig(62) <= i_clk_sys;
+      cs_clk  <= i_clk_sys;
+
+      cs_trig(62) <= '0'; --i_clk_sys;
       cs_trig(61) <= i_ena_sys;
-      cs_trig(60) <= ula_clk;
+      cs_trig(60) <= ena_ula;
       cs_trig(59) <= ula_phi_out;
       cs_trig(58) <= ula_rom_ena;
-      cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(41 downto 38) <= "0000"; -- kbd_data;
-      cs_trig(37 downto 34) <= (others => '0');
-      cs_trig(33 downto 26) <= data_bus;
+      -- cs_trig(57 downto 42) <= addr_bus;
+      cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
+      cs_trig(53) <= debug_trig;      
+      -- cs_trig(36 downto 34) <= (others => '0');
+      -- cs_trig(33 downto 26) <= data_bus;
 
-      -- RAM
-      cs_trig(25 downto 18) <= ram_addr;
-      cs_trig(17 downto 14) <= ram_data;
-      cs_trig(13) <= ram_n_we;
-      cs_trig(12) <= ram_n_ras;
-      cs_trig(11) <= ram_n_cas;
-      -- ROM
-      cs_trig(10 downto 3) <= rom_data;
-      cs_trig(2) <= cpu_n_w;
-      cs_trig(1 downto 0) <= (others => '0');
+      -- -- RAM
+      -- cs_trig(25 downto 18) <= ram_addr;
+      -- cs_trig(17 downto 14) <= ram_data;
+      -- cs_trig(13) <= ram_n_we;
+      -- cs_trig(12) <= ram_n_ras;
+      -- cs_trig(11) <= ram_n_cas;
+      -- -- ROM
+      -- cs_trig(10 downto 3) <= rom_data;
+      -- cs_trig(2) <= cpu_n_w;
+
+      cs_trig(52 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

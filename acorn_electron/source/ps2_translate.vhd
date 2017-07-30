@@ -62,12 +62,14 @@ begin
       key_state <= (others => (others => '1'));
       key_n_pausebreak <= '1';
     elsif rising_edge(i_clk_sys) then
+      -- No release code, active for one clock pulse only
+      key_n_pausebreak <= '1';
+
       -- Framework strobes only on activity
       if (i_kb_ps2_we = '1' and i_kb_inhibit = '0') then
 
         if (i_kb_ps2_data = c_KEY_PAUSE) then
-          -- No release code, use as a toggle key for now. 
-          key_n_pausebreak <= not key_n_pausebreak;
+          key_n_pausebreak <= '0';
         elsif (i_kb_ps2_data = c_KEY_RELEASE) then
           key_release <= '1'; 
         elsif (i_kb_ps2_data = c_KEY_EXTENDED) then
@@ -157,7 +159,7 @@ begin
     end if;
   end process;
 
-  p_addr_scan : process(i_addr)
+  p_addr_scan : process(i_addr, key_state)
       variable result : t_key_row_state := (others => '1');
   begin
     result := (others => '1');
