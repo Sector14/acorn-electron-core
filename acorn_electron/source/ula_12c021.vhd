@@ -446,11 +446,9 @@ begin
       -- ula/cpu contention over phase 0 slot
       if (clk_phase(3) = '0') and (i_addr(15) = '0') then
         ram_cpu_slot <= '1';
-        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
-        --              CPU should get 1MHz access regardless if NMI
-        --if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE) <= "011") and display_period then
-        --  ram_cpu_slot <= '0';
-        --end if;
+        if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') and display_period then
+          ram_cpu_slot <= '0';
+        end if;
       end if;    
     end if;
 
