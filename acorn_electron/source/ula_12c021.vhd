@@ -121,10 +121,14 @@ architecture RTL of ULA_12C021 is
   signal rst : bit1;
   signal nmi : bit1;
 
-  signal ula_ram_data : word(7 downto 0);
   signal ula_ram_addr : word(14 downto 0);
 
   signal cpu_ram_data : word(7 downto 0);
+
+  signal ram_cpu_slot : bit1 := '0';
+  signal ram_data     : word(7 downto 0);
+  signal ram_addr     : word(14 downto 0);
+  signal ram_n_w      : bit1;
 
   -- Timing
   signal phi_out   : bit1;
@@ -341,10 +345,10 @@ begin
         end if;
 
         -- TODO: [Gary] Once 2MHz support added for all modes that require it, will need
-        --       to fetch one byte from ram_data at start of each 8 cycle read
+        --       to fetch one byte from ram_data at start of each 8 cycle read        
         -- hpix 0 is aligned with clk_phase 0000.
         if (clk_phase = "0000") then
-          next_pix := ula_ram_data;
+          next_pix := ram_data;
         end if;
 
         if (clk_phase(3) = '0') then
@@ -420,160 +424,128 @@ begin
   -- For a ULA replacement, exact timing requirements of 4164 would need to be
   -- checked and implemented. This is a pseudo ras/cas implementation only.
   --
+  
   -- RAM access occurs at 16MHz, however it takes 4 cycles to perform a 4bit
   -- read, 8 cycles to get a full byte. This is effectively 1 byte per 1MHz clk.
-  -- The ULA time shares ram access (1MHz period each) with the CPU except:
-  --  1. During the display_period of modes 0..3 where ULA needs 2MHz access and cpu stopped
-  --  2. When nmi is signalled during which time the ULA suspends its ram access.
-  -- CPU Gets first 8 cycles, ULA second 8.
+  -- The ULA time shares ram access (1MHz period each) with the CPU as:
+  -- Cycle 0:
+  --   * cpu gets the slot by default
+  --   * ULA overrides cpu if mode 0,1,2,3 during display_period
+  --   * CPU overrides ULA if nmi set
+  -- Cycle 8:
+  --   * ula always gets this slot
+  --
+  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, display_period)
+  begin
+    if (rst = '1') then
+      ram_cpu_slot <= '0';
+    elsif (clk_phase(2 downto 0) = "000") then
+      -- ula always has phase 8 slot
+      ram_cpu_slot <= '0';
 
+      -- ula/cpu contention over phase 0 slot
+      if (clk_phase(3) = '0') and (i_addr(15) = '0') then
+        ram_cpu_slot <= '1';
+        -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
+        --              CPU should get 1MHz access regardless if NMI
+        --if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE) <= "011") and display_period then
+        --  ram_cpu_slot <= '0';
+        --end if;
+      end if;    
+    end if;
+
+  end process;
+
+  -- Ram access on behalf of CPU or ULA
   p_ram_access : process(i_clk_sys, rst)
     variable ram_even_tmp  : word(3 downto 0);
   begin
-
     if (rst = '1') then
       o_n_we <= '1';
       o_n_cas <= '1';
       o_n_ras <= '1';
-      ula_ram_data <= (others => '0');
-      cpu_ram_data <= (others => '0');
-      b_pd <= (others => 'Z');
+      ram_data <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       if (i_ena_ula = '1') then
-
-        -- Cpu accessing ram during its slot, or, ula slot.
-        if (i_addr(15) = '0') then
-          if (i_n_w = '1') then 
-            b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-          end if;
-
-          -- TODO: [Gary] Is the 1 to 2 MHz clock transition in sync with this? as cpu needs to remain on the 0
-          --       cycle access after transitioning back, not end up expecting to use 8+
-          -- TODO: [Gary] ability for ULA to take over CPUs slot for 2MHz ram access mode 0..3 (except when NMI active)
-          --              CPU should get 1MHz access regardless if NMI
-          
-          -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
-          case clk_phase is
-            -- CPU Slot
-            when "0000" =>
-              -- row latch
-              o_ra <= i_addr(14 downto 7);
-              o_n_ras <= '0';
-
-              o_n_cas <= '1';
-              o_n_we <= '1';
-            when "0001" =>
-              -- Unused, future DRAM delay 
-            when "0010" =>
-              -- col latch
-              o_ra <= i_addr(6 downto 0) & '0';
-              o_n_cas <= '0';
-              o_n_we <= i_n_w;
-              if (i_n_w = '0') then
-                b_ram0 <= b_pd(0);
-                b_ram1 <= b_pd(2);
-                b_ram2 <= b_pd(4);
-                b_ram3 <= b_pd(6);
-              end if;
-            when "0011" =>
-              -- Unused, future DRAM delay
-            when "0100" =>
-              if (i_n_w = '1') then
-                ram_even_tmp(0) := b_ram0;              
-                ram_even_tmp(1) := b_ram1;
-                ram_even_tmp(2) := b_ram2;
-                ram_even_tmp(3) := b_ram3;
-              end if;
-              o_n_we <= '1';
-              o_n_cas <= '1';          
-            when "0101" =>
-              -- second nibble cycle
-              o_ra <= i_addr(6 downto 0) & '1';
-              o_n_cas <= '0';
-              o_n_we <= i_n_w;
-              if (i_n_w = '0') then
-                b_ram0 <= b_pd(1);
-                b_ram1 <= b_pd(3);
-                b_ram2 <= b_pd(5);
-                b_ram3 <= b_pd(7);
-              end if;
-            when "0110" =>
-              -- Unused, future DRAM delay
-            when "0111" => 
-              if (i_n_w = '1') then
-                cpu_ram_data(0) <= ram_even_tmp(0);
-                cpu_ram_data(1) <= b_ram0;
-                cpu_ram_data(2) <= ram_even_tmp(1);
-                cpu_ram_data(3) <= b_ram1;
-                cpu_ram_data(4) <= ram_even_tmp(2);
-                cpu_ram_data(5) <= b_ram2;
-                cpu_ram_data(6) <= ram_even_tmp(3);
-                cpu_ram_data(7) <= b_ram3;
-              end if;
-              o_n_ras <= '1';
-              o_n_cas <= '1';  
-              o_n_we <= '1';
-
-            when others =>
-
-          end case;
-        end if;
-
-        -- ULA Slot
-        if (clk_phase(3) = '1') then
-          -- ULA reads internally only.
+        if (ram_n_w = '1') then 
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
-
-          case clk_phase is
-            -- ULA Slot
-            when "1000" =>
-              -- row latch
-              o_ra <= ula_ram_addr(14 downto 7);
-              o_n_ras <= '0';
-
-              o_n_cas <= '1';
-              o_n_we <= '1';
-            when "1001" =>
-              -- Unused, future DRAM delay
-            when "1010" =>
-              -- col latch            
-              o_ra <= ula_ram_addr(6 downto 0) & '0';
-              o_n_cas <= '0';
-            when "1011" =>
-              -- Unused, future DRAM delay
-            when "1100" =>
-              ula_ram_data(0) <= b_ram0;
-              ula_ram_data(2) <= b_ram1;
-              ula_ram_data(4) <= b_ram2;
-              ula_ram_data(6) <= b_ram3;
-              o_n_cas <= '1';          
-            when "1101" =>
-              -- second nibble cycle
-              o_ra <= ula_ram_addr(6 downto 0) & '1';
-              o_n_cas <= '0';
-            when "1110" =>
-              -- Unused, future DRAM delay
-            when "1111" => 
-              -- TODO: [Gary] with this separate var ula during nmi wouldn't
-              -- display the cpu's ram reading as though it was ula data. No snow!
-              -- Need a more accurate representation of what the ULA may have done. 
-              ula_ram_data(1) <= b_ram0;
-              ula_ram_data(3) <= b_ram1;
-              ula_ram_data(5) <= b_ram2;
-              ula_ram_data(7) <= b_ram3;
-              o_n_ras <= '1';
-              o_n_cas <= '1';  
-              o_n_we <= '1';
-            when others =>
-          end case;
-
         end if;
+
+        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
+        case clk_phase(2 downto 0) is
+          when "000" =>
+            -- row latch
+            o_ra <= ram_addr(14 downto 7);
+            o_n_ras <= '0';
+            o_n_cas <= '1';
+            o_n_we <= '1';
+          when "001" =>
+            -- Unused, future DRAM delay 
+          when "010" =>
+            -- col latch
+            o_ra <= ram_addr(6 downto 0) & '0';
+            o_n_cas <= '0';
+            o_n_we <= ram_n_w;
+            if (ram_n_w = '0') then
+              b_ram0 <= b_pd(0);
+              b_ram1 <= b_pd(2);
+              b_ram2 <= b_pd(4);
+              b_ram3 <= b_pd(6);
+            end if;
+          when "011" =>
+            -- Unused, future DRAM delay
+          when "100" =>
+            if (ram_n_w = '1') then
+              ram_even_tmp(0) := b_ram0;              
+              ram_even_tmp(1) := b_ram1;
+              ram_even_tmp(2) := b_ram2;
+              ram_even_tmp(3) := b_ram3;
+            end if;
+            o_n_we <= '1';
+            o_n_cas <= '1';          
+          when "101" =>
+            -- second nibble cycle
+            o_ra <= ram_addr(6 downto 0) & '1';
+            o_n_cas <= '0';
+            o_n_we <= ram_n_w;
+            if (ram_n_w = '0') then
+              b_ram0 <= b_pd(1);
+              b_ram1 <= b_pd(3);
+              b_ram2 <= b_pd(5);
+              b_ram3 <= b_pd(7);
+            end if;
+          when "110" =>
+            -- Unused, future DRAM delay
+          when "111" => 
+            if (ram_n_w = '1') then
+              ram_data <= b_ram3 & ram_even_tmp(3) & b_ram2 & ram_even_tmp(2) &
+                          b_ram1 & ram_even_tmp(1) & b_ram0 & ram_even_tmp(0);
+
+              -- Don't allow ULA to clobber CPUs last read data
+              if (ram_cpu_slot = '1') then
+                cpu_ram_data <= b_ram3 & ram_even_tmp(3) & b_ram2 & ram_even_tmp(2) &
+                                b_ram1 & ram_even_tmp(1) & b_ram0 & ram_even_tmp(0);
+              end if;
+            end if;
+            o_n_ras <= '1';
+            o_n_cas <= '1';  
+            o_n_we <= '1';
+
+          when others =>
+            -- unused
+        end case;
+
       end if;
-
     end if;
-  end process;
+  end process;                
 
-  b_pd <= cpu_ram_data when i_n_w = '1' and i_addr(15) = '0' else (others => 'Z');
+  -- ram access
+  ram_addr <= i_addr(14 downto 0) when ram_cpu_slot = '1' else ula_ram_addr;
+  -- cpu r/w, ula always reads
+  ram_n_w <= i_n_w when ram_cpu_slot = '1' else '1';
+
+  -- reg'd cpu data from before ULA read
+  b_pd <= cpu_ram_data when i_addr(15) = '0' and i_n_w = '1' else (others => 'Z');
 
   -- ====================================================================
   -- ROM
@@ -635,6 +607,9 @@ begin
       screen_start_addr <= (others => '0');
       multi_counter <= (others => '0');
       misc_control <= (others => '0');
+      -- TODO: [Gary] is this a correct default? starting in mode 0 would cause cpu to never execute
+      -- during "display_period", although boot should still work, just take longer.
+      misc_control(MISC_DISPLAY_MODE) <= "110";
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
 
