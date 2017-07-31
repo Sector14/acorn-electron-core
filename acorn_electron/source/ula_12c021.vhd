@@ -130,10 +130,14 @@ architecture RTL of ULA_12C021 is
   signal ram_addr     : word(14 downto 0);
   signal ram_n_w      : bit1;
 
-  -- Timing
+  -- CPU Timing
+  type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
+  signal cpu_target_clk : t_cpu_clk;
+  type t_clk_state is (CLK_1MHz, CLK_2MHz, CLK_TRANSITION);
+  signal cpu_clk_state : t_clk_state; 
+
   signal phi_out   : bit1;
-  signal clk_1MHz  : bit1;
-  signal clk_2MHz  : bit1;
+  -- TODO: [Gary] may only need 0 to 7 count now?
   signal clk_phase : unsigned(3 downto 0);
 
   signal rtc_count : unsigned(18 downto 0);
@@ -200,39 +204,74 @@ begin
   -- Master Timing
   -- ====================================================================
   -- 2MHz & 1MHz generator based on 16MHz clock
-  -- ULA ticks 0..15 with 1MHz active on clock 0, 2MHz on 0 and 8
+  -- ULA ticks 0..15 with 1MHz active on phase 0, 2MHz on 0 and 8
+  -- Transitions from 2MHz to 1MHz depend on 2MHz phase:
+  --   Phase 0: Switch to 1MHz, nothing else required 
+  --   Phase 8: Stretched pulse, in effect skip the next 1MHz tick
+  --            then resume clocking on the following 1MHz tick
+  -- Phase 8 transition will cause a 2MHz clock to be lost. The 1MHz
+  -- tick that is skipped is not however lost, as the addr/data setup
+  -- has already occured on the prior 2MHz clock being stretched.
+  --
+  -- Final quirk is that in any state, entire CPU clocking may be
+  -- stopped. State transitions will not occur.
+  --
   -- Note: Even ula ticks are aligned with sys_cph(3) for DRAM access
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
       -- align pixel clock start (hpix 0) with clkphase 0000
       clk_phase <= "0000";
+      cpu_clk_state <= CLK_1MHz;
     elsif rising_edge(i_clk_sys) then
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
       end if;
+
+      -- TODO: [Gary] need to use cph(3) externally + this for single pulse enable
+      phi_out <= '0';
+
+      -- cph(2) so enables are edge aligned to cph(3)
+      -- "0000" and "1000" clk_phase can be used as phi_out will go high on cph(2)
+      if (clk_phase(2 downto 0) = "000") and cpu_target_clk /= CPU_STOPPED then
+        -- TODO: [Gary] can just test clk_phase(3) bit here as "111" already done above.
+        case cpu_clk_state is
+          when CLK_1MHz =>
+            if (cpu_target_clk = CPU_1MHz) and (clk_phase = "0000") then
+              phi_out <= '1';
+            elsif (cpu_target_clk = CPU_2MHz) and (clk_phase(2 downto 0) = "000") then
+              phi_out <= '1';
+              cpu_clk_state <= CLK_2MHz;
+            end if;
+          when CLK_2MHz => 
+            if (cpu_target_clk = CPU_2MHz) and (clk_phase(2 downto 0) = "000") then
+              phi_out <= '1';
+            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase = "1000") then
+              -- ram access attemp on 2MHz only tick, transition to 1MHz
+              cpu_clk_state <= CLK_TRANSITION;
+            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase = "0000") then
+              -- ram access on 1MHz aligned phase, no transition required
+              cpu_clk_state <= CLK_1MHz;
+            end if;
+          when CLK_TRANSITION => -- 2MHz -> 1MHz
+            if (clk_phase = "1000") then
+              cpu_clk_state <= CLK_1MHz;
+            end if;
+        end case;
+      end if;
+
     end if;
   end process;
 
-  clk_2MHz <= '1' when (i_cph_sys(3) = '1') and 
-                       (clk_phase = "0000" or clk_phase = "1000") else '0';
-  clk_1MHz <= '1' when (i_cph_sys(3) = '1') and 
-                       (clk_phase = "0000") else '0';
+  -- CPU clocking based on access type
+  cpu_target_clk <= CPU_1MHz when nmi = '1' else                       
+                    CPU_1MHz when i_addr(15 downto 9) = "1111110" else  -- ROM Fred/Jim
+                    CPU_2MHz when i_addr(15) = '1' else                 -- Any other ROM access
+                    CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and display_period else -- RAM access mode 0..3
+                    CPU_1MHz;                                           -- Ram access  
 
-  -- CPU Variable clocking
-  -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
-  --              Without this ram access timing slot may end up conflicting with the ULAs slot?
-  -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
-  --              in mode 0..3?? Investigate.
-  -- phi_out <= clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
-  --            clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
-  --            clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
-  --            clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
-  --            '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
-  --            clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
-  phi_out <= clk_1MHz;
-  
-  o_phi_out <= phi_out;
+  -- reduce ula enable length phi_out down to single clk_sys pulse
+  o_phi_out <= phi_out and i_cph_sys(3);
 
   -- ====================================================================
   -- Video
