@@ -228,13 +228,14 @@ begin
         clk_phase <= clk_phase + 1;
       end if;
 
-      -- TODO: [Gary] need to use cph(3) externally + this for single pulse enable
       phi_out <= '0';
 
-      -- cph(2) so enables are edge aligned to cph(3)
-      -- "0000" and "1000" clk_phase can be used as phi_out will go high on cph(2)
-      if (clk_phase(2 downto 0) = "000") and cpu_target_clk /= CPU_STOPPED then
-        -- TODO: [Gary] can just test clk_phase(3) bit here as "111" already done above.
+      -- Gated on cph(2) to edge align phi_out with cph(3) on clk_phase 0 and 8
+      -- Need for state changes cannot be determined until cph(3) but due to cph(2)
+      -- gating, will end up delayed until next cph(2) occurs on phases 2 and 10.
+      -- Note: "0000" and "1000" clk_phase can be as detection is done on cph(2) and clk_phase
+      -- is the same for both cph(2) and cph(3).
+      if (i_cph_sys(2) = '1' and cpu_target_clk /= CPU_STOPPED) then
         case cpu_clk_state is
           when CLK_1MHz =>
             if (cpu_target_clk = CPU_1MHz) and (clk_phase = "0000") then
@@ -246,10 +247,10 @@ begin
           when CLK_2MHz => 
             if (cpu_target_clk = CPU_2MHz) and (clk_phase(2 downto 0) = "000") then
               phi_out <= '1';
-            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase = "1000") then
-              -- ram access attemp on 2MHz only tick, transition to 1MHz
+            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '1') then
+              -- ram access attempt during 2MHz only tick, transition to 1MHz
               cpu_clk_state <= CLK_TRANSITION;
-            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase = "0000") then
+            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '0') then
               -- ram access on 1MHz aligned phase, no transition required
               cpu_clk_state <= CLK_1MHz;
             end if;
@@ -270,7 +271,6 @@ begin
                     CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and display_period else -- RAM access mode 0..3
                     CPU_1MHz;                                           -- Ram access  
 
-  -- reduce ula enable length phi_out down to single clk_sys pulse
   o_phi_out <= phi_out and i_cph_sys(3);
 
   -- ====================================================================
