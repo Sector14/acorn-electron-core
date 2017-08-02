@@ -209,18 +209,19 @@ begin
   --   Phase 0: Switch to 1MHz, nothing else required 
   --   Phase 8: Stretched pulse, in effect skip the next 1MHz tick
   --            then resume clocking on the following 1MHz tick
-  -- Phase 8 transition will cause a 2MHz clock to be lost. The 1MHz
-  -- tick that is skipped is not however lost, as the addr/data setup
-  -- has already occured on the prior 2MHz clock being stretched.
+  -- Phase 8 transition ensures that the RAM read that was setup on the
+  -- 2MHz tick (phase 8) and will not be serviced until phase 0, is not
+  -- lost due to a 1MHz tick occuring (that is way the 1MHz tick is skipped). 
   --
   -- Final quirk is that in any state, entire CPU clocking may be
-  -- stopped. State transitions will not occur.
+  -- stopped. State transitions will not occur. It is assumed clocking
+  -- will resume on the same clk_phase it was stopped on.
   --
   -- Note: Even ula ticks are aligned with sys_cph(3) for DRAM access
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      -- align pixel clock start (hpix 0) with clkphase 0000
+      -- align pixel clock start (hpix 0) with clk_phase 0000
       clk_phase <= "0000";
       cpu_clk_state <= CLK_1MHz;
     elsif rising_edge(i_clk_sys) then
@@ -230,35 +231,49 @@ begin
 
       phi_out <= '0';
 
-      -- Gated on cph(2) to edge align phi_out with cph(3) on clk_phase 0 and 8
-      -- Need for state changes cannot be determined until cph(3) but due to cph(2)
-      -- gating, will end up delayed until next cph(2) occurs on phases 2 and 10.
-      -- Note: "0000" and "1000" clk_phase can be as detection is done on cph(2) and clk_phase
-      -- is the same for both cph(2) and cph(3).
-      if (i_cph_sys(2) = '1' and cpu_target_clk /= CPU_STOPPED) then
-        case cpu_clk_state is
-          when CLK_1MHz =>
-            if (cpu_target_clk = CPU_1MHz) and (clk_phase = "0000") then
-              phi_out <= '1';
-            elsif (cpu_target_clk = CPU_2MHz) and (clk_phase(2 downto 0) = "000") then
-              phi_out <= '1';
-              cpu_clk_state <= CLK_2MHz;
-            end if;
-          when CLK_2MHz => 
-            if (cpu_target_clk = CPU_2MHz) and (clk_phase(2 downto 0) = "000") then
-              phi_out <= '1';
-            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '1') then
-              -- ram access attempt during 2MHz only tick, transition to 1MHz
-              cpu_clk_state <= CLK_TRANSITION;
-            elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '0') then
-              -- ram access on 1MHz aligned phase, no transition required
-              cpu_clk_state <= CLK_1MHz;
-            end if;
-          when CLK_TRANSITION => -- 2MHz -> 1MHz
-            if (clk_phase = "1000") then
-              cpu_clk_state <= CLK_1MHz;
-            end if;
-        end case;
+      -- TODO: [Gary] Whilst STOPPED should be accounted for, the whole logic is untested for this condition
+      -- and may turn out to be horribly broken. Extensive testing required when modes 0..3 are implemented.
+
+      -- CPU_STOPPED will be asserted after cph(2) has created a pulse, but before cph(3) has changed
+      -- states. Likewise /CPU_STOPPED will occur on cph(3) allowing state change to occur without
+      -- generating an extra clock pulse and causing the delayed RAM access to be lost. 
+      -- NOTE: This relies on ram_contention changing only on phase 0000.
+      if (cpu_target_clk /= CPU_STOPPED) then
+        -- Clock gen on cph(2) to edge align with cph(3)
+        if (i_cph_sys(2) = '1') then          
+          if (cpu_clk_state = CLK_1MHz and cpu_target_clk = CPU_1MHz and clk_phase = "0000") then          
+            -- 1MHz pulse
+            phi_out <= '1';
+          elsif ( (cpu_clk_state = CLK_2MHz or cpu_target_clk = CPU_2MHz) and clk_phase(2 downto 0) = "000") then
+            -- 2MHz pulse or transition to 2MHz pulsing
+            phi_out <= '1';          
+          end if;
+        end if;
+
+        -- State transitions checked on cph(3)
+        if (i_cph_sys(3) = '1') then
+          case cpu_clk_state is
+            when CLK_1MHz =>
+              if (cpu_target_clk = CPU_2MHz) then
+                -- 2MHz transition safe to occur at any time
+                cpu_clk_state <= CLK_2MHz;
+              end if;
+            when CLK_2MHz => 
+              if (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '1') then
+                -- ram access attempt during 2MHz only phase, transition to 1MHz
+                cpu_clk_state <= CLK_TRANSITION;
+              elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '0') then
+                -- ram access during 1MHz aligned phase, no transition required
+                cpu_clk_state <= CLK_1MHz;
+              end if;
+            when CLK_TRANSITION => -- 2MHz -> 1MHz
+              -- Transition on 1000 to ensure a full 1MHz RAM cycle has
+              -- occured whilst in this state
+              if (clk_phase = "1000") then
+                cpu_clk_state <= CLK_1MHz;
+              end if;
+          end case;
+        end if;
       end if;
 
     end if;
@@ -423,6 +438,10 @@ begin
             -- Setup for read one byte prior to needing it
             read_addr := row_addr + row_count10;
           else
+            -- TODO: [Gary] Only set this true on clock phase 0 when in active region and need to
+            -- do a RAM access (modes 0..3) ie need CPUs slot. Also only unset on phase 0. This ensures the clock
+            -- stopping and resuming will occur on the same phase so the FSM can pickup where it left off.
+            -- rename to ram_contention?
             display_period <= true;
 
             if (pix_count = 0) then

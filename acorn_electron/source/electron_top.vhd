@@ -413,7 +413,10 @@ begin
   -- for following sys_ena 4 sys_clk ticks later. 
   -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
   -- ULA controller ticks twice per ena_sys and must thus ensure at least
-  -- two ula ticks have occurred between the request and result.
+  -- two ula ticks have occurred between the request and result. Whilst
+  -- data is available in the process below on the 2nd ULA tick, it will
+  -- take one more sys clk to become visible to the ULA, in effect requests by the
+  -- ULA on phase 0 will have data visible to the ULA (via rom_data) by phase 3.
   --
   -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;
