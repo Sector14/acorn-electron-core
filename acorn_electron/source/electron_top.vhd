@@ -165,7 +165,7 @@ architecture RTL of Electron_Top is
   signal ena_ula     : bit1;
   signal ula_rom_ena : bit1;
 
-  signal ula_phi_out : bit1;
+  signal ula_ena_phi_out : bit1;
   signal ula_n_irq   : bit1;
 
   signal ula_n_reset_in   : bit1;
@@ -255,18 +255,12 @@ begin
   -- CPU
   -- ====================================================================
 
-  -- TODO: [Gary] using i_clk_sys and gating on ula_phi_out isn't working.
-  -- phi_out as an enable occurs on cph_sys(3), why does this only work if
-  -- used as a direct clock source rather than enable?
-  -- There's also a difference in chipscope and isim output for o_debug_trig
-  -- see ula todo.
-
   -- IC3 T65 (6502-A)
   ic3_6502 : entity work.T65
   port map (
     Mode    => "00",               -- 6502
     Res_n   => ula_n_reset_out,
-    Enable  => ula_phi_out,
+    Enable  => ula_ena_phi_out,
     Clk     => i_clk_sys,
     Rdy     => '1',
     Abort_n => '1',
@@ -363,12 +357,10 @@ begin
 
     -- CPU
     i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
-    o_phi_out     => ula_phi_out,               -- CPU clk, 2MHz, 1MHz or stopped
+    o_ena_phi_out => ula_ena_phi_out,           -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
-    i_n_w         => cpu_n_w,                    -- Data direction, /write, read
+    i_n_w         => cpu_n_w                    -- Data direction, /write, read
 
-    o_debug_trig  => debug_trig,
-    o_debug_clk_phase => debug_clk_phase
   );
 
   p_por : process(i_clk_sys, i_rst_sys, i_halt, kbd_n_break)
@@ -468,7 +460,7 @@ begin
       rom_data <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
-      -- ula_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses    
+      -- ula_ena_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses    
       -- @ 2MHz or 8 @ 1MHz. Ample spare time to interleave ULA RAM access.
       if (i_ena_sys = '1') then
         if (ddr_valid = '1') then
@@ -634,11 +626,11 @@ begin
       cs_trig(62) <= '0'; --i_clk_sys;
       cs_trig(61) <= i_ena_sys;
       cs_trig(60) <= ena_ula;
-      cs_trig(59) <= ula_phi_out;
+      cs_trig(59) <= ula_ena_phi_out;
       cs_trig(58) <= ula_rom_ena;
       -- cs_trig(57 downto 42) <= addr_bus;
-      cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
-      cs_trig(53) <= debug_trig;      
+      --cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
+      --cs_trig(53) <= debug_trig;      
       -- cs_trig(36 downto 34) <= (others => '0');
       -- cs_trig(33 downto 26) <= data_bus;
 
@@ -652,7 +644,7 @@ begin
       -- cs_trig(10 downto 3) <= rom_data;
       -- cs_trig(2) <= cpu_n_w;
 
-      cs_trig(52 downto 0) <= (others => '0');
+      cs_trig(57 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

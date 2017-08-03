@@ -128,12 +128,9 @@ entity ULA_12C021 is
 
     -- CPU
     i_n_nmi       : inout bit1;                -- 1MHz RAM access detection
-    o_phi_out     : out bit1;                  -- CPU clk, 2MHz, 1MHz or stopped
+    o_ena_phi_out : out bit1;                  -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
-    i_n_w         : in bit1;                    -- Data direction, /write, read
-
-    o_debug_trig      : out bit1;
-    o_debug_clk_phase : out unsigned(3 downto 0)
+    i_n_w         : in bit1                    -- Data direction, /write, read
 
   );
 end;
@@ -171,7 +168,6 @@ architecture RTL of ULA_12C021 is
   signal cpu_clk_state : t_clk_state; 
 
   signal phi_out   : bit1;
-  -- TODO: [Gary] may only need 0 to 7 count now?
   signal clk_phase : unsigned(3 downto 0);
 
   signal rtc_count : unsigned(18 downto 0);
@@ -220,12 +216,6 @@ architecture RTL of ULA_12C021 is
   signal colour_palettes : t_colour_palettes;
    
 begin
-
-  -- TODO: [Gary] On chipscope debug_trig which represents hpix = 0
-  -- shows as occuring inline with the the phase "0000" tick.
-  -- In isim however it shows as occuring two ula_ena later during "0010"??
-  o_debug_clk_phase <= clk_phase;
-  o_debug_trig <= '1' when hpix = (x"000" & "00") else '0';
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -322,7 +312,7 @@ begin
                     CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and display_period else -- RAM access mode 0..3
                     CPU_1MHz;                                           -- Ram access  
 
-  o_phi_out <= phi_out and i_cph_sys(3);
+  o_ena_phi_out <= phi_out and i_cph_sys(3);
 
   -- ====================================================================
   -- Video
