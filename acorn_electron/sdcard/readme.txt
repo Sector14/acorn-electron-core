@@ -42,3 +42,4 @@ This is however a work in progress and missing several key features:
   - Cassette/data loading
   - Sound
 
+Only PAL analog output is supported @ 15.652kHz.
