@@ -123,6 +123,11 @@
       <obj_property name="ObjectShortName">rom_data[7:0]</obj_property>
       <obj_property name="Radix">HEXRADIX</obj_property>
    </wvobject>
+   <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/cpu_addr" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">cpu_addr[23:0]</obj_property>
+      <obj_property name="ObjectShortName">cpu_addr[23:0]</obj_property>
+      <obj_property name="Radix">HEXRADIX</obj_property>
+   </wvobject>
    <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/cpu_data_in" type="array" db_ref_id="1">
       <obj_property name="ElementShortName">cpu_data_in[7:0]</obj_property>
       <obj_property name="ObjectShortName">cpu_data_in[7:0]</obj_property>
@@ -182,6 +187,19 @@
       <obj_property name="ElementShortName">i_ddr_hp_to_core</obj_property>
       <obj_property name="ObjectShortName">i_ddr_hp_to_core</obj_property>
       <obj_property name="Radix">HEXRADIX</obj_property>
+      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/i_ddr_hp_to_core.taken" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">.taken</obj_property>
+         <obj_property name="ObjectShortName">i_ddr_hp_to_core.taken</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/i_ddr_hp_to_core.r_data" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">.r_data</obj_property>
+         <obj_property name="ObjectShortName">i_ddr_hp_to_core.r_data</obj_property>
+         <obj_property name="Radix">HEXRADIX</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/i_ddr_hp_to_core.r_we" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">.r_we</obj_property>
+         <obj_property name="ObjectShortName">i_ddr_hp_to_core.r_we</obj_property>
+      </wvobject>
    </wvobject>
    <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/n_por" type="logic" db_ref_id="1">
       <obj_property name="ElementShortName">n_por</obj_property>
@@ -212,10 +230,6 @@
    <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/phi_out" type="logic" db_ref_id="1">
       <obj_property name="ElementShortName">phi_out</obj_property>
       <obj_property name="ObjectShortName">phi_out</obj_property>
-   </wvobject>
-   <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/debug_clk_phase" type="array" db_ref_id="1">
-      <obj_property name="ElementShortName">debug_clk_phase[3:0]</obj_property>
-      <obj_property name="ObjectShortName">debug_clk_phase[3:0]</obj_property>
    </wvobject>
    <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_phase" type="array" db_ref_id="1">
       <obj_property name="ElementShortName">clk_phase[3:0]</obj_property>
@@ -278,6 +292,10 @@
          <obj_property name="DisplayName">label</obj_property>
          <obj_property name="BkColor">#800000</obj_property>
          <obj_property name="TextColor">230 230 230</obj_property>
+      </wvobject>
+      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/ram_cpu_slot" type="logic" db_ref_id="1">
+         <obj_property name="ElementShortName">ram_cpu_slot</obj_property>
+         <obj_property name="ObjectShortName">ram_cpu_slot</obj_property>
       </wvobject>
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/ula_ram_addr" type="array" db_ref_id="1">
          <obj_property name="ElementShortName">ula_ram_addr[14:0]</obj_property>

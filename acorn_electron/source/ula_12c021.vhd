@@ -205,6 +205,8 @@ begin
   -- ====================================================================
   -- 2MHz & 1MHz generator based on 16MHz clock
   -- ULA ticks 0..15 with 1MHz active on phase 0, 2MHz on 0 and 8
+  -- State transition sampling on phase 1 and 9 (reacting to cpu changes).
+  --
   -- Transitions from 2MHz to 1MHz depend on 2MHz phase:
   --   Phase 0: Switch to 1MHz, nothing else required 
   --   Phase 8: Stretched pulse, in effect skip the next 1MHz tick
@@ -231,12 +233,12 @@ begin
 
       phi_out <= '0';
 
-      -- TODO: [Gary] Whilst STOPPED should be accounted for, the whole logic is untested for this condition
+      -- TODO: [Gary] Whilst handling of STOPPED cpu should be accounted for, the whole logic is untested 
       -- and may turn out to be horribly broken. Extensive testing required when modes 0..3 are implemented.
 
       -- CPU_STOPPED will be asserted after cph(2) has created a pulse, but before cph(3) has changed
       -- states. Likewise /CPU_STOPPED will occur on cph(3) allowing state change to occur without
-      -- generating an extra clock pulse and causing the delayed RAM access to be lost. 
+      -- generating an extra clock pulse that would otherwise cause the delayed RAM access to be lost. 
       -- NOTE: This relies on ram_contention changing only on phase 0000.
       if (cpu_target_clk /= CPU_STOPPED) then
         -- Clock gen on cph(2) to edge align with cph(3)
@@ -268,7 +270,7 @@ begin
               end if;
             when CLK_TRANSITION => -- 2MHz -> 1MHz
               -- Transition on 1000 to ensure a full 1MHz RAM cycle has
-              -- occured whilst in this state
+              -- occured whilst waiting in this state
               if (clk_phase = "1000") then
                 cpu_clk_state <= CLK_1MHz;
               end if;
@@ -493,11 +495,12 @@ begin
   -- Cycle 8:
   --   * ula always gets this slot
   --
+  -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
   p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, display_period)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
-    elsif (clk_phase(2 downto 0) = "000") then
+    elsif (clk_phase(2 downto 0) = "001") then
       -- ula always has phase 8 slot
       ram_cpu_slot <= '0';
 
@@ -509,7 +512,6 @@ begin
         end if;
       end if;    
     end if;
-
   end process;
 
   -- Ram access on behalf of CPU or ULA
@@ -527,16 +529,17 @@ begin
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
         end if;
 
-        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
+        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.        
         case clk_phase(2 downto 0) is
           when "000" =>
+            -- CPU clocked on 1 / 2MHz bounds here when enabled.
+            -- addr/data lines set by CPU or ULA depending on slot/priority.
+          when "001" =>
             -- row latch
             o_ra <= ram_addr(14 downto 7);
             o_n_ras <= '0';
             o_n_cas <= '1';
             o_n_we <= '1';
-          when "001" =>
-            -- Unused, future DRAM delay 
           when "010" =>
             -- col latch
             o_ra <= ram_addr(6 downto 0) & '0';
@@ -550,6 +553,7 @@ begin
             end if;
           when "011" =>
             -- Unused, future DRAM delay
+            -- Might require two spare cycles with current DRAM setup?
           when "100" =>
             if (ram_n_w = '1') then
               ram_even_tmp(0) := b_ram0;              
@@ -558,9 +562,9 @@ begin
               ram_even_tmp(3) := b_ram3;
             end if;
             o_n_we <= '1';
-            o_n_cas <= '1';          
-          when "101" =>
-            -- second nibble cycle
+            o_n_cas <= '1';            
+          when "101" =>            
+            -- second nibble cycle setup
             o_ra <= ram_addr(6 downto 0) & '1';
             o_n_cas <= '0';
             o_n_we <= ram_n_w;
@@ -586,7 +590,6 @@ begin
             o_n_ras <= '1';
             o_n_cas <= '1';  
             o_n_we <= '1';
-
           when others =>
             -- unused
         end case;

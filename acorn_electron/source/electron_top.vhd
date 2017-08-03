@@ -231,10 +231,8 @@ begin
   port map (
     Mode    => "00",               -- 6502
     Res_n   => ula_n_reset_out,
-    -- Enable  => ula_phi_out,
-    -- Clk     => i_clk_sys,
-    Enable  => '1',
-    Clk     => ula_phi_out,
+    Enable  => ula_phi_out,
+    Clk     => i_clk_sys,
     Rdy     => '1',
     Abort_n => '1',
     IRQ_n   => ula_n_irq,
@@ -432,7 +430,6 @@ begin
   p_program_rom : process(i_clk_sys, i_rst_sys, i_halt)
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
-      ddr_valid <= '0';
       rom_data <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
@@ -440,7 +437,6 @@ begin
       -- @ 2MHz or 8 @ 1MHz. Ample spare time to interleave ULA RAM access.
       if (i_ena_sys = '1') then
         if (ddr_valid = '1') then
-          ddr_valid <= '0';
           -- note, default is big endian in the DRAM controller
           rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
           case addr_bus(1 downto 0) is
@@ -452,12 +448,14 @@ begin
           end case;
         end if;
 
-        if (ula_phi_out = '1' and ula_rom_ena = '1') then
-          ddr_valid <= '1';
-        end if;
       end if;
     end if;
   end process;
+
+  -- TODO: [Gary] Only need to do one DDR read every 4. For now allow multiple
+  -- redundant reads to occur as long as rom_ena is high. This will become an issue
+  -- when ram is moved to DDR or any other DDR access needs to be interleaved. 
+  ddr_valid <= ula_rom_ena;
 
   -- rom data tri-state via OE
   data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
