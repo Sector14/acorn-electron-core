@@ -43,8 +43,10 @@ xcopy /y %REPLAYLIBCOMMONPATH%\*.vhd
 xcopy /y %REPLAYLIBCOMMONPATH%\*.ut
 xcopy /y %REPLAYLIBCOMMONPATH%\replay_common.ucf
 
+xcopy /y %LIBPATH%\cpu\t65\T65*.vhd
 
 xcopy /y ..\source\*.vhd
+xcopy /y ..\source\override_lib\*.vhd
 xcopy /y ..\source\*.edf
 xcopy /y ..\cs\*.edn
 xcopy /y ..\cs\*.ngc
