@@ -130,10 +130,14 @@ architecture RTL of ULA_12C021 is
   signal ram_addr     : word(14 downto 0);
   signal ram_n_w      : bit1;
 
-  -- Timing
+  -- CPU Timing
+  type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
+  signal cpu_target_clk : t_cpu_clk;
+  type t_clk_state is (CLK_1MHz, CLK_2MHz, CLK_TRANSITION);
+  signal cpu_clk_state : t_clk_state; 
+
   signal phi_out   : bit1;
-  signal clk_1MHz  : bit1;
-  signal clk_2MHz  : bit1;
+  -- TODO: [Gary] may only need 0 to 7 count now?
   signal clk_phase : unsigned(3 downto 0);
 
   signal rtc_count : unsigned(18 downto 0);
@@ -200,39 +204,91 @@ begin
   -- Master Timing
   -- ====================================================================
   -- 2MHz & 1MHz generator based on 16MHz clock
-  -- ULA ticks 0..15 with 1MHz active on clock 0, 2MHz on 0 and 8
+  -- ULA ticks 0..15 with 1MHz active on phase 0, 2MHz on 0 and 8
+  -- State transition sampling on phase 1 and 9 (reacting to cpu changes).
+  --
+  -- Transitions from 2MHz to 1MHz depend on 2MHz phase:
+  --   Phase 0: Switch to 1MHz, nothing else required 
+  --   Phase 8: Stretched pulse, in effect skip the next 1MHz tick
+  --            then resume clocking on the following 1MHz tick
+  -- Phase 8 transition ensures that the RAM read that was setup on the
+  -- 2MHz tick (phase 8) and will not be serviced until phase 0, is not
+  -- lost due to a 1MHz tick occuring (that is way the 1MHz tick is skipped). 
+  --
+  -- Final quirk is that in any state, entire CPU clocking may be
+  -- stopped. State transitions will not occur. It is assumed clocking
+  -- will resume on the same clk_phase it was stopped on.
+  --
   -- Note: Even ula ticks are aligned with sys_cph(3) for DRAM access
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      -- align pixel clock start (hpix 0) with clkphase 0000
+      -- align pixel clock start (hpix 0) with clk_phase 0000
       clk_phase <= "0000";
+      cpu_clk_state <= CLK_1MHz;
     elsif rising_edge(i_clk_sys) then
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
       end if;
+
+      phi_out <= '0';
+
+      -- TODO: [Gary] Whilst handling of STOPPED cpu should be accounted for, the whole logic is untested 
+      -- and may turn out to be horribly broken. Extensive testing required when modes 0..3 are implemented.
+
+      -- CPU_STOPPED will be asserted after cph(2) has created a pulse, but before cph(3) has changed
+      -- states. Likewise /CPU_STOPPED will occur on cph(3) allowing state change to occur without
+      -- generating an extra clock pulse that would otherwise cause the delayed RAM access to be lost. 
+      -- NOTE: This relies on ram_contention changing only on phase 0000.
+      if (cpu_target_clk /= CPU_STOPPED) then
+        -- Clock gen on cph(2) to edge align with cph(3)
+        if (i_cph_sys(2) = '1') then          
+          if (cpu_clk_state = CLK_1MHz and cpu_target_clk = CPU_1MHz and clk_phase = "0000") then          
+            -- 1MHz pulse
+            phi_out <= '1';
+          elsif ( (cpu_clk_state = CLK_2MHz or cpu_target_clk = CPU_2MHz) and clk_phase(2 downto 0) = "000") then
+            -- 2MHz pulse or transition to 2MHz pulsing
+            phi_out <= '1';          
+          end if;
+        end if;
+
+        -- State transitions checked on cph(3)
+        if (i_cph_sys(3) = '1') then
+          case cpu_clk_state is
+            when CLK_1MHz =>
+              if (cpu_target_clk = CPU_2MHz) then
+                -- 2MHz transition safe to occur at any time
+                cpu_clk_state <= CLK_2MHz;
+              end if;
+            when CLK_2MHz => 
+              if (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '1') then
+                -- ram access attempt during 2MHz only phase, transition to 1MHz
+                cpu_clk_state <= CLK_TRANSITION;
+              elsif (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '0') then
+                -- ram access during 1MHz aligned phase, no transition required
+                cpu_clk_state <= CLK_1MHz;
+              end if;
+            when CLK_TRANSITION => -- 2MHz -> 1MHz
+              -- Transition on 1000 to ensure a full 1MHz RAM cycle has
+              -- occured whilst waiting in this state
+              if (clk_phase = "1000") then
+                cpu_clk_state <= CLK_1MHz;
+              end if;
+          end case;
+        end if;
+      end if;
+
     end if;
   end process;
 
-  clk_2MHz <= '1' when (i_cph_sys(3) = '1') and 
-                       (clk_phase = "0000" or clk_phase = "1000") else '0';
-  clk_1MHz <= '1' when (i_cph_sys(3) = '1') and 
-                       (clk_phase = "0000") else '0';
+  -- CPU clocking based on access type
+  cpu_target_clk <= CPU_1MHz when nmi = '1' else                       
+                    CPU_1MHz when i_addr(15 downto 9) = "1111110" else  -- ROM Fred/Jim
+                    CPU_2MHz when i_addr(15) = '1' else                 -- Any other ROM access
+                    CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and display_period else -- RAM access mode 0..3
+                    CPU_1MHz;                                           -- Ram access  
 
-  -- CPU Variable clocking
-  -- TODO: [Gary] AN015 p5 notes 2->1MHz transition is based on phase of 2MHz clock, handle this.
-  --              Without this ram access timing slot may end up conflicting with the ULAs slot?
-  -- TODO: [Gary] Its suggested that the RAM access can be at 2MHz outside of the display period
-  --              in mode 0..3?? Investigate.
-  -- phi_out <= clk_1MHz when i_addr(15 downto 7) = "111110" else  -- ROM Fred/Jim
-  --            clk_2MHz when i_addr(15) = '1' else                -- Any other ROM access
-  --            clk_1MHz when nmi = '1' else                       -- TODO: [Gary] Double check this
-  --            clk_1MHz when misc_control(MISC_DISPLAY_MODE) >= "100" else -- RAM access mode 4,5,6
-  --            '0' when misc_control(MISC_DISPLAY_MODE) <= "011" and display_period  else -- RAM access mode 0,1,2,3
-  --            clk_1MHz;                                          -- RAM access, mode 0,1,2,3 outside active display
-  phi_out <= clk_1MHz;
-  
-  o_phi_out <= phi_out;
+  o_phi_out <= phi_out and i_cph_sys(3);
 
   -- ====================================================================
   -- Video
@@ -384,6 +440,10 @@ begin
             -- Setup for read one byte prior to needing it
             read_addr := row_addr + row_count10;
           else
+            -- TODO: [Gary] Only set this true on clock phase 0 when in active region and need to
+            -- do a RAM access (modes 0..3) ie need CPUs slot. Also only unset on phase 0. This ensures the clock
+            -- stopping and resuming will occur on the same phase so the FSM can pickup where it left off.
+            -- rename to ram_contention?
             display_period <= true;
 
             if (pix_count = 0) then
@@ -435,11 +495,12 @@ begin
   -- Cycle 8:
   --   * ula always gets this slot
   --
+  -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
   p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, display_period)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
-    elsif (clk_phase(2 downto 0) = "000") then
+    elsif (clk_phase(2 downto 0) = "001") then
       -- ula always has phase 8 slot
       ram_cpu_slot <= '0';
 
@@ -451,7 +512,6 @@ begin
         end if;
       end if;    
     end if;
-
   end process;
 
   -- Ram access on behalf of CPU or ULA
@@ -469,16 +529,17 @@ begin
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
         end if;
 
-        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.       
+        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.        
         case clk_phase(2 downto 0) is
           when "000" =>
+            -- CPU clocked on 1 / 2MHz bounds here when enabled.
+            -- addr/data lines set by CPU or ULA depending on slot/priority.
+          when "001" =>
             -- row latch
             o_ra <= ram_addr(14 downto 7);
             o_n_ras <= '0';
             o_n_cas <= '1';
             o_n_we <= '1';
-          when "001" =>
-            -- Unused, future DRAM delay 
           when "010" =>
             -- col latch
             o_ra <= ram_addr(6 downto 0) & '0';
@@ -492,6 +553,7 @@ begin
             end if;
           when "011" =>
             -- Unused, future DRAM delay
+            -- Might require two spare cycles with current DRAM setup?
           when "100" =>
             if (ram_n_w = '1') then
               ram_even_tmp(0) := b_ram0;              
@@ -500,9 +562,9 @@ begin
               ram_even_tmp(3) := b_ram3;
             end if;
             o_n_we <= '1';
-            o_n_cas <= '1';          
-          when "101" =>
-            -- second nibble cycle
+            o_n_cas <= '1';            
+          when "101" =>            
+            -- second nibble cycle setup
             o_ra <= ram_addr(6 downto 0) & '1';
             o_n_cas <= '0';
             o_n_we <= ram_n_w;
@@ -528,7 +590,6 @@ begin
             o_n_ras <= '1';
             o_n_cas <= '1';  
             o_n_we <= '1';
-
           when others =>
             -- unused
         end case;
