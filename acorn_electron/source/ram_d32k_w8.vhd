@@ -42,6 +42,8 @@
 -- Email support@fpgaarcade.com
 --
 
+-- This is no longer used. The ROM entity has been moved into DDR.
+
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;

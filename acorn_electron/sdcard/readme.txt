@@ -30,3 +30,15 @@ reset the electron.
 As with the original electron, capslock is toggled via shift+capslock, whilst 
 holding capslock will result in the function key, i.e capslock+e will output
 "ELSE"
+
+# Core Status
+
+The core boots to the Basic prompt in mode 6 with keyboard support.
+
+This is however a work in progress and missing several key features:
+
+  - Modes 0 through 5
+  - Colour Palettes
+  - Cassette/data loading
+  - Sound
+
