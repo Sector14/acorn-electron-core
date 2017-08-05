@@ -141,10 +141,22 @@ architecture RTL of ULA_12C021 is
   signal ana_hsync, ana_vsync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
+  signal vid_rst : bit1;
   signal vpix, hpix, vtotal : word(13 downto 0);
-  
-  signal display_period : boolean;
-  
+  signal vid_sol : bit1;  
+  signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
+  signal vid_row_count : integer range 0 to 10;
+
+  signal ram_contention : boolean;
+
+  -- type t_video_mode is record
+  --   output_cnt : integer range 1 to 4;
+  --   text_mode :  boolean;   -- text modes have 2 blank lines every 8
+  --   phase_0_read  : boolean;   -- causes ula to steal CPU read slot (all modes read phase 8 regardless)
+  --   row_group_offset : integer range 0 to 640;
+  -- end record;
+  -- signal cur_mode : t_video_mode;
+
   -- Adjusted screen base and wrap addr for current mode
   signal mode_base_addr : unsigned(14 downto 6);
   signal mode_wrap_addr : unsigned(14 downto 6);
@@ -237,7 +249,7 @@ begin
   --            then resume clocking on the following 1MHz tick
   -- Phase 8 transition ensures that the RAM read that was setup on the
   -- 2MHz tick (phase 8) and will not be serviced until phase 0, is not
-  -- lost due to a 1MHz tick occuring (that is way the 1MHz tick is skipped). 
+  -- lost due to a 1MHz tick occuring (that is why the 1MHz tick is skipped). 
   --
   -- Final quirk is that in any state, entire CPU clocking may be
   -- stopped. State transitions will not occur. It is assumed clocking
@@ -247,12 +259,17 @@ begin
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      -- align pixel clock start (hpix 0) with clk_phase 0000
+      vid_rst <= '1';    
       clk_phase <= "0000";
       cpu_clk_state <= CLK_1MHz;
     elsif rising_edge(i_clk_sys) then
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
+
+        -- bring video out of reset to align hpix 0 with phase 0
+        if (vid_rst = '1' and clk_phase = "1111") then
+          vid_rst <= '0';
+        end if;
       end if;
 
       phi_out <= '0';
@@ -309,7 +326,7 @@ begin
   cpu_target_clk <= CPU_1MHz when nmi = '1' else                       
                     CPU_1MHz when i_addr(15 downto 9) = "1111110" else  -- ROM Fred/Jim
                     CPU_2MHz when i_addr(15) = '1' else                 -- Any other ROM access
-                    CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and display_period else -- RAM access mode 0..3
+                    CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and ram_contention else -- RAM access mode 0..3
                     CPU_1MHz;                                           -- Ram access  
 
   o_ena_phi_out <= phi_out and i_cph_sys(3);
@@ -317,14 +334,21 @@ begin
   -- ====================================================================
   -- Video
   -- ====================================================================
-  -- Modes:
-  --   0 - 640x256 two colour gfx, 80x32 text (20K)
-  --   1 - 320x256 four colour gfx, 40x32 text (20K)
-  --   2 - 160x256 sixteen colour gfx, 20x32 text (20K)
-  --   3 - 80x25 two colour text gfx
-  --   4 - 320x256 two colour gfx, 40x32 text (10K)
-  --   5 - 160x256 four colour gfx, 20x32 text (10K)
-  --   6 - 40x25 two colour text (8K)
+
+  -- Mode reads required on phase 0 or 8 ready for following phase as follows:
+  -- Mode | Res                  | Read Phase  | cnt
+  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
+  --  0   | 640x256 1bpp         | 1000, 0000  | 1   
+  --  2   | 160x256 4bpp         | 1000, 0000  | 4   
+  --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1   
+  --  4   | 320x256 1bpp         | 1000        | 2   
+  --  5   | 160x256 2bpp         | 1000        | 4   
+  --  6   | 320x250 1bpp (text)  | 1000        | 2   
+  --
+  -- E.g mode 6 needs 1 byte read during phase 8, ready for output on phase 0
+  -- Due to 1bpp and repeated pixels, one byte covers phase 0-7 & 8-15.
+  -- Mode 3 lacks repeated pixels and needs a new byte every 0 & 8 and only
+  -- one byte covers at most either 0-7 or 8-15.
   
   -- TODO: [Gary] Did Electron generate offset/interlaced display or use matching fields for 256p?
   u_VideoTiming : entity work.Replay_VideoTiming
@@ -335,7 +359,7 @@ begin
     port map (
       i_clk                 => i_clk_sys,
       i_ena                 => i_ena_ula,
-      i_rst                 => rst,
+      i_rst                 => vid_rst,
       --
       i_param               => c_Vidparam_832x287p_50_16MHz,
       i_sof                 => '0',
@@ -351,7 +375,7 @@ begin
       o_dig_ha              => open,
       o_dig_va              => open,
       o_dig_sof             => open,
-      o_dig_sol             => open,
+      o_dig_sol             => vid_sol,
       o_ana_hs              => ana_hsync,
       o_ana_vs              => ana_vsync,
       o_ana_de              => ana_de,
@@ -375,122 +399,150 @@ begin
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
 
-  u_vid_rgb : process(i_clk_sys, rst, mode_base_addr)
-    variable cur_pix, next_pix : word(7 downto 0);
-    variable pix_count : unsigned(3 downto 0);
-    -- screen byte address to read
-    variable read_addr : unsigned(15 downto 0);
+  -- TODO: [Gary]  pull out mode settings into record and switch active
+  vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
+                   misc_control(MISC_DISPLAY_MODE) = "011";
+  vid_v_blank <= (unsigned(vpix) < 16) or
+                  (unsigned(vpix) >= 16+256) or
+                  (unsigned(vpix) >= 16+250 and vid_text_mode);
+  vid_h_blank <= unsigned(hpix) < 64 or unsigned(hpix) >= 704;
+  
 
-    -- start of row addr
-    variable row_addr  : unsigned(15 downto 0);
-    -- 8 lines + 2 blank
-    variable row_count10 : unsigned(3 downto 0);
+  p_vid_out : process(rst, vid_rst, i_clk_sys)
+    variable pix_idx : integer range 0 to 7;
+    variable pixel_data : word(7 downto 0);
+    variable repeat_count : integer range 0 to 4;
   begin
-    if (rst = '1') then
-      cur_pix := (others => '0');
-      next_pix := (others => '0');
-      pix_count := (others => '0');      
-
-      row_addr := '0' & mode_base_addr & "000000";
-      read_addr := row_addr;
-      row_count10 := "0000";
+    if (rst = '1') or (vid_rst = '1') then
+      pixel_data := (others => '0');    
+      pix_idx := 7;
+      repeat_count := 0;
     elsif rising_edge(i_clk_sys) then
-
       if (i_ena_ula = '1') then
+
+        -- overscan
         o_rgb <= x"000000";
 
-        display_period <= false;
-        
-        -- Mode 6 Memory layout assuming 0x6000 screen start
-        -- Top left = 0x6000, 1bpp, first 8 pixels 0x6000, 2nd 8 0x6008
-        -- Second line starts at 0x6001 and increments in 8's with 2 blank lines every 8.
-        -- See AUG p240
-        --
-        -- 832 active "pixels" in the 51.95us display area. The 640
-        -- display should use the central 40us giving a cycle timing of 62.5ns.
-
-        -- TODO: [Gary] Mode changes can occur mid scanline. Treat mode 7 as mode 4.
-        --       May not use the same starting addr as mode 4 (starting or wrap?). Check.
-        -- TODO: [Gary] This is a rather messy bit of logic that needs generalising to allow
-        --       modes 0..6 to be correctly supported with line blanking for text modes,
-        --       and varied horiz width 640, 320, 160 as well as different bpp and palettes          
-        -- TODO: [Gary] The timing between clk_phase and video pixels is rather brittle
-
-        if (unsigned(vpix) = 0) then   
-          -- Latch mode adjusted screen start. Wrap is not latched as it's based on
-          -- screen mode which can be changed mid frame.
-          row_addr := '0' & mode_base_addr & "000000";
-          read_addr := row_addr;
-          row_count10 := "0000";
+        -- Byte read on phase 8 only when mode 0..3
+        if ((clk_phase = "0000") or 
+            (clk_phase = "1000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then
+          pixel_data := ram_data;
         end if;
 
-        -- TODO: [Gary] Once 2MHz support added for all modes that require it, will need
-        --       to fetch one byte from ram_data at start of each 8 cycle read        
-        -- hpix 0 is aligned with clk_phase 0000.
-        if (clk_phase = "0000") then
-          next_pix := ram_data;
-        end if;
+        if (not vid_v_blank and vid_row_count < 8) then
+          
+          if (not vid_h_blank) then
+            case misc_control(MISC_DISPLAY_MODE) is
+              -- TODO: [Gary] sort modes out for pixel interpretation
+              when "000" | "011" | "100" | "110" => -- 1bpp
+                -- Mode 0,3,4,6: 1bpp 7,6,5,4,3,2,1,0
+                if (pixel_data(pix_idx) = '1') then
+                  -- TODO: [Gary] should this be paletted for the two colours?
+                  o_rgb <= x"FFFFFF";
+                end if;
+              when "001" | "101" => -- 2bpp
+                -- Mode 1,5    : 2bpp 7&3, 6&2, 5&1, 4&0
 
-        if (clk_phase(3) = '0') then
-          -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
-          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
-          if (read_addr(15) = '1') then
-            ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
+              when "010" => -- 4bpp        
+                -- Mode 2      : 4bpp 7&5&3&1, 6&4&2&0
+              
+              when others =>
+                -- TODO: [Gary] Mode 7 should be treated as 4?
+
+            end case;
+
+            if repeat_count = 0 then
+              if (pix_idx = 0) then
+                pix_idx := 7;
+              else
+                -- TODO: [Gary] this depends on the mode
+                pix_idx := pix_idx - 1;
+              end if;
+
+              case misc_control(MISC_DISPLAY_MODE) is
+                when "000" | "011" => repeat_count := 0;
+                when "001" | "100" | "110" | "111" => repeat_count := 1;
+                when "010" | "101" => repeat_count := 3;
+                when others => -- usused          
+              end case;        
+            else
+              repeat_count := repeat_count - 1;
+            end if;
+
           end if;
         end if;
 
-        if (unsigned(vpix) < 16 or unsigned(vpix) >= 16+256) then
-          -- overscan
-          o_rgb <= x"000000";
-        elsif (unsigned(vpix) >= 16 and unsigned(vpix) < 16+256) then
-
-          -- Setup for first byte of new line
-          if (unsigned(hpix) = 704) then   
-            row_count10 := row_count10 + 1;
-            if (row_count10 = 10) then
-              row_addr := row_addr + 320;
-              row_count10 := (others => '0');
-            end if;
-            
-            read_addr := row_addr + row_count10;
-          end if;
-          
-          -- 2 hpix per rendered pixel for mode 6 320x256
-          if (unsigned(hpix) < 64 or unsigned(hpix) >= 704 or row_count10 >= 8) then
-            -- Border
-            pix_count := (others => '0');
-            o_rgb <= x"000000";
-
-            -- Setup for read one byte prior to needing it
-            read_addr := row_addr + row_count10;
-          else
-            -- TODO: [Gary] Only set this true on clock phase 0 when in active region and need to
-            -- do a RAM access (modes 0..3) ie need CPUs slot. Also only unset on phase 0. This ensures the clock
-            -- stopping and resuming will occur on the same phase so the FSM can pickup where it left off.
-            -- rename to ram_contention?
-            display_period <= true;
-
-            if (pix_count = 0) then
-              cur_pix := next_pix;
-              -- pre-fetch next pixel data from ram with 8 byte horiz stride
-              read_addr := read_addr + 8;
-            end if;
-
-            -- Active Region 640x256
-            -- For 320 and 160 modes, repeat pixels.        
-            o_rgb <= x"000000";
-            if (cur_pix(7 - to_integer(pix_count(3 downto 1))) = '1') then
-              o_rgb <= x"FFFFFF";
-            end if;
-          
-            pix_count := pix_count + 1;         
-          end if;        
-        end if;
       end if;
-
     end if;
   end process;
 
+  p_vid_addr : process(i_clk_sys, rst, mode_base_addr)
+    -- start address of current row
+    variable row_addr  : unsigned(15 downto 0);
+    -- address of byte to fetch from RAM
+    variable read_addr : unsigned(15 downto 0);
+
+  begin
+    if (rst = '1') then
+      row_addr := '0' & mode_base_addr & "000000";
+      read_addr := row_addr;
+      vid_row_count <= 0;
+      ram_contention <= false;
+    elsif rising_edge(i_clk_sys) then      
+      if (i_ena_ula = '1') then
+
+        -- Check for CPU RAM contention change only on phase 0
+        if (clk_phase = "0000") then
+          -- TODO: [Gary] 2 blanking lines in mode 3 are contention free or not?
+          -- TODO: [Gary] if using 704 for contention, may end up doing  byte more than
+          --              needed? On pixel 696 data for that pixel should already be available
+          --              and no more bytes follow it, just h_sync/border. render process needs 704 
+          --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
+          --              under contention than needed.
+          ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
+                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+        end if;
+
+        if (unsigned(vpix) = 0) then
+          -- Latch mode adjusted screen start. Wrap is not latched and may
+          -- change mid frame depending on mode.
+          row_addr := '0' & mode_base_addr & "000000";
+          read_addr := row_addr;
+          vid_row_count <= 0;
+        end if;
+
+      
+        if (not vid_v_blank) then
+          -- end of active line
+          if (unsigned(hpix) = 704) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
+            if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
+              vid_row_count <= 0;
+              -- TODO: [Gary] this needs to be based on current video mode!                
+              row_addr := row_addr + 320;
+              read_addr := row_addr;
+            else
+              vid_row_count <= vid_row_count + 1;
+              read_addr := row_addr + vid_row_count + 1;
+            end if;
+          end if;
+        end if;
+
+        -- Every 8 or 16 pixels depending on mode/repeats
+        if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
+          if (not (vid_v_blank or vid_h_blank) ) then          
+              read_addr := read_addr + 8;
+          end if;
+        end if;  
+
+        -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
+        ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
+        if (read_addr(15) = '1') then
+          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
+        end if;
+
+      end if;
+    end if;
+  end process;
 
   -- ====================================================================
   -- RAM
@@ -514,13 +566,13 @@ begin
   -- The ULA time shares ram access (1MHz period each) with the CPU as:
   -- Cycle 0:
   --   * cpu gets the slot by default
-  --   * ULA overrides cpu if mode 0,1,2,3 during display_period
+  --   * ULA overrides cpu if mode 0,1,2,3 during ram_contention
   --   * CPU overrides ULA if nmi set
   -- Cycle 8:
   --   * ula always gets this slot
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
-  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, display_period)
+  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, ram_contention)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
@@ -531,7 +583,7 @@ begin
       -- ula/cpu contention over phase 0 slot
       if (clk_phase(3) = '0') and (i_addr(15) = '0') then
         ram_cpu_slot <= '1';
-        if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') and display_period then
+        if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') and ram_contention then
           ram_cpu_slot <= '0';
         end if;
       end if;    
@@ -691,7 +743,7 @@ begin
       multi_counter <= (others => '0');
       misc_control <= (others => '0');
       -- TODO: [Gary] is this a correct default? starting in mode 0 would cause cpu to never execute
-      -- during "display_period", although boot should still work, just take longer.
+      -- during "ram_contention", although boot should still work, just take longer.
       misc_control(MISC_DISPLAY_MODE) <= "110";
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
