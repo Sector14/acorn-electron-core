@@ -266,13 +266,14 @@ begin
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
 
-        -- bring video out of reset to align hpix 0 with phase 0
-        if (vid_rst = '1' and clk_phase = "1111") then
-          vid_rst <= '0';
-        end if;
       end if;
 
       phi_out <= '0';
+
+      -- bring video out of reset to align hpix 0 with phase 0
+      if (vid_rst = '1' and clk_phase = "1111") then
+        vid_rst <= '0';
+      end if;
 
       -- TODO: [Gary] Whilst handling of STOPPED cpu should be accounted for, the whole logic is untested 
       -- and may turn out to be horribly broken. Extensive testing required when modes 0..3 are implemented.
@@ -337,8 +338,8 @@ begin
 
   -- Mode reads required on phase 0 or 8 ready for following phase as follows:
   -- Mode | Res                  | Read Phase  | cnt
-  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
   --  0   | 640x256 1bpp         | 1000, 0000  | 1   
+  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
   --  2   | 160x256 4bpp         | 1000, 0000  | 4   
   --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1   
   --  4   | 320x256 1bpp         | 1000        | 2   
@@ -442,13 +443,13 @@ begin
                 end if;
               when "001" | "101" => -- 2bpp
                 -- Mode 1,5    : 2bpp 7&3, 6&2, 5&1, 4&0
-
+                o_rgb <= x"FF0000";
               when "010" => -- 4bpp        
                 -- Mode 2      : 4bpp 7&5&3&1, 6&4&2&0
-              
+                o_rgb <= x"FF0000";
               when others =>
                 -- TODO: [Gary] Mode 7 should be treated as 4?
-
+                o_rgb <= x"FF0000";
             end case;
 
             if repeat_count = 0 then
@@ -476,14 +477,14 @@ begin
     end if;
   end process;
 
-  p_vid_addr : process(i_clk_sys, rst, mode_base_addr)
+  p_vid_addr : process(i_clk_sys, rst, vid_rst, mode_base_addr)
     -- start address of current row
     variable row_addr  : unsigned(15 downto 0);
     -- address of byte to fetch from RAM
     variable read_addr : unsigned(15 downto 0);
 
   begin
-    if (rst = '1') then
+    if (rst = '1' or vid_rst = '1') then
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
       vid_row_count <= 0;
@@ -517,8 +518,11 @@ begin
           if (unsigned(hpix) = 704) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
             if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
               vid_row_count <= 0;
-              -- TODO: [Gary] this needs to be based on current video mode!                
-              row_addr := row_addr + 320;
+              if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
+                row_addr := row_addr + 640;
+              else
+                row_addr := row_addr + 320;
+              end if;
               read_addr := row_addr;
             else
               vid_row_count <= vid_row_count + 1;
@@ -529,7 +533,7 @@ begin
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          if (not (vid_v_blank or vid_h_blank) ) then          
+          if (not (vid_v_blank or vid_h_blank) and vid_row_count < 8 ) then          
               read_addr := read_addr + 8;
           end if;
         end if;  
