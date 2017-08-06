@@ -408,11 +408,11 @@ begin
                   (unsigned(vpix) >= 16+250 and vid_text_mode);
   vid_h_blank <= unsigned(hpix) < 64 or unsigned(hpix) >= 704;
   
-
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pix_idx : integer range 0 to 7;
     variable pixel_data : word(7 downto 0);
     variable repeat_count : integer range 0 to 4;
+    variable repeat_count_reg : integer range 0 to 4;
   begin
     if (rst = '1') or (vid_rst = '1') then
       pixel_data := (others => '0');    
@@ -428,6 +428,16 @@ begin
         if ((clk_phase = "0000") or 
             (clk_phase = "1000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then
           pixel_data := ram_data;
+          
+          case misc_control(MISC_DISPLAY_MODE) is
+            when "000" | "011" => repeat_count_reg := 0;
+            when "001" | "100" | "110" | "111" => repeat_count_reg := 1;
+            when "010" | "101" => repeat_count_reg := 3;
+            when others => -- usused          
+          end case;        
+
+          pix_idx := 7;
+          repeat_count := repeat_count_reg;
         end if;
 
         if (not vid_v_blank and vid_row_count < 8) then
@@ -453,19 +463,8 @@ begin
             end case;
 
             if repeat_count = 0 then
-              if (pix_idx = 0) then
-                pix_idx := 7;
-              else
-                -- TODO: [Gary] this depends on the mode
-                pix_idx := pix_idx - 1;
-              end if;
-
-              case misc_control(MISC_DISPLAY_MODE) is
-                when "000" | "011" => repeat_count := 0;
-                when "001" | "100" | "110" | "111" => repeat_count := 1;
-                when "010" | "101" => repeat_count := 3;
-                when others => -- usused          
-              end case;        
+              pix_idx := pix_idx - 1;
+              repeat_count := repeat_count_reg;
             else
               repeat_count := repeat_count - 1;
             end if;
@@ -576,7 +575,9 @@ begin
   --   * ula always gets this slot
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
-  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, misc_control, ram_contention)
+  
+  -- TODO: [Gary] this is ending up as a latch. fix.
+  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, ram_contention)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
@@ -587,7 +588,7 @@ begin
       -- ula/cpu contention over phase 0 slot
       if (clk_phase(3) = '0') and (i_addr(15) = '0') then
         ram_cpu_slot <= '1';
-        if (nmi = '0') and (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') and ram_contention then
+        if (nmi = '0') and ram_contention then
           ram_cpu_slot <= '0';
         end if;
       end if;    
