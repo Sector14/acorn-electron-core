@@ -403,8 +403,12 @@ begin
   vid_h_blank <= unsigned(hpix) < 64 or unsigned(hpix) >= 704;
   
   p_vid_out : process(rst, vid_rst, i_clk_sys)
-    variable pix_idx : integer range 0 to 7;
     variable pixel_data : word(7 downto 0);
+    variable pix_idx : integer range 0 to 7;
+
+    variable logical_colour : unsigned(3 downto 0);
+    variable rgb : word(2 downto 0);
+    
     variable repeat_count : integer range 0 to 4;
     variable repeat_count_reg : integer range 0 to 4;
   begin
@@ -437,27 +441,97 @@ begin
         if (not vid_v_blank and vid_row_count < 8) then
           
           if (not vid_h_blank) then            
-            -- TODO: [Gary] Palette lookup
+
+            -- TODO: [Gary] split out decode and lookup from process
+            logical_colour := (others => '0');
+
+            -- Decode pixel to logical colour
             case misc_control(MISC_DISPLAY_MODE) is
               when "000" | "011" | "100" | "110" | "111" =>
-                -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0
-                if (pixel_data(pix_idx) = '1') then
-                  o_rgb <= x"FFFFFF";
-                end if;
+                -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
+                logical_colour := "000" & pixel_data(pix_idx);
               when "001" | "101" =>
                 -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
-                if (pixel_data(pix_idx) = '1' or pixel_data(pix_idx-4) = '1') then
-                  o_rgb <= x"FF0000";
-                end if;
+                logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
               when "010" =>
                 -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
-                if ( pixel_data(pix_idx) = '1' or pixel_data(pix_idx-2) = '1' or
-                     pixel_data(pix_idx-4) = '1' or pixel_data(pix_idx-6) = '1' ) then
-                  o_rgb <= x"FF0000";
-                end if;
+                 logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
               when others =>
             end case;
 
+            -- Palette Lookup (AUG p215)
+            -- TODO: [Gary] There has to be some logic to the palette register format that will
+            --              avoid this big case but I'm not seeing it.
+            case misc_control(MISC_DISPLAY_MODE) is
+              when "000" | "011" | "100" | "110" | "111" =>
+                -- 2 colour
+                case to_integer(logical_colour) is 
+                  when 0 => 
+                    rgb := colour_palettes(9)(0) & colour_palettes(8)(4) & colour_palettes(8)(4);
+                  when others => -- 1
+                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                end case;
+                
+              when "001" | "101" =>
+                case to_integer(logical_colour) is 
+                  -- 4 colour
+                  when 0 => 
+                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                  when 1 =>
+                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                  when 2 => 
+                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                  when others => -- 3
+                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+                end case;
+
+              when "010" =>
+                case to_integer(logical_colour) is 
+                  -- 16 colour
+                  when 0 => 
+                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                  when 1 =>
+                    rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
+                  when 2 => 
+                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                  when 3 => 
+                    rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
+                  when 4 =>
+                    rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
+                  when 5 => 
+                    rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
+                  when 6 => 
+                    rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
+                  when 7 =>
+                    rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
+                  when 8 => 
+                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                  when 9 => 
+                    rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
+                  when 10 =>
+                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+                  when 11 => 
+                    rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
+                  when 12 => 
+                    rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
+                  when 13 =>
+                    rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
+                  when 14 => 
+                    rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
+                  when others => -- 15
+                    rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
+                end case;
+
+              when others => -- unused
+                rgb := "111";
+            end case;
+
+            -- Palette uses '1' to turn off that colour
+            o_rgb <= (23 downto 16 => not rgb(2)) &
+                     (15 downto 8  => not rgb(1)) &
+                     (7  downto 0  => not rgb(0));
+
+            -- Handle repeated pixel modes
             if repeat_count = 0 then
               pix_idx := pix_idx - 1;
               repeat_count := repeat_count_reg;
