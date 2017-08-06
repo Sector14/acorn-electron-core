@@ -255,16 +255,16 @@ begin
       clk_phase <= "0000";
       cpu_clk_state <= CLK_1MHz;
     elsif rising_edge(i_clk_sys) then
-      if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
-        clk_phase <= clk_phase + 1;
-
-      end if;
 
       phi_out <= '0';
 
-      -- bring video out of reset to align hpix 0 with phase 0
-      if (vid_rst = '1' and clk_phase = "1111") then
+      -- Bring video out of reset to align hpix 0 with phase 0
+      if (i_cph_sys(0) = '1' and vid_rst = '1' and clk_phase = "1111") then
         vid_rst <= '0';
+      end if;
+      
+      if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
+        clk_phase <= clk_phase + 1;
       end if;
 
       -- TODO: [Gary] Whilst handling of STOPPED cpu should be accounted for, the whole logic is untested 
@@ -436,24 +436,26 @@ begin
 
         if (not vid_v_blank and vid_row_count < 8) then
           
-          if (not vid_h_blank) then
+          if (not vid_h_blank) then            
+            -- TODO: [Gary] Palette lookup
             case misc_control(MISC_DISPLAY_MODE) is
-              -- TODO: [Gary] sort modes out for pixel interpretation
-              when "000" | "011" | "100" | "110" =>
+              when "000" | "011" | "100" | "110" | "111" =>
                 -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0
                 if (pixel_data(pix_idx) = '1') then
-                  -- TODO: [Gary] should this be paletted for the two colours?
                   o_rgb <= x"FFFFFF";
                 end if;
               when "001" | "101" =>
                 -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
-                o_rgb <= x"FF0000";
-              when "010" =>        
+                if (pixel_data(pix_idx) = '1' or pixel_data(pix_idx-4) = '1') then
+                  o_rgb <= x"FF0000";
+                end if;
+              when "010" =>
                 -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
-                o_rgb <= x"FF0000";
+                if ( pixel_data(pix_idx) = '1' or pixel_data(pix_idx-2) = '1' or
+                     pixel_data(pix_idx-4) = '1' or pixel_data(pix_idx-6) = '1' ) then
+                  o_rgb <= x"FF0000";
+                end if;
               when others =>
-                -- TODO: [Gary] Mode 7 should be treated as 4?
-                o_rgb <= x"FF0000";
             end case;
 
             if repeat_count = 0 then
@@ -851,10 +853,11 @@ begin
     -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
     -- hardcoded per mode base address. Also used if address overflows back to 0.
     -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
+    -- NOTE: 3000 used for mode 7 despite treated same as mode 4 everywhere else. Verify.
     case misc_control(MISC_DISPLAY_MODE) is
-      when "000" | "001" | "010" => base_addr := x"30" & "00";
+      when "000" | "001" | "010" | "111" => base_addr := x"30" & "00";
       when "011" => base_addr := x"40" & "00";
-      when "100" | "101" | "111" => base_addr := x"58" & "00";
+      when "100" | "101" => base_addr := x"58" & "00";
       when "110" => base_addr := x"60" & "00";
       when others =>
     end case;
