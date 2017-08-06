@@ -1,26 +1,27 @@
-# Acorn Electron Core
+# About
 
-This repository contains an Acorn Electon core for the FPGA Replay.
+Acorn Electon core for the [FPGA Replay](http://www.fpgaarcade.com/)
 
-# Building
-
-In order to build the core you'll need to copy the replay\_lib/
-and lib/ directories from the [Replay Library SVN](http://svn.fpgaarcade.com/)
-into the repo root, or (preferably) provide sym links to those
-directories in your Replay library checkout.
-
-Should any examples fail to build with the latest version of the
-Replay Library please let me know. 
+Please refer to sdcard/readme.txt for usage information.
 
 A series of blog posts covering this core are available on
 [my website](https://www.mups.co.uk/post/2017/07/acorn-electron-fpga-project/)
 
-More informtation about the FPGA Replay Board can be found on
-the official [FPGA Replay website](http://www.fpgaarcade.com/).
+# Building
+
+If building from a checkout of the Replay SVN, run build.bat or build.sh
+as with any other core.
+
+When building from a standalone git clone of the acorn electron repo
+you'll first need a copy of (or ideally sym links to) the replay\_lib/ and lib/
+directories from a checkout of the [Replay Library SVN](http://svn.fpgaarcade.com/).
+
+The build scripts expect those directories (or sym links) to be present in
+the parent of the directory containing the build scripts/this readme.
 
 # License
 
-Most code is provided under the FPGA Arcade License. Some
-files include a non-commericial clause.
+Most code is provided under the FPGA Arcade License. Some files include
+a non-commericial clause.
 
-For details please refer to the header comments of individual vhd files.
+Please refer to the header comments of individual vhd files.
