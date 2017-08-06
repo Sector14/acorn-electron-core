@@ -149,14 +149,6 @@ architecture RTL of ULA_12C021 is
 
   signal ram_contention : boolean;
 
-  -- type t_video_mode is record
-  --   output_cnt : integer range 1 to 4;
-  --   text_mode :  boolean;   -- text modes have 2 blank lines every 8
-  --   phase_0_read  : boolean;   -- causes ula to steal CPU read slot (all modes read phase 8 regardless)
-  --   row_group_offset : integer range 0 to 640;
-  -- end record;
-  -- signal cur_mode : t_video_mode;
-
   -- Adjusted screen base and wrap addr for current mode
   signal mode_base_addr : unsigned(14 downto 6);
   signal mode_wrap_addr : unsigned(14 downto 6);
@@ -350,7 +342,12 @@ begin
   -- Due to 1bpp and repeated pixels, one byte covers phase 0-7 & 8-15.
   -- Mode 3 lacks repeated pixels and needs a new byte every 0 & 8 and only
   -- one byte covers at most either 0-7 or 8-15.
-  
+  --
+  -- See AUG:
+  --   p214 Colour palette
+  --   p234 Graphics Modes (Appendix C)
+  --   
+
   -- TODO: [Gary] Did Electron generate offset/interlaced display or use matching fields for 256p?
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
@@ -391,21 +388,18 @@ begin
 
   -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
   -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
-  -- location so digital h/v passed out for now. This is a cludge as the
-  -- timing of dig h/v may not match that of analog h/v (or combined csync). This will
-  -- be fixed once ULA switched to its own analog timing, or VideoTiming adjusted to
-  -- expose analog h/v.
+  -- location so digital h/v passed out for now. This is a bit of a kludge as the
+  -- timing of dig h/v may not match that of analog h/v (or combined csync)
   o_n_hsync <= dig_hsync;
   o_n_vsync <= dig_vsync;
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
-
-  -- TODO: [Gary]  pull out mode settings into record and switch active
+  
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
   vid_v_blank <= (unsigned(vpix) < 16) or
-                  (unsigned(vpix) >= 16+256) or
-                  (unsigned(vpix) >= 16+250 and vid_text_mode);
+                 (unsigned(vpix) >= 16+256) or
+                 (unsigned(vpix) >= 16+250 and vid_text_mode);
   vid_h_blank <= unsigned(hpix) < 64 or unsigned(hpix) >= 704;
   
   p_vid_out : process(rst, vid_rst, i_clk_sys)
@@ -428,7 +422,7 @@ begin
         if ((clk_phase = "0000") or 
             (clk_phase = "1000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then
           pixel_data := ram_data;
-          
+                    
           case misc_control(MISC_DISPLAY_MODE) is
             when "000" | "011" => repeat_count_reg := 0;
             when "001" | "100" | "110" | "111" => repeat_count_reg := 1;
@@ -445,17 +439,17 @@ begin
           if (not vid_h_blank) then
             case misc_control(MISC_DISPLAY_MODE) is
               -- TODO: [Gary] sort modes out for pixel interpretation
-              when "000" | "011" | "100" | "110" => -- 1bpp
-                -- Mode 0,3,4,6: 1bpp 7,6,5,4,3,2,1,0
+              when "000" | "011" | "100" | "110" =>
+                -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0
                 if (pixel_data(pix_idx) = '1') then
                   -- TODO: [Gary] should this be paletted for the two colours?
                   o_rgb <= x"FFFFFF";
                 end if;
-              when "001" | "101" => -- 2bpp
-                -- Mode 1,5    : 2bpp 7&3, 6&2, 5&1, 4&0
+              when "001" | "101" =>
+                -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
                 o_rgb <= x"FF0000";
-              when "010" => -- 4bpp        
-                -- Mode 2      : 4bpp 7&5&3&1, 6&4&2&0
+              when "010" =>        
+                -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
                 o_rgb <= x"FF0000";
               when others =>
                 -- TODO: [Gary] Mode 7 should be treated as 4?
@@ -874,10 +868,6 @@ begin
     else
       mode_base_addr <= unsigned(screen_start_addr);
     end if;
-
-    -- TODO: [Gary] Bug after using CLS, any new text typed will show after
-    -- cursor but also down in the bottom right of the screen. Wrap addr issue
-    -- or start addr?
 
     -- Wrapping always starts from the hardcoded address regardless
     -- of screen_start_addr.
