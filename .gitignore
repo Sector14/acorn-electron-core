@@ -1,14 +1,14 @@
 # ROMS
-acorn_electron/sdcard/os_basic.rom
-acorn_electron/sdcard/basic.rom
-acorn_electron/sdcard/os.rom
+sdcard/os_basic.rom
+sdcard/basic.rom
+sdcard/os.rom
 
 # Test Bench ROMS
-acorn_electron/tb/os_basic_fff0_ffff.rom
-acorn_electron/tb/os_basic_d800_da00.rom
+tb/os_basic_fff0_ffff.rom
+tb/os_basic_d800_da00.rom
 
 # Build files
-acorn_electron/sdcard/acorn_electron.bin
+sdcard/acorn_electron.bin
 
 # Ignore sym links
 lib
