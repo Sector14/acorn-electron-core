@@ -64,17 +64,12 @@ entity ULA_12C021 is
     --
     -- Additional framework signals to ease usage
     --
-    o_n_vsync     : out bit1;                  -- 
-    o_de          : out bit1;                  --
+    o_n_vsync     : out bit1;
+    o_de          : out bit1;
 
-    o_rgb         : out word(23 downto 0);
-
-    -- ULA is clock enabled on clk_sys rather than a new clock domain
+    -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);
-
-    i_ena_ula     : in bit1;                    
-    i_div13_ena   : in bit1;
 
     --
     -- ULA
@@ -95,13 +90,13 @@ entity ULA_12C021 is
     -- Video
     o_n_csync     : out bit1;                  -- h/v sync  (low during horizontal or vertical synchronisation)
     o_n_hsync     : out bit1;                  -- h sync    
-    --o_red         : out bit1;            
-    --o_green       : out bit1;            
-    --o_blue        : out bit1; 
+    o_red         : out bit1;            
+    o_green       : out bit1;            
+    o_blue        : out bit1; 
   
-    -- Clock
-    -- i_clk      : in bit1;
-    -- i_div13    : in bit1;
+    -- Clock (used via enables rather than direct clock))
+    i_ena_ula     : in bit1;                    
+    i_ena_div13   : in bit1;
        
     -- RAM (4x64k 1 bit)       
     b_ram0        : inout bit1;                -- RAM Data ic 0
@@ -420,7 +415,9 @@ begin
       if (i_ena_ula = '1') then
 
         -- overscan
-        o_rgb <= x"000000";
+        o_red <= '0';
+        o_green <= '0';
+        o_blue <= '0';
 
         -- Byte read on phase 8 only when mode 0..3
         if ((clk_phase = "0000") or 
@@ -527,10 +524,10 @@ begin
             end case;
 
             -- Palette uses '1' to turn off that colour
-            o_rgb <= (23 downto 16 => not rgb(2)) &
-                     (15 downto 8  => not rgb(1)) &
-                     (7  downto 0  => not rgb(0));
-
+            o_red <= not rgb(2);
+            o_green <= not rgb(1);
+            o_blue <= not rgb(0);
+            
             -- Handle repeated pixel modes
             if repeat_count = 0 then
               pix_idx := pix_idx - 1;

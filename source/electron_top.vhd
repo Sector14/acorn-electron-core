@@ -128,7 +128,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   -- TODO: [Gary] This should come from config.
   --constant cfg_dblscan : bit1 := '1';
 
@@ -303,13 +303,12 @@ begin
     --
     o_n_vsync     => ula_n_vsync,
     o_de          => ula_de,               
-    o_rgb         => ula_rgb,
 
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
     i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
-    i_div13_ena   => div13,                     -- ena_ula div 13
+    i_ena_div13   => div13,                     -- ena_ula div 13
     
     --
     -- ULA
@@ -330,8 +329,10 @@ begin
     -- Video             
     o_n_csync     => ula_n_csync,               -- h/v sync
     o_n_hsync     => ula_n_hsync,               -- h sync
-     
-       
+    o_red         => ula_rgb(2),
+    o_green       => ula_rgb(1),
+    o_blue        => ula_rgb(0),
+            
     -- RAM (4x64k 1 bit)       
     b_ram0        => ram_data(0),
     b_ram1        => ram_data(1),
@@ -387,7 +388,9 @@ begin
   -- 16MHz from sys_clk / 2
   ena_ula <= i_cph_sys(1) or i_cph_sys(3);
 
-  o_vid_rgb <= ula_rgb;
+  o_vid_rgb <= (23 downto 16 => ula_rgb(2)) &
+               (15 downto 8  => ula_rgb(1)) &
+               (7  downto 0  => ula_rgb(0));
 
   o_vid_sync.dig_de <= ula_de;
   o_vid_sync.dig_hs <= ula_n_hsync;
@@ -487,16 +490,22 @@ begin
   -- rom data tri-state via OE
   data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
 
-  -- Cassette i/o adapter
+  --
+  -- Cassette
+  --
   -- Support loading via SD card rather than physical cassette.
   -- Should be optional and route additional signals to allow a physical
   -- cassette to be interfaced via expansion port.
 
+
+  --
+  -- Sound
+  --
+
+  --
   -- Expansion roms
+  --
 
-  -- Audio adapter
-
-  
   --
   -- Scanline Doubling
   --
