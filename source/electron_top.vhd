@@ -129,16 +129,18 @@ end;
 architecture RTL of Electron_Top is
 
   constant electrontop_cs_enable : boolean := false;
-  -- TODO: [Gary] This should come from config.
-  --constant cfg_dblscan : bit1 := '1';
+  
+  -- Config
+  signal cfg_dblscan : bit1;
 
-  signal led                    : bit1;
-  signal tick_pre1              : bit1;
-  signal tick                   : bit1;
+  -- LED Blink
+  signal led         : bit1;
+  signal tick_pre1   : bit1;
+  signal tick        : bit1;
 
   -- Scanline doubler
-  --signal dbl_hsync_l, dbl_vsync_l, dbl_csync_l, dbl_blank : bit1;
-  --signal dbl_rgb   : word(23 downto 0);
+  signal dbl_hsync_l, dbl_vsync_l, dbl_csync_l, dbl_blank : bit1;
+  signal dbl_rgb   : word(23 downto 0);
 
   -- addr/data bus shared by ROM, CPU and ULA
   signal addr_bus    : word(15 downto 0);
@@ -173,9 +175,11 @@ architecture RTL of Electron_Top is
 
   signal ula_caps_lock : bit1;
 
+  signal ula_r, ula_b, ula_g : bit1;
+
   -- ULA/Framework extras
-  signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;
-  signal ula_rgb     : word(23 downto 0);
+  signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
+  signal ula_rgb : word(23 downto 0);
 
   -- ULA Glue
   signal div13       : bit1;
@@ -192,7 +196,7 @@ architecture RTL of Electron_Top is
   signal debug_trig : bit1;
   signal debug_clk_phase : unsigned(3 downto 0);
 begin
-  
+    
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
@@ -204,6 +208,9 @@ begin
 
   o_audio_l             <= (others => '0');
   o_audio_r             <= (others => '0');
+
+  -- Config
+  cfg_dblscan           <= i_cfg_dynamic(0);
 
   -- ====================================================================
   -- Misc
@@ -234,8 +241,7 @@ begin
   -- RAM
   -- ====================================================================
 
-  -- IC20 RAM 4x64K 1bit
-  -- 64k 0x000 - 0x3FFFF
+  -- IC20 RAM 4x64K 1bit (0x0 - 0x3FFFF)
   ram_ic20 : entity work.TM4164EA3_64k_W4
   port map (
     -- clock for sync bram 
@@ -329,9 +335,9 @@ begin
     -- Video             
     o_n_csync     => ula_n_csync,               -- h/v sync
     o_n_hsync     => ula_n_hsync,               -- h sync
-    o_red         => ula_rgb(2),
-    o_green       => ula_rgb(1),
-    o_blue        => ula_rgb(0),
+    o_red         => ula_r,
+    o_green       => ula_g,
+    o_blue        => ula_b,
             
     -- RAM (4x64k 1 bit)       
     b_ram0        => ram_data(0),
@@ -364,6 +370,11 @@ begin
 
   );
 
+  -- 1 bit r,g,b to 24 bit
+  ula_rgb <= (23 downto 16 => ula_r) &
+             (15 downto 8  => ula_g) &
+             (7  downto 0  => ula_b);
+
   p_por : process(i_clk_sys, i_rst_sys, i_halt, kbd_n_break)
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
@@ -387,20 +398,6 @@ begin
   -- Orig ULA would clock regardless of por, this is a compromise for DDR access
   -- 16MHz from sys_clk / 2
   ena_ula <= i_cph_sys(1) or i_cph_sys(3);
-
-  o_vid_rgb <= (23 downto 16 => ula_rgb(2)) &
-               (15 downto 8  => ula_rgb(1)) &
-               (7  downto 0  => ula_rgb(0));
-
-  o_vid_sync.dig_de <= ula_de;
-  o_vid_sync.dig_hs <= ula_n_hsync;
-  o_vid_sync.dig_vs <= ula_n_vsync;
-
-  -- Analog
-  -- TODO: [Gary] When doubling output separate h & v sync. Otherwise use csync
-  o_vid_sync.ana_de <= ula_de;
-  o_vid_sync.ana_hs <= ula_n_csync;
-  o_vid_sync.ana_vs <= '1';
 
   -- ====================================================================
   -- Framwork Interfacing
@@ -509,29 +506,40 @@ begin
   --
   -- Scanline Doubling
   --
-  --  u_DblScan : entity work.Replay_DblScan
-  --  port map (
-  --    -- clocks
-  --    --i_clk                 => i_clk_sys,
-  --    --i_ena                 => '1', 
-  --    --i_rst                 => i_rst_sys,
-  --
-  --    --
-  --    i_bypass              => '1',
-  --    i_dblscan             => cfg_dblscan,
-  --    --
-  --    i_hsync_l             => dig_hsync,
-  --    i_vsync_l             => dig_vsync,
-  --    i_csync_l             => csync_l,  -- passed through
-  --    i_blank               => dig_de,   -- passed through
-  --    i_vid_rgb             => x"FF0000", -- r 23..16 g 15..8 b 7..0
-  --    --
-  --    o_hsync_l             => dbl_hsync_l,
-  --    o_vsync_l             => dbl_vsync_l,
-  --    o_csync_l             => dbl_csync_l,
-  --    o_blank               => dbl_blank,
-  --    o_vid_rgb             => dbl_rgb
-  --  );
+  u_DblScan : entity work.Replay_DblScan
+  port map (
+    i_clk                 => i_clk_sys,
+    i_ena                 => i_ena_sys,   -- not used 
+    i_rst                 => i_rst_sys,
+
+    --
+    i_bypass              => '0',
+    i_dblscan             => cfg_dblscan,
+    --
+    i_hsync_l             => ula_n_hsync,
+    i_vsync_l             => ula_n_vsync,
+    i_csync_l             => ula_n_csync,  -- passed through
+    i_blank               => not ula_de,       -- passed through
+    i_vid_rgb             => ula_rgb,
+    --
+    o_hsync_l             => dbl_hsync_l,
+    o_vsync_l             => dbl_vsync_l,
+    o_csync_l             => dbl_csync_l,
+    o_blank               => dbl_blank,
+    o_vid_rgb             => dbl_rgb
+  );
+
+  -- Digital
+  o_vid_sync.dig_de <= not dbl_blank;
+  o_vid_sync.dig_hs <= dbl_hsync_l;
+  o_vid_sync.dig_vs <= dbl_vsync_l;
+
+  -- Analog
+  o_vid_sync.ana_de <= not dbl_blank;
+  o_vid_sync.ana_hs <= dbl_hsync_l when cfg_dblscan = '1' else dbl_csync_l;
+  o_vid_sync.ana_vs <= dbl_vsync_l when cfg_dblscan = '1' else '1';
+
+  o_vid_rgb <= dbl_rgb;
 
   --
   -- Activity LEDs

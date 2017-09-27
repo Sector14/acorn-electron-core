@@ -9,6 +9,7 @@ Rom sha1sum
   basic.rom    4a7393f3a45ea309f744441c16723e2ef447a281
   os_basic.rom bad51a4666ff9e9eed19811a1eb9d4cda10e69a3
 
+
 # Key Binds
 
 Most non-shifted keys on the Electron have been mapped to the same non-shifted 
@@ -30,6 +31,32 @@ As with the original electron, caps-lock is toggled via shift+capslock, whilst
 holding capslock will result in the function key, i.e capslock+e will output
 "ELSE"
 
+
+# Video Output
+
+By default the core outputs a PAL analog signal with CSync @ 15.652kHz. 
+
+TVs will accept this signal via scart sockets. A DVI/VGA adapter plus
+VGA to Scart cable will be needed. Note most VGA/Scart cables will not
+have a compatible pin-out but scart cables can easily have the pins 
+switched.
+
+See http://www.fpgaarcade.com/punbb/viewtopic.php?id=1211 for instructions
+on how to modify a regular VGA/Scart cable to work with the replay.
+
+Compatible cables can be bought, they'll be sold as "minimig" such as:
+http://amigakit.leamancomputing.com/catalog/product_info.php?products_id=919
+
+Digital outputs (DVI or HDMI) may also be used however most monitors will
+require a 31kHZ signal. Enable the "Double scan" option in the replay.ini
+
+Note: Whilst a DVI/VGA adapter can be used to connect to monitors/TVs 
+that provide a VGA connection, even if they support 15.652kHz VGA it
+is likely to expect separate H & V Sync signals rather than CSync.
+The only way to achieve that currently is to enable "Double scan"
+and operate at 32kHz.
+
+
 # Core Status
 
 The core boots to the Basic prompt in mode 6 with keyboard support.
@@ -41,6 +68,3 @@ This is a work in progress and missing a few key features:
 
   - Cassette/data loading
   - Sound
-
-Only PAL analog output is supported @ 15.652kHz. A scan doubler will be
-added once the core is more functional.
