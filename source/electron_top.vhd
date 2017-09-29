@@ -132,6 +132,7 @@ architecture RTL of Electron_Top is
   
   -- Config
   signal cfg_dblscan : bit1;
+  signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
 
   -- LED Blink
   signal led         : bit1;
@@ -177,6 +178,8 @@ architecture RTL of Electron_Top is
 
   signal ula_r, ula_b, ula_g : bit1;
 
+  signal ula_cas_i, ula_cas_o, ula_cas_mo : bit1;
+
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
   signal ula_rgb : word(23 downto 0);
@@ -200,8 +203,7 @@ begin
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
-
-  o_fcha_fm_core        <= z_Fileio_fm_core;
+  
   o_fchb_fm_core        <= z_Fileio_fm_core;
 
   o_memio_fm_core       <= z_Memio_fm_core;
@@ -211,6 +213,10 @@ begin
 
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
+  cfg_cas_play          <= i_cfg_dynamic(1);
+  cfg_cas_rec           <= i_cfg_dynamic(2);
+  cfg_cas_ffwd          <= i_cfg_dynamic(3);
+  cfg_cas_rwnd          <= i_cfg_dynamic(4);
 
   -- ====================================================================
   -- Misc
@@ -297,9 +303,6 @@ begin
   -- ULA
   -- ====================================================================
 
-  -- TODO: [Gary] Cassette and audio to sort. May be simpler to add extra
-  --       signals and alternative path to save converting data
-  --       to intermediate form only to then try to convert back again.
   -- IC1 ULA (Uncommitted Logic Array)
   -- Managed RAM, Video, Cassette and Sound
   ula_ic1 : entity work.ULA_12C021
@@ -309,22 +312,22 @@ begin
     --
     o_n_vsync     => ula_n_vsync,
     o_de          => ula_de,               
-
+    
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
     i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
     i_ena_div13   => div13,                     -- ena_ula div 13
-    
+
     --
     -- ULA
     --
 
-    -- Cassette I/O (not yet supported)
-    i_cas         => '0',
-    o_cas         => open,
-    b_cas_rc      => open,                      -- RC high tone detection
-    o_cas_mo      => open,                      -- Motor relay
+    -- Cassette I/O
+    i_cas         => ula_cas_i,
+    o_cas         => ula_cas_o,
+    b_cas_rc      => open,                      -- ??
+    o_cas_mo      => ula_cas_mo,                -- Motor relay
        
     -- Audio      (not yet supported)       
     o_sound_op    => open,            
@@ -490,10 +493,29 @@ begin
   --
   -- Cassette
   --
-  -- Support loading via SD card rather than physical cassette.
-  -- Should be optional and route additional signals to allow a physical
-  -- cassette to be interfaced via expansion port.
 
+  -- Read(and write) bytes from SD using file i/o and serialise/frequency encode
+  u_virtual_cassette : entity work.Virtual_Cassette_FileIO
+  port map (
+    -- Clocks
+    i_clk          => i_clk_sys,
+    i_ena          => i_ena_sys,
+    i_rst          => i_rst_sys,
+
+    -- -- FileIO / Syscon interface
+    i_fch_cfg      => i_fcha_cfg,
+    i_fch_to_core  => i_fcha_to_core,
+    o_fch_fm_core  => o_fcha_fm_core,
+
+    -- Controls
+    i_motor        => ula_cas_mo,
+    i_play         => cfg_cas_play,
+    i_rec          => cfg_cas_rec,
+    i_ffwd         => cfg_cas_ffwd,
+    i_rwnd         => cfg_cas_rwnd
+  );
+
+  -- TODO: Multiplex i_cas/o_cas between aux pins and cas_virt
 
   --
   -- Sound
@@ -519,7 +541,7 @@ begin
     i_hsync_l             => ula_n_hsync,
     i_vsync_l             => ula_n_vsync,
     i_csync_l             => ula_n_csync,  -- passed through
-    i_blank               => not ula_de,       -- passed through
+    i_blank               => not ula_de,   -- passed through
     i_vid_rgb             => ula_rgb,
     --
     o_hsync_l             => dbl_hsync_l,

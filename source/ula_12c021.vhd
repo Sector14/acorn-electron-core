@@ -42,12 +42,7 @@
 --
 -- Note: This implementation is a compromise between matching the external interface
 -- of the real ULA and providing the replay framework with the data it needs to
--- function. A fully pin accurate mapping would likely entail so much extra logic
--- outside the ULA to rebuild data the ULA could just provide. For example
--- outputting one bit RGB vs the full value the framework takes. Likewise for
--- trying to derive the active video signal from just csync and hsync.
---
--- Ram access didn't need that much more logic to remain pin accurate however.
+-- function.
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -70,15 +65,15 @@ entity ULA_12C021 is
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);
-
+   
     --
     -- ULA
     -- 
     
     -- Cassette I/O (not yet supported)
     i_cas         : in bit1; 
-    o_cas         : out bit1;      
-    b_cas_rc      : inout bit1;                -- RC high tone detection
+    o_cas         : out bit1;                  -- pseudo sine-wave
+    b_cas_rc      : inout bit1;                -- Purpose not yet understood.
     o_cas_mo      : out bit1;                  -- Motor relay
            
     -- Audio
@@ -902,11 +897,14 @@ begin
 
         -- Interrupt Generation
         -- TODO: [Gary] check -1, may be off by 1 depending on when vtotal inc occurs
+        -- TODO: [Gary] See AUG draft 3 p214. Both this and rtc_count need adjusting to
+        --       match the scoped output showing in the AUG for exact timing.
         if (unsigned(vpix) = unsigned(vtotal)-1) then
           isr_status(ISR_FRAME_END) <= '1';        
         end if;
 
-        -- 50Hz RTC interrupt every 320000 clocks      
+        -- 50Hz RTC interrupt every 320000 clocks  
+        -- TODO: [Gary] See AUG draft 3 p214. Generate 8192us after the 160us vsync pulse ends.    
         if (rtc_count = 320000-1) then
           rtc_count <= (others => '0');
           isr_status(ISR_RTC) <= '1';
@@ -969,13 +967,27 @@ begin
   --
 
   --
-  -- Cassette Interface
+  -- Cassette Interface 
   --
+  -- TODO: Generate pseudo sine wave on o_cas @1200 or 2400Hz rather than square
+  -- wave. Needs a config option to toggle between the two for virtual cassette to work.
+  
+  -- input interpret 1200 and 2400 zero crossing frequency as 0 or 1.
+  
+  -- zero crossing counter
+    -- ...  
+
   -- TODO: mdfs.net notes bit take order is opposite to what the AUG states. Investigate.
 
-  -- TODO: [Gary] shift in new bit of data from cassette every ~2ms
-  -- read full interrupt every 8 bits
+  -- TODO: [Gary] shift in new bit of data from cassette/sd every ~2ms
+  -- read full interrupt every 8 bits input
+    -- clear rx full interrupt once first bit of new byte clocked in 
+
   -- write empty interrupt after 8 bits output
+
   -- High tone interrupt
+    -- if motor enabled, enable high tone detection, 10 consecutive high bits
+    -- set interrupt is detected
+    -- how does counter value fit into this?
 
 end;
