@@ -46,7 +46,7 @@ use work.Replay_Pack.all;
 
 entity Virtual_Cassette_FileIO is
   port (
-    -- Clocks
+    -- Clocks (32MHz sys with 1:4 enable)
     i_clk                : in bit1;
     i_ena                : in bit1;
     i_rst                : in bit1;
@@ -61,7 +61,11 @@ entity Virtual_Cassette_FileIO is
     i_play               : in bit1;
     i_rec                : in bit1;
     i_ffwd               : in bit1;
-    i_rwnd               : in bit1
+    i_rwnd               : in bit1;
+
+    -- Pulse based cassette i/o (0 = 1200Hz and 1 = 2400Hz)
+    i_cas_to_fch         : in bit1;
+    o_cas_fm_fch         : out bit1
   );
 end;
 
@@ -71,6 +75,34 @@ begin
 
   -- Temp disabled until file io hooked up
   o_fch_fm_core <= Z_Fileio_fm_core;
+
+  -- For initial testing return an incrementing counter for each byte
+  -- to verify the ULA's side of the loading works, before complicating
+  -- with FileIO.
+
+  p_dummy_read : process(i_clk, i_ena, i_rst)
+    variable pulse : integer := 0;
+    variable cnt : integer := 0;
+  begin
+    if (i_rst = '1') then
+      cnt := 0;
+      pulse := 1000;
+    elsif rising_edge(i_clk) then
+      -- TODO: Any ULA/Sys clock stretching needed?      
+      if (i_ena = '1') then
+        -- TODO: Use ULA div13 for enable then can use 1024 and 512 for ~1200 and ~2400
+        -- TODO: If ULA counter is only 8 bits and bit(7) is not used, how does
+        -- that give enough counter values even with a div13 clock, to detect
+        -- 1200 vs 2400?
+
+        -- 512 = 2400Hz = 1, 1024 = 1200Hz = 0.
+
+        -- TODO: Output a high tone sequence
+        -- TODO: Output counter values
+      end if;
+    end if;
+
+  end process;
 
   --
   -- FILEIO
@@ -225,5 +257,5 @@ begin
   -- TODO: output a start/stop bit around each byte on dig, analog will have that already
   -- 1200 bps using 1200Hz and 2400Hz pulses
 
-  
+
 end RTL;

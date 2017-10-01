@@ -223,25 +223,24 @@ begin
   -- ====================================================================
 
   -- IC9 clock div 13 (74LS163)
-  b_clk_div : block
-    signal cnt : unsigned( 3 downto 0 ) := (others => '0');
+  p_ic9_div13 : process(i_clk_sys, i_rst_sys)
+    variable cnt : integer range 0 to 13;
   begin
-
-    -- TODO: [Gary] This should be ena_ula / 13 not sys_clk.
-    p_ic9_div13 : process(i_clk_sys)
-    begin      
-      if rising_edge(i_clk_sys) then
+    if (i_rst_sys = '1') then
+      cnt := 0;
+    elsif rising_edge(i_clk_sys) then
+      -- cph 0 & 2 to align div13 with ena_ula cph 1 & 3
+      if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then
         div13 <= '0';
 
-        cnt <= cnt + 1;        
-        if (cnt = 12) then
-          cnt <= (others => '0');
+        cnt := cnt + 1;        
+        if (cnt = 13) then
+          cnt := 0;
           div13 <= '1';
         end if;
       end if;
-    end process;
-
-  end block;
+    end if;
+  end process;
   
   -- ====================================================================
   -- RAM
@@ -512,10 +511,13 @@ begin
     i_play         => cfg_cas_play,
     i_rec          => cfg_cas_rec,
     i_ffwd         => cfg_cas_ffwd,
-    i_rwnd         => cfg_cas_rwnd
+    i_rwnd         => cfg_cas_rwnd,
+
+    i_cas_to_fch   => ula_cas_o,
+    o_cas_fm_fch   => ula_cas_i
   );
 
-  -- TODO: Multiplex i_cas/o_cas between aux pins and cas_virt
+  -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --
   -- Sound
