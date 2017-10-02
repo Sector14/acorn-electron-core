@@ -92,6 +92,8 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal fileio_rx_level        : word(10 downto 0);
   signal fileio_rx_overfl       : bit1;
 
+  signal fileio_rx_flush        : bit1;
+
   -- fileio req
   type t_fileio_req_state is (S_IDLE, S_WAIT);
   signal fileio_req_state       : t_fileio_req_state;
@@ -116,6 +118,7 @@ begin
       cnt := 0;
       cur_bit := 15;
       fileio_taken <= '0';
+      cur_data <= (others => '0');
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
@@ -186,7 +189,7 @@ begin
     o_size0               => fileio_src_size,
 
     -- Reading
-    i_fifo_to_core_flush  => '0',
+    i_fifo_to_core_flush  => fileio_rx_flush,
     o_fifo_to_core_data   => fileio_data,
     i_fifo_to_core_taken  => fileio_taken,
     o_fifo_to_core_valid  => fileio_valid,
@@ -211,17 +214,19 @@ begin
       fileio_addr <= (others => '0');
       fileio_req  <= '0';
       fileio_req_state <= S_IDLE;
+      fileio_rx_flush <= '0';
     elsif rising_edge(i_clk) then
 
       if (i_ena = '1') then
         fileio_req  <= '0';
+        fileio_rx_flush <= '0';
 
         -- Unlike a real tape, virtual tapes rewind upon eject ;) This also
         -- makes up for the fact that the RWND button doesn't work.
         if (i_fch_cfg.inserted(0) = '0') then
           fileio_addr <= (others => '0');
           fileio_req_state <= S_IDLE;
-          -- TODO: Flush fifo?
+          fileio_rx_flush <= '1';
         else
           case fileio_req_state is
             when S_IDLE =>
