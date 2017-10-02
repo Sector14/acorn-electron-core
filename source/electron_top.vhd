@@ -517,9 +517,6 @@ begin
     o_cas_fm_fch   => ula_cas_i
   );
 
-  o_debug(9) <= cfg_cas_play;
-  o_debug(8) <= ula_cas_i;
-
   -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --

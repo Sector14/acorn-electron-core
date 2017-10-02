@@ -160,7 +160,7 @@ architecture RTL of ULA_12C021 is
   signal cas_i_l       : bit1;
   signal cas_i_negedge : boolean;
   type t_cas_state is (CAS_IDLE, CAS_HIGHTONE_DETECT, CAS_START_BIT, CAS_DATA, 
-                       CAS_DATA_SKIP_PULSE, CAS_STOP_BIT);
+                       CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
   signal cas_state     : t_cas_state;
   signal cas_hightone  : boolean;
   signal cas_in_bits   : integer range 19 downto 0;
@@ -1005,24 +1005,12 @@ begin
           when others => null;
         end case;
       
-        -- TODO: What causes the hightone flag to revert back to 0?
-        -- how do we know when data has finished being read in?
-
-        -- TODO: could this be based off counting between two rising edges
-        -- and then workign out freq based on period?
-        
         -- Cassette Reading
         if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_INPUT or
            misc_control(MISC_CASSETTE_MOTOR) = '0' then
           cas_hightone <= false;
           cas_state <= CAS_IDLE;
         elsif cas_i_negedge then
-
-          if multi_counter < 96 then
-            o_debug(0) <= '1';
-          else
-            o_debug(0) <= '0';
-          end if;
 
           case cas_state is
             when CAS_IDLE =>
@@ -1059,7 +1047,7 @@ begin
                 cas_in_bits <= 19;
               end if;
 
-            when CAS_DATA =>              
+            when CAS_DATA =>
               if cas_in_bits = 1 then
                 cas_state <= CAS_STOP_BIT;
                 -- trigger as soon as 8th data bit received, don't wait for stop bit
@@ -1070,28 +1058,31 @@ begin
 
               if (multi_counter < 96) then      -- 2400Hz = one 
                 cas_data_shift <= '1' & cas_data_shift(7 downto 1);
-               -- cas_state <= CAS_DATA_SKIP_PULSE;
+                cas_state <= CAS_DATA_SKIP;
               elsif (multi_counter >= 96) then  -- 1200Hz = zero
                 cas_data_shift <= '0' & cas_data_shift(7 downto 1);
               end if;
 
-            when CAS_DATA_SKIP_PULSE =>
-              -- A one is made up of two 2400Hz pulses, skip the second
+            when CAS_DATA_SKIP =>
+              -- assume it's a 2400Hz pulse. A 1200Hz here would be an error
+              -- but no idea how the electron handled that atm.
               if cas_in_bits = 0 then
                 cas_state <= CAS_STOP_BIT;
               else
                 cas_state <= CAS_DATA;
               end if;
-
+              
             when CAS_STOP_BIT =>
-            -- TODO: should this also skip the next pulse?
               if multi_counter < 96 then 
-                cas_state <= CAS_START_BIT;
+                cas_state <= CAS_STOP_BIT_SKIP;
               else
                 -- error?
                 cas_state <= CAS_IDLE;
               end if;
 
+            when CAS_STOP_BIT_SKIP =>
+              -- eat the 2nd '1' pulse
+              cas_state <= CAS_START_BIT;
           end case;
 
         end if;
@@ -1128,7 +1119,7 @@ begin
 
     end if;
   end process;
-
+  
   o_cas_mo <= misc_control(MISC_CASSETTE_MOTOR);
 
   -- Falling edge detection

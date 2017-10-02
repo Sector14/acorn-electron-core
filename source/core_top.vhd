@@ -231,7 +231,7 @@ begin
   
 
   -- debug
-  b_aux_io(13) <= debug(9); -- electron top
+  b_aux_io(13) <= debug(2); -- electron top
   b_aux_io(12) <= debug(8); -- electron top
   
   b_aux_io(15) <= debug(1);  -- ula

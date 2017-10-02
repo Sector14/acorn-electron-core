@@ -72,92 +72,74 @@ end;
 architecture RTL of Virtual_Cassette_FileIO is
   signal data : word(7 downto 0);
   signal dummy_addr : integer range 5000 downto 0 := 0;
+
+
 begin
 
   -- Temp disabled until file io hooked up
   o_fch_fm_core <= Z_Fileio_fm_core;
 
+  -- File IO only handles 0 or 1 states where as tape had pulses of 0's
+  -- pulses of 1's and then gaps with level 0. Gaps will end up generating
+  -- pulses of 0's with the current setup. Although this should hopefully
+  -- not cause too big a problem as the first run of 0's will cause the
+  -- stop bit check to fail and a return to looking for a high tone.
+  -- There will be a single byte that generates a RX full interrupt however.
+  
   -- For initial testing return an incrementing counter for each byte
   -- to verify the ULA's side of the loading works, before complicating
   -- with FileIO.
 
-
+  -- Assumes start/stop bits are baked into the stream already.
   p_dummy_read : process(i_clk, i_ena, i_rst)
     variable cnt : integer := 0;
-    variable cur_bit : integer range 7 downto 0;
-    variable high_period : boolean;
+    variable cur_bit : integer range 7 downto 0;    
   begin
     if (i_rst = '1') then
       cnt := 0;
       dummy_addr <= 0;
       cur_bit := 7;
-      high_period := false;
     elsif rising_edge(i_clk) then
-      -- TODO: Any ULA/Sys clock stretching needed?
       -- TODO: check inserted etc
 
-      -- temporary sync reset
+      -- temporary position reset to ease testing
       if (i_play = '0' or i_motor = '0') then
         dummy_addr <= 0;
         cur_bit := 7;
-        high_period := false;
         cnt := 0;
       end if;
 
       -- Hacky test to load part of a acorn tape which has been converted
       -- from uef to a bitstream including start/stop bits and then pasted
-      -- into a giant case :)      
+      -- into a giant case.
       if (i_ena = '1') and (i_play = '1') and (i_motor = '1') then
-        -- Generate a square wave with a period of 2400Hz for 1 and 1200Hz for 0
-        -- ena_sys @8Mhz means 3333 cycles for 2400Hz and 6666 for 1200
-        
-        -- could require start/stop bits have been encoded into the raw bytes
-        -- done via a hacked uef2wave.py or add them here?
-
-        -- Rewrite this totally and base on state machine to generate 
-        -- 2400 or 1200 + 1200 then next bit... then next byte etc
-
-        -- start and stop bits are included already. Don't think of this as bytes
-        -- so much as a bitstream that is processed 8 bits at a time.
         if cnt = 0 then
-          -- done high pulse, finish off with same again as low pulse
-          if (high_period) then
-            high_period := false;
-          else
-            -- done low period, select next bit
-            high_period := true;
-
-            if cur_bit = 7 then
-              cur_bit := 0;
-            else            
-              cur_bit := cur_bit + 1;
-            end if;
+          if cur_bit = 7 then
+            cur_bit := 0;
+          else            
+            cur_bit := cur_bit + 1;
           end if;
 
-          -- select freq based on bit using half pulse split high/low
-          if data(7-cur_bit) = '0' then
-            cnt := 3333;
-          else 
-            cnt := 1666;
-            -- TODO: have to output @2400Hz twice!
-          end if;
+          -- i_ena @8MHz
+          cnt := 6666;
         end if;
 
         cnt := cnt - 1;
 
-        -- if cnt is 0 start of next clock and just done low period, get next byte ready
-        if cnt = 0 and cur_bit = 7 and not high_period then
+        -- Ready new byte by next clock
+        if cnt = 0 and cur_bit = 7 then
           dummy_addr <= dummy_addr + 1;
         end if;
         
-      end if;
+      end if;      
 
-      if (high_period) then
-        o_cas_fm_fch <= '1';
-      else
-        o_cas_fm_fch <= '0';
+      o_cas_fm_fch <= '0';
+      -- Pulse generation: 2400Hz = 0, 2x1200Hz = 1
+      if (data(7-cur_bit) = '1' and cnt > 1666 and cnt < 3333) or
+        (data(7-cur_bit) = '1' and cnt > 4999) or
+        (data(7-cur_bit) = '0' and cnt > 3333) then
+          o_cas_fm_fch <= '1';
       end if;
-
     end if;
 
   end process;
@@ -169,9 +151,9 @@ begin
       data <= (others => '0');
 
       case dummy_addr is
-        when 0 => data <= "10111111";
-        when 1 => data <= "10011111";
-        when 2 => data <= "10001111";
+        when 0 => data <= "11111111";
+        when 1 => data <= "11111111";
+        when 2 => data <= "11111111";      
         when 3 => data <= "11111111";
         when 4 => data <= "11111111";
         when 5 => data <= "11111111";
@@ -396,8 +378,6 @@ begin
         when 224 => data <= "11111111";
         when 225 => data <= "11000111";
         when 226 => data <= "01111111";
-        --when 225 => data <= "11111111";
-        --when 226 => data <= "11111111";
         when 227 => data <= "11111111";
         when 228 => data <= "11111111";
         when 229 => data <= "11111111";
@@ -2586,10 +2566,5 @@ begin
   --   end if;
 
   -- end process;
-
-
-  -- TODO: output a start/stop bit around each byte on dig, analog will have that already
-  -- 1200 bps using 1200Hz and 2400Hz pulses
-
 
 end RTL;
