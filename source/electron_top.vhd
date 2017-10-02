@@ -122,7 +122,9 @@ entity Electron_Top is
     -- Other IO
     ------------------------------------------------------
     o_disk_led            : out bit1;
-    o_pwr_led             : out bit1  -- note these are active high outputs
+    o_pwr_led             : out bit1;  -- note these are active high outputs
+
+    o_debug               : out word(15 downto 0)
     );
 end;
 
@@ -195,9 +197,6 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
-  -- Debug
-  signal debug_trig : bit1;
-  signal debug_clk_phase : unsigned(3 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -368,8 +367,9 @@ begin
     i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
     o_ena_phi_out => ula_ena_phi_out,           -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
-    i_n_w         => cpu_n_w                    -- Data direction, /write, read
+    i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
+    o_debug       => o_debug(7 downto 0)
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -517,6 +517,9 @@ begin
     o_cas_fm_fch   => ula_cas_i
   );
 
+  o_debug(9) <= cfg_cas_play;
+  o_debug(8) <= ula_cas_i;
+
   -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --
@@ -623,6 +626,9 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= not led;
 
+  --o_disk_led <= ula_cas_i;
+  --o_pwr_led <= ula_cas_o;
+
   -- ====================================================================
   -- Chipscope
   -- ====================================================================
@@ -664,28 +670,7 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62) <= '0'; --i_clk_sys;
-      cs_trig(61) <= i_ena_sys;
-      cs_trig(60) <= ena_ula;
-      cs_trig(59) <= ula_ena_phi_out;
-      cs_trig(58) <= ula_rom_ena;
-      -- cs_trig(57 downto 42) <= addr_bus;
-      --cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
-      --cs_trig(53) <= debug_trig;      
-      -- cs_trig(36 downto 34) <= (others => '0');
-      -- cs_trig(33 downto 26) <= data_bus;
-
-      -- -- RAM
-      -- cs_trig(25 downto 18) <= ram_addr;
-      -- cs_trig(17 downto 14) <= ram_data;
-      -- cs_trig(13) <= ram_n_we;
-      -- cs_trig(12) <= ram_n_ras;
-      -- cs_trig(11) <= ram_n_cas;
-      -- -- ROM
-      -- cs_trig(10 downto 3) <= rom_data;
-      -- cs_trig(2) <= cpu_n_w;
-
-      cs_trig(57 downto 0) <= (others => '0');
+      cs_trig(62 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

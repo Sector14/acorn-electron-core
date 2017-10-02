@@ -120,8 +120,9 @@ entity ULA_12C021 is
     i_n_nmi       : inout bit1;                -- 1MHz RAM access detection
     o_ena_phi_out : out bit1;                  -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
-    i_n_w         : in bit1                    -- Data direction, /write, read
+    i_n_w         : in bit1;                    -- Data direction, /write, read
 
+    o_debug       : out word(7 downto 0)
   );
 end;
 
@@ -227,7 +228,6 @@ architecture RTL of ULA_12C021 is
   signal colour_palettes : t_colour_palettes;
    
 begin
-
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
   o_n_reset <= i_n_por and i_n_reset;
@@ -1008,12 +1008,21 @@ begin
         -- TODO: What causes the hightone flag to revert back to 0?
         -- how do we know when data has finished being read in?
 
+        -- TODO: could this be based off counting between two rising edges
+        -- and then workign out freq based on period?
+        
         -- Cassette Reading
         if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_INPUT or
            misc_control(MISC_CASSETTE_MOTOR) = '0' then
           cas_hightone <= false;
           cas_state <= CAS_IDLE;
         elsif cas_i_negedge then
+
+          if multi_counter < 96 then
+            o_debug(0) <= '1';
+          else
+            o_debug(0) <= '0';
+          end if;
 
           case cas_state is
             when CAS_IDLE =>
@@ -1029,7 +1038,7 @@ begin
                 if (cas_in_bits = 1) then
                   isr_status(ISR_HIGH_TONE) <= '1';
                   cas_state <= CAS_START_BIT;
-                  cas_hightone <= true;
+                  cas_hightone <= true;                  
                 end if;
                 cas_in_bits <= cas_in_bits - 1;
               -- 1200Hz = zero
@@ -1042,7 +1051,7 @@ begin
               if multi_counter >= 96 then        
                 cas_in_bits <= 8;
                 cas_state <= CAS_DATA;
-                isr_en(ISR_RX_FULL) <= '0';
+                isr_status(ISR_RX_FULL) <= '0';
                 cas_hightone <= false;
               elsif not cas_hightone then
                 -- just finished reading a byte and rather than start bit, received possible HT
@@ -1054,14 +1063,14 @@ begin
               if cas_in_bits = 1 then
                 cas_state <= CAS_STOP_BIT;
                 -- trigger as soon as 8th data bit received, don't wait for stop bit
-                isr_en(ISR_RX_FULL) <= '1';
+                isr_status(ISR_RX_FULL) <= '1';
               end if;
 
               cas_in_bits <= cas_in_bits - 1;
 
               if (multi_counter < 96) then      -- 2400Hz = one 
                 cas_data_shift <= '1' & cas_data_shift(7 downto 1);
-                cas_state <= CAS_DATA_SKIP_PULSE;
+               -- cas_state <= CAS_DATA_SKIP_PULSE;
               elsif (multi_counter >= 96) then  -- 1200Hz = zero
                 cas_data_shift <= '0' & cas_data_shift(7 downto 1);
               end if;
@@ -1075,14 +1084,17 @@ begin
               end if;
 
             when CAS_STOP_BIT =>
+            -- TODO: should this also skip the next pulse?
               if multi_counter < 96 then 
                 cas_state <= CAS_START_BIT;
+              else
+                -- error?
+                cas_state <= CAS_IDLE;
               end if;
 
           end case;
 
         end if;
-
 
         -- Cassette Writing
         -- if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then          
@@ -1117,8 +1129,16 @@ begin
     end if;
   end process;
 
+  o_cas_mo <= misc_control(MISC_CASSETTE_MOTOR);
+
   -- Falling edge detection
   cas_i_negedge <= true when (not i_cas and cas_i_l) = '1' else false;
+
+
+  --
+  -- Video Address
+  -- 
+  
 
   p_screen_addr : process(screen_start_addr, misc_control)
     variable base_addr : word(15 downto 6);
