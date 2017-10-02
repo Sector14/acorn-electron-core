@@ -38,7 +38,8 @@
 -- Acorn Electron ULA
 -- Ferranti 12C021 Custom
 --
--- Temporary implementation until reverse engineering of the 12C021 is complete
+-- Implementation based on AUG and the reverse engineering of others. Improvements
+-- are likely once the the 12C021 is fully analysed.
 --
 -- Note: This implementation is a compromise between matching the external interface
 -- of the real ULA and providing the replay framework with the data it needs to
@@ -120,7 +121,7 @@ entity ULA_12C021 is
     i_n_nmi       : inout bit1;                -- 1MHz RAM access detection
     o_ena_phi_out : out bit1;                  -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       : out bit1;
-    i_n_w         : in bit1;                    -- Data direction, /write, read
+    i_n_w         : in bit1;                   -- Data direction, /write, read
 
     o_debug       : out word(7 downto 0)
   );
