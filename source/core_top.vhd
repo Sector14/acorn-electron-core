@@ -107,8 +107,10 @@ architecture RTL of Core_Top is
 
   signal pwr_led                : bit1;
   signal disk_led               : bit1;
+  signal debug                  : word(15 downto 0);
 
   signal av                     : r_AV_fm_core;
+
 begin
 
   -- Sys clock used for system, audio and video
@@ -191,7 +193,9 @@ begin
     -- Other IO
     ------------------------------------------------------
     o_disk_led            => o_disk_led,
-    o_pwr_led             => o_pwr_led
+    o_pwr_led             => o_pwr_led,
+
+    o_debug               => debug(15 downto 0)
     );
 
   -- debug
@@ -220,9 +224,17 @@ begin
   b_aux_io(11 downto  0) <= (others => 'Z');
 
   -- debug
-  b_aux_io(15) <= av.vid_sync.ana_de;
-  b_aux_io(14) <= av.vid_sync.ana_hs;
-  b_aux_io(13) <= av.vid_sync.dig_hs;
-  b_aux_io(12) <= av.vid_sync.dig_vs;
+  --b_aux_io(15) <= av.vid_sync.ana_de;
+  --b_aux_io(14) <= av.vid_sync.ana_hs;
+  --b_aux_io(13) <= av.vid_sync.dig_hs;
+  --b_aux_io(12) <= av.vid_sync.dig_vs;
+  
+
+  -- debug
+  b_aux_io(13) <= debug(2); -- electron top
+  b_aux_io(12) <= debug(8); -- electron top
+  
+  b_aux_io(15) <= debug(1);  -- ula
+  b_aux_io(14) <= debug(0);  -- ula
 
 end RTL;

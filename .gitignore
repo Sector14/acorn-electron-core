@@ -17,6 +17,7 @@ replay_lib
 # xilinx build/sim intermediates
 **/build/
 **/sim/
+_impactbatch.log
 
 # vscode workspace
 .vscode

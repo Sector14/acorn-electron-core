@@ -122,7 +122,9 @@ entity Electron_Top is
     -- Other IO
     ------------------------------------------------------
     o_disk_led            : out bit1;
-    o_pwr_led             : out bit1  -- note these are active high outputs
+    o_pwr_led             : out bit1;  -- note these are active high outputs
+
+    o_debug               : out word(15 downto 0)
     );
 end;
 
@@ -132,6 +134,7 @@ architecture RTL of Electron_Top is
   
   -- Config
   signal cfg_dblscan : bit1;
+  signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
 
   -- LED Blink
   signal led         : bit1;
@@ -177,6 +180,8 @@ architecture RTL of Electron_Top is
 
   signal ula_r, ula_b, ula_g : bit1;
 
+  signal ula_cas_i, ula_cas_o, ula_cas_mo : bit1;
+
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
   signal ula_rgb : word(23 downto 0);
@@ -192,16 +197,12 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
-  -- Debug
-  signal debug_trig : bit1;
-  signal debug_clk_phase : unsigned(3 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
 
   o_rst_soft            <= '0';
-
-  o_fcha_fm_core        <= z_Fileio_fm_core;
+  
   o_fchb_fm_core        <= z_Fileio_fm_core;
 
   o_memio_fm_core       <= z_Memio_fm_core;
@@ -211,31 +212,34 @@ begin
 
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
+  cfg_cas_play          <= i_cfg_dynamic(1);
+  cfg_cas_rec           <= i_cfg_dynamic(2);
+  cfg_cas_ffwd          <= i_cfg_dynamic(3);
+  cfg_cas_rwnd          <= i_cfg_dynamic(4);
 
   -- ====================================================================
   -- Misc
   -- ====================================================================
 
   -- IC9 clock div 13 (74LS163)
-  b_clk_div : block
-    signal cnt : unsigned( 3 downto 0 ) := (others => '0');
+  p_ic9_div13 : process(i_clk_sys, i_rst_sys)
+    variable cnt : integer range 0 to 13;
   begin
-
-    -- TODO: [Gary] This should be ena_ula / 13 not sys_clk.
-    p_ic9_div13 : process(i_clk_sys)
-    begin      
-      if rising_edge(i_clk_sys) then
+    if (i_rst_sys = '1') then
+      cnt := 0;
+    elsif rising_edge(i_clk_sys) then
+      -- cph 0 & 2 to align div13 with ena_ula cph 1 & 3
+      if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then
         div13 <= '0';
 
-        cnt <= cnt + 1;        
-        if (cnt = 12) then
-          cnt <= (others => '0');
+        cnt := cnt + 1;        
+        if (cnt = 13) then
+          cnt := 0;
           div13 <= '1';
         end if;
       end if;
-    end process;
-
-  end block;
+    end if;
+  end process;
   
   -- ====================================================================
   -- RAM
@@ -297,9 +301,6 @@ begin
   -- ULA
   -- ====================================================================
 
-  -- TODO: [Gary] Cassette and audio to sort. May be simpler to add extra
-  --       signals and alternative path to save converting data
-  --       to intermediate form only to then try to convert back again.
   -- IC1 ULA (Uncommitted Logic Array)
   -- Managed RAM, Video, Cassette and Sound
   ula_ic1 : entity work.ULA_12C021
@@ -309,22 +310,22 @@ begin
     --
     o_n_vsync     => ula_n_vsync,
     o_de          => ula_de,               
-
+    
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
     i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
     i_ena_div13   => div13,                     -- ena_ula div 13
-    
+
     --
     -- ULA
     --
 
-    -- Cassette I/O (not yet supported)
-    i_cas         => '0',
-    o_cas         => open,
-    b_cas_rc      => open,                      -- RC high tone detection
-    o_cas_mo      => open,                      -- Motor relay
+    -- Cassette I/O
+    i_cas         => ula_cas_i,
+    o_cas         => ula_cas_o,
+    b_cas_rc      => open,                      -- ??
+    o_cas_mo      => ula_cas_mo,                -- Motor relay
        
     -- Audio      (not yet supported)       
     o_sound_op    => open,            
@@ -366,8 +367,9 @@ begin
     i_n_nmi       => n_nmi,                     -- 1MHz RAM access detection
     o_ena_phi_out => ula_ena_phi_out,           -- CPU clk enable, 2MHz, 1MHz or stopped
     o_n_irq       => ula_n_irq,
-    i_n_w         => cpu_n_w                    -- Data direction, /write, read
+    i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
+    o_debug       => o_debug(7 downto 0)
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -490,10 +492,32 @@ begin
   --
   -- Cassette
   --
-  -- Support loading via SD card rather than physical cassette.
-  -- Should be optional and route additional signals to allow a physical
-  -- cassette to be interfaced via expansion port.
 
+  -- Read(and write) bytes from SD using file i/o and serialise/frequency encode
+  u_virtual_cassette : entity work.Virtual_Cassette_FileIO
+  port map (
+    -- Clocks
+    i_clk          => i_clk_sys,
+    i_ena          => i_ena_sys,
+    i_rst          => i_rst_sys,
+
+    -- -- FileIO / Syscon interface
+    i_fch_cfg      => i_fcha_cfg,
+    i_fch_to_core  => i_fcha_to_core,
+    o_fch_fm_core  => o_fcha_fm_core,
+
+    -- Controls
+    i_motor        => ula_cas_mo,
+    i_play         => cfg_cas_play,
+    i_rec          => cfg_cas_rec,
+    i_ffwd         => cfg_cas_ffwd,
+    i_rwnd         => cfg_cas_rwnd,
+
+    i_cas_to_fch   => ula_cas_o,
+    o_cas_fm_fch   => ula_cas_i
+  );
+
+  -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --
   -- Sound
@@ -519,7 +543,7 @@ begin
     i_hsync_l             => ula_n_hsync,
     i_vsync_l             => ula_n_vsync,
     i_csync_l             => ula_n_csync,  -- passed through
-    i_blank               => not ula_de,       -- passed through
+    i_blank               => not ula_de,   -- passed through
     i_vid_rgb             => ula_rgb,
     --
     o_hsync_l             => dbl_hsync_l,
@@ -599,6 +623,9 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= not led;
 
+  --o_disk_led <= ula_cas_i;
+  --o_pwr_led <= ula_cas_o;
+
   -- ====================================================================
   -- Chipscope
   -- ====================================================================
@@ -640,28 +667,7 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62) <= '0'; --i_clk_sys;
-      cs_trig(61) <= i_ena_sys;
-      cs_trig(60) <= ena_ula;
-      cs_trig(59) <= ula_ena_phi_out;
-      cs_trig(58) <= ula_rom_ena;
-      -- cs_trig(57 downto 42) <= addr_bus;
-      --cs_trig(57 downto 54) <= std_logic_vector(debug_clk_phase);
-      --cs_trig(53) <= debug_trig;      
-      -- cs_trig(36 downto 34) <= (others => '0');
-      -- cs_trig(33 downto 26) <= data_bus;
-
-      -- -- RAM
-      -- cs_trig(25 downto 18) <= ram_addr;
-      -- cs_trig(17 downto 14) <= ram_data;
-      -- cs_trig(13) <= ram_n_we;
-      -- cs_trig(12) <= ram_n_ras;
-      -- cs_trig(11) <= ram_n_cas;
-      -- -- ROM
-      -- cs_trig(10 downto 3) <= rom_data;
-      -- cs_trig(2) <= cpu_n_w;
-
-      cs_trig(57 downto 0) <= (others => '0');
+      cs_trig(62 downto 0) <= (others => '0');
     end generate electrontop_cs;
 
   end block cs_debug;

@@ -18,13 +18,13 @@ Electron symbol not the symbol shown on a regular keyboard.
 
 Exceptions to this are:
 
-  - : and the shifted * are moved to the equals key "=" and "shift+="
+  - : and the shifted * are moved to the key for "'" and "@" key
   - COPY key is bound to "["
 
 For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown
 instead on the "shift+:" key. However, as noted above, the core uses the
-"shift+=" key for a "*" due to the ":" key conflicting with the ";" key
+"shift+'" key for a "*" due to the ":" key conflicting with the ";" key
 and its shifted key "+".
   
 As with the original electron, caps-lock is toggled via shift+capslock, whilst 
@@ -64,7 +64,46 @@ The core boots to the Basic prompt in mode 6 with keyboard support.
 Entering of Basic programs should work. If you find any exceptions to
 that, please send me a minimal program example that illustrates the issue.
 
-This is a work in progress and missing a few key features:
+Loading of games is also supported although see the Virtual Cassette
+section for file format/usage.
 
-  - Cassette/data loading
-  - Sound
+The notable missing features are:
+
+  - Save support.
+  - FFwd, Rwnd, current tape position counter.
+  - Sound.
+  - Any kind of expansion (plus 1 etc)
+
+
+## Virtual Cassette Interface
+
+The current cassette interface is a very limited and temporary method
+to allow loading of a raw file off of an SD card. There is no support
+for save/ffwd/rwnd or feedback on the current tape position. You can
+"reset" the tape to the beginning by ejecting the tape and inserting
+again via the menu.
+
+A "raw" file can be obtained by extracting the tape data from a UEF
+file including start/stop bits. A python uef2raw.py script will do this
+for you and can be found in the SVN sw/tools/acorn folder.
+
+Usage:
+
+  python uef2raw.py <input_file.uef> <output_file.raw>
+
+Once the "raw" file is inserted via the OSD, it is safe to set PLAY to ON.
+The "tape" will not actually start playing as the core supports motor
+control and will wait until the Electron enables the motor in response
+to a "*CAT" or "*LOAD" action.
+
+Save support, counter feedback, fast forward and rewind will arrive in
+a future update. Direct UEF support is also a future possibility.
+
+
+## Physical Cassette Interface
+
+A physical cassette recorder cannot yet be attached to the Replay Board.
+However the core should support loading once a pin is routed to it.
+
+You will need to replicate the original Acorn cassette hardware interface
+for CAS IN, CAS OUT and CAS MO. CAS RC is not used currently. 
