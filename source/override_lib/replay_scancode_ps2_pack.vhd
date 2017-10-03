@@ -89,6 +89,7 @@ Package Replay_ScanCode_PS2_Pack is
   constant c_PS2_DOT              : word (8 downto 0) := '0' & X"49";
   constant c_PS2_COMMA            : word (8 downto 0) := '0' & X"41";
   constant c_PS2_EQUALS           : word (8 downto 0) := '0' & X"55";
+  constant c_PS2_APOSTROPHE       : word (8 downto 0) := '0' & X"52";
     
   constant c_PS2_CAPS_LOCK        : word (8 downto 0) := '0' & X"58";
   constant c_PS2_NUM_LOCK         : word (8 downto 0) := '0' & X"77";

@@ -170,8 +170,8 @@ begin
             when c_PS2_FWDSLASH  => key_state(3)(3) <= key_release;
 
             when c_PS2_MINUS => key_state(2)(0) <= key_release;
-            when c_PS2_UP    => key_state(2)(1) <= key_release;
-            when c_PS2_EQUALS => key_state(2)(2) <= key_release; -- : *
+            when c_PS2_UP    => key_state(2)(1) <= key_release;    
+            when c_PS2_APOSTROPHE => key_state(2)(2) <= key_release; -- : *            
             -- when UNUSED => key_state(2)(3) <= key_release;
 
             when c_PS2_LEFT => key_state(1)(0) <= key_release;

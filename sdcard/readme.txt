@@ -18,13 +18,13 @@ Electron symbol not the symbol shown on a regular keyboard.
 
 Exceptions to this are:
 
-  - : and the shifted * are moved to the equals key "=" and "shift+="
+  - : and the shifted * are moved to the key for "'" and "@" key
   - COPY key is bound to "["
 
 For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown
 instead on the "shift+:" key. However, as noted above, the core uses the
-"shift+=" key for a "*" due to the ":" key conflicting with the ";" key
+"shift+'" key for a "*" due to the ":" key conflicting with the ";" key
 and its shifted key "+".
   
 As with the original electron, caps-lock is toggled via shift+capslock, whilst 
@@ -64,10 +64,15 @@ The core boots to the Basic prompt in mode 6 with keyboard support.
 Entering of Basic programs should work. If you find any exceptions to
 that, please send me a minimal program example that illustrates the issue.
 
-This is a work in progress and missing a few features:
+Loading of games is also supported although see the Virtual Cassette
+section for file format/usage.
 
-  - Cassette saving, FFwd, Rwnd, position counter.
-  - Sound
+The notable missing features are:
+
+  - Save support.
+  - FFwd, Rwnd, current tape position counter.
+  - Sound.
+  - Any kind of expansion (plus 1 etc)
 
 
 ## Virtual Cassette Interface
