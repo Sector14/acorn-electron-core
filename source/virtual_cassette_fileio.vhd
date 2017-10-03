@@ -39,7 +39,14 @@
 -- files using Generic FileIO.
 --
 -- Assumes start/stop bits are baked into the bitstream already.
-  
+--
+-- File IO only handles 0 or 1 states where as tape has pulses of 0's,
+-- 1's and gaps with level 0. Gaps will end up generating
+-- pulses of 0's with the current setup. Although this should hopefully
+-- not cause too big a problem as the first gap/run of 0's will cause the
+-- stop bit check to fail and a return to looking for a high tone.
+-- There will be a single byte that generates a RX full interrupt however.
+
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
@@ -73,8 +80,6 @@ end;
 
 architecture RTL of Virtual_Cassette_FileIO is
 
-  signal cur_data : word(15 downto 0);
-
   -- fileio
   signal fileio_addr            : word(31 downto 0);
   signal fileio_size            : word(15 downto 0);
@@ -100,25 +105,18 @@ architecture RTL of Virtual_Cassette_FileIO is
 
 
 begin
-  -- File IO only handles 0 or 1 states where as tape had pulses of 0's
-  -- pulses of 1's and then gaps with level 0. Gaps will end up generating
-  -- pulses of 0's with the current setup. Although this should hopefully
-  -- not cause too big a problem as the first run of 0's will cause the
-  -- stop bit check to fail and a return to looking for a high tone.
-  -- There will be a single byte that generates a RX full interrupt however.
 
-  -- output a byte of 0's before first real data. Is cur_bit/cur_data wrong
-  -- and not catching first byte?
-  p_dummy_read : process(i_clk, i_ena, i_rst)
+  p_tape_read : process(i_clk, i_ena, i_rst)
     variable cnt : integer := 0;
     -- Operates 2 bytes at a time due to fileio data size
     variable cur_bit : integer range 15 downto 0;    
+    variable cur_data : word(15 downto 0);
   begin
     if (i_rst = '1') then
       cnt := 0;
       cur_bit := 15;
       fileio_taken <= '0';
-      cur_data <= (others => '0');
+      cur_data := (others => '0');
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
@@ -129,8 +127,12 @@ begin
           cnt := 0;
         elsif (i_play = '1') and (i_motor = '1') then
           if cnt = 0 then
+
             if cur_bit = 15 then
               cur_bit := 0;
+              -- spi transfers in big endian and uef2raw writes big endian
+              cur_data := fileio_data(15 downto 0);
+              fileio_taken <= '1';            
             else            
               cur_bit := cur_bit + 1;
             end if;
@@ -138,14 +140,7 @@ begin
             cnt := 6666;
           end if;
 
-          cnt := cnt - 1;
-
-          -- ready next byte 
-          if cnt = 0 and cur_bit = 15 then
-            -- spi transfers in big endian and uef2raw writes big endian
-            cur_data <= fileio_data(15 downto 0);
-            fileio_taken <= '1';            
-          end if;          
+          cnt := cnt - 1;    
         end if;    
 
       end if;  
@@ -161,6 +156,11 @@ begin
     end if;
   end process;
   
+  -- TODO: p_tape_write
+  -- Detect 1 and 2 pulse durations on ULA o_cas and convert back to bits
+  -- and write out to sd card. Take care of handling of final 16 bits as
+  -- fifo will be taking 16 bits and last write may be a single byte.
+
   --
   -- FILEIO
   --
