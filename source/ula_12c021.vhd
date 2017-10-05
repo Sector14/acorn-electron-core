@@ -163,8 +163,10 @@ architecture RTL of ULA_12C021 is
   type t_cas_state is (CAS_IDLE, CAS_HIGHTONE_DETECT, CAS_START_BIT, CAS_DATA, 
                        CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
   signal cas_state     : t_cas_state;
+  signal cas_out_state : t_cas_state;
   signal cas_hightone  : boolean;
   signal cas_in_bits   : integer range 19 downto 0;
+  signal cas_out_bits  : integer range 8 downto 0;
 
   -- CPU Timing
   type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
@@ -857,8 +859,9 @@ begin
 
       cas_i_l <= '0';
       cas_state <= CAS_IDLE;
+      cas_out_state <= CAS_IDLE;
       cas_hightone <= false;
-      cas_in_bits <= 0;
+      cas_in_bits <= 0;      
 
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
@@ -974,10 +977,9 @@ begin
       -- Treat this implementation with caution until interchange with a real Electron
       -- has been confirmed as working.
       --
-      -- There's corner cases that are unhandled as I'm not sure how the ULA
-      -- handled it, if at all.
-      --
-      -- Review FPGA Prototyping p164 baud rate/oversampling. 
+      -- I'm not confident over when the RX and TX interrupts can occur. Information
+      -- leads to suggest they may occur outside of the corresponding read/write mode.
+      -- More research needed on nearly all the cassete i/o.
       --
       -- ena_cas @ 153.85kHz
       -- CUTS signal with (64 crossings) 1200Hz = 0 and (128 crossings) 2400Hz = 1
@@ -986,7 +988,9 @@ begin
         -- edge detection latch
         cas_i_l <= i_cas;
 
+        --
         -- Cassette Timing
+        --
         case misc_control(MISC_COMM_MODE) is
           when MISC_COMM_MODE_INPUT =>                        
             if i_cas = '0' then
@@ -998,15 +1002,17 @@ begin
             end if;
 
           when MISC_COMM_MODE_OUTPUT =>
-            -- TODO: Anything to do with the counter for output?
-
+            multi_counter <= multi_counter + 1;
+            
           when MISC_COMM_MODE_SOUND =>
             -- TODO: Sound not yet supported.
 
           when others => null;
         end case;
       
+        --
         -- Cassette Reading
+        --
         if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_INPUT or
            misc_control(MISC_CASSETTE_MOTOR) = '0' then
           cas_hightone <= false;
@@ -1040,6 +1046,8 @@ begin
               if multi_counter >= 96 then        
                 cas_in_bits <= 8;
                 cas_state <= CAS_DATA;
+                -- TODO: AUG notes this interrupt can be generated even if motor control 
+                -- is not active? 
                 isr_status(ISR_RX_FULL) <= '0';
                 cas_hightone <= false;
               elsif not cas_hightone then
@@ -1084,37 +1092,89 @@ begin
             when CAS_STOP_BIT_SKIP =>
               -- eat the 2nd '1' pulse
               cas_state <= CAS_START_BIT;
+            
+            when others => null;
           end case;
 
         end if;
 
+        --
         -- Cassette Writing
-        -- if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then          
-          -- TODO: Review if/when output operates. Some posts suggest parts may be
-          --       continually running/generating interrupts that some games depend on
-          --       even if no writing is in progress.
-
-          -- TODO: Generate pseudo sine wave on o_cas @1200 or 2400Hz rather than square
-          -- wave. Needs a config option to toggle between the two for virtual cassette to work.
-
-          -- shift to next byte out every 1200Hz
-          -- shifting 1 in at top gives stop bit + causes high tone output when not
-          -- writing a byte of data.
-
-          -- if start_bit or (cas_out_bits > 0 and data_shift(0) = '0') then 
-          --   o_cas <= misc_counter(7);   -- ~1200Hz
-          -- else
-          --   o_cas <= misc_counter(6);   -- ~2400Hz
-          -- endif
-
-          -- shift register output
-          -- if not yet writing out a byte
-            -- if isr_status(ISR_TX_EMPTY) = '0' then
-            --   setup to write out byte
-
-          -- Set empty interrupt after 8 bits output          
-        -- end if;
+        --        
         
+        -- Only shift out data during write mode
+        if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_OUTPUT or
+           misc_control(MISC_CASSETTE_MOTOR) = '0' then          
+           cas_out_state <= CAS_IDLE;
+           cas_out_bits <= 0;
+        else
+          -- As 1's require two pulses, both 0 or 1 can shift out @1200Hz
+          if (multi_counter = 255) then
+            -- shift in high bit to handle stop bit and perpetual high tone until
+            -- new data is written into cas_data_shift.
+            cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+          end if;
+    
+          -- TODO: If cas_out is always generating a signal regardless of motor, when
+          -- a write mode is entered, multi_counter could be anything should state
+          -- change wait until 255 wrap and what determines when enough high tone has
+          -- being written out? Is the OS responsible for starting motor then waiting
+          -- a short time for high tone writing?
+          case cas_out_state is
+            when CAS_IDLE =>
+              -- wait for data to write out
+              if isr_status(ISR_TX_EMPTY) = '0' then
+                cas_out_state <= CAS_START_BIT;
+                -- TODO: Did electron ever reset multi_counter? or only change
+                -- states when counter = 255? 
+                multi_counter <= (others => '0');
+              end if;
+
+            when CAS_START_BIT =>
+              if multi_counter = 255 then
+                cas_out_bits <= 8;
+                cas_out_state <= CAS_DATA;
+              end if;
+
+            when CAS_DATA =>
+              if multi_counter = 255 then
+                if cas_out_bits = 1 then
+                  isr_status(ISR_TX_EMPTY) <= '1';
+                  cas_out_state <= CAS_STOP_BIT;
+                end if;
+                cas_out_bits <= cas_out_bits - 1;
+              end if;
+
+            when CAS_STOP_BIT =>
+              if multi_counter = 255 then
+                cas_out_state <= CAS_IDLE;
+              end if;
+
+            when others =>
+              null;              
+          end case;
+
+        end if;
+
+        -- TODO: Optional generation of pseudo sine wave on o_cas
+        -- As long as comm mode is read or write, multi counter will increment.
+        -- cas out will can generate a high tone in write mode where as read
+        -- mode will depend on incoming pulse durations. Did Electron generate cas
+        -- out all the time, only when in write mode or only when in read or write
+        -- mode (but not sound mode)? Did it also depend on motor being enabled or not?
+        o_cas <= '0';
+        if cas_out_state = CAS_START_BIT or 
+           (cas_out_bits > 0 and cas_data_shift(0) = '0') then 
+          -- ~1200Hz
+          if multi_counter < 128 then
+            o_cas <= '1';
+          end if;
+        else
+           -- ~2400Hz
+          if (multi_counter < 64) or (multi_counter >= 128 and multi_counter < 192) then
+            o_cas <= '1';
+          end if;
+        end if;
 
       end if;  -- ena_div13
 
