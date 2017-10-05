@@ -231,10 +231,12 @@ begin
   
 
   -- debug
-  b_aux_io(13) <= debug(2); -- electron top
-  b_aux_io(12) <= debug(8); -- electron top
   
-  b_aux_io(15) <= debug(1);  -- ula
-  b_aux_io(14) <= debug(0);  -- ula
+  -- ula 0..7, electron top 15..8
+  b_aux_io(12) <= debug(8);
+  b_aux_io(13) <= debug(9);
+
+  b_aux_io(14) <= debug(1);
+  b_aux_io(15) <= debug(2);
 
 end RTL;
