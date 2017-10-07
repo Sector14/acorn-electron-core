@@ -1170,7 +1170,7 @@ begin
             o_cas <= '1';
           end if;
         else
-           -- ~2400Hz
+          -- ~2400Hz
           if (multi_counter < 64) or (multi_counter >= 128 and multi_counter < 192) then
             o_cas <= '1';
           end if;

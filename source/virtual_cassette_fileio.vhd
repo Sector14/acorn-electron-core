@@ -74,7 +74,9 @@ entity Virtual_Cassette_FileIO is
 
     -- Pulse based cassette i/o (0 = 1200Hz and 1 = 2400Hz)
     i_cas_to_fch         : in bit1;
-    o_cas_fm_fch         : out bit1
+    o_cas_fm_fch         : out bit1;
+
+    o_debug              : out word(7 downto 0)
   );
 end;
 
@@ -103,63 +105,152 @@ architecture RTL of Virtual_Cassette_FileIO is
   type t_fileio_req_state is (S_IDLE, S_WAIT);
   signal fileio_req_state       : t_fileio_req_state;
 
+  -- tape
+  signal bit_taken_r            : boolean;
+  -- Doubtful anyone will want a 500MB tape but why not :)
+  signal tape_position          : unsigned(31 downto 0);  -- in bits
+  signal freq_cnt               : integer range 6666 downto 0;
 
+  -- prefetched 16 bit data during read, or, write buffer
+  signal cur_data               : word(15 downto 0);
 begin
 
-  p_tape_read : process(i_clk, i_ena, i_rst)
-    variable cnt : integer := 0;
-    -- Operates 2 bytes at a time due to fileio data size
-    variable cur_bit : integer range 15 downto 0;    
-    variable cur_data : word(15 downto 0);
+  -- TODO: Adapt uef2raw to emit a small header to start of virtual tape.
+  -- tape read/write should skip this. On eject, write to this location
+  -- the current tape position. On insert, read it and set tape_position
+  -- accordingly.
+
+  -- TODO: This feels a little brittle at the moment. Not convinced
+  -- switching between read<->write is handled correctly either. If i_rec
+  -- is disabled before 16 bits have been written, the cur_data may not
+  -- be pushed to the write FIFO. If the data is always pushed on negative
+  -- edge of i_rec, play may kick in too early and write may also not occur.
+  -- Really it should be considered out of spec for a switch to occur whilst
+  -- the motor is active. I don't believe the electron ever needs this although
+  -- uses could obviously do so with the tape recorder but only by stopping
+  -- play at the same time.
+
+  -- set signals at 1200 and 2400Hz?
+  -- other processes can avoid basing off the exact cnt value then
+  -- and it'll be easier to change the freq gen for other systems
+  p_freq_cnt : process(i_clk, i_ena, i_rst)
   begin
     if (i_rst = '1') then
-      cnt := 0;
-      cur_bit := 15;
-      fileio_taken <= '0';
-      cur_data := (others => '0');
+      freq_cnt <= 6666;
+    elsif rising_edge(i_clk) then
+      if (i_ena = '1') then
+        
+        if i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0' then
+          freq_cnt <= 6666;
+        else
+          freq_cnt <= freq_cnt - 1;    
+
+          if freq_cnt = 0 then
+            freq_cnt <= 6666;
+          end if;
+
+        end if;
+
+      end if;
+    end if;
+  end process;
+
+  -- Frequency encode current bit and output to o_cas
+  p_tape_read : process(i_clk, i_ena, i_rst)
+    variable cur_bit : integer range 15 downto 0;
+  begin
+    if (i_rst = '1') then
+      bit_taken_r <= false;
+    elsif rising_edge(i_clk) then
+      if (i_ena = '1') then
+        o_cas_fm_fch <= '0';
+        bit_taken_r <= false;
+
+        if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' then
+          if (freq_cnt = 0) then
+            bit_taken_r <= true;
+          end if;
+
+          cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
+  
+          -- Pulse generation: 2400Hz = 0, 2x1200Hz = 1
+          if (cur_data(15-cur_bit) = '1' and freq_cnt > 1666 and freq_cnt < 3333) or
+             (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
+             (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
+             o_cas_fm_fch <= '1';
+          end if;
+
+        end if;
+
+      end if;
+    end if;
+  end process;
+
+  -- p_tape_write : process(i_clk, i_rst, i_ena)
+  -- begin
+  --   if (i_rst = '1') then
+  --     -- bit_transmit_w  <= false; ??
+  --   elsif rising_edge(i_clk) then
+  --     if (i_ena = '1') then
+
+  --       -- TODO: Decide how to handle write
+  --       if pos = "1111"
+  --         copy byte to data_write
+  --         signal to bit_take_w
+  --         can't clear cur_data here, tape_position would need to do it
+
+  --     end if;
+  --   end if;
+  -- end;
+
+  -- Decouple tape position changes from read and write processes
+  -- Tape runs on bit position, FIFO runs on 16 bit aligned word addr.  
+  p_tape_position : process(i_clk, i_rst, i_ena)
+  begin
+    if (i_rst = '1') then
+      tape_position <= (others => '0');
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
 
         if (i_fch_cfg.inserted(0) = '0') then
-          -- fileio resets addr on eject
-          cur_bit := 15;
-          cnt := 0;
-        elsif (i_play = '1') and (i_motor = '1') then
-          if cnt = 0 then
+          tape_position <= (others => '0');
+        -- elsif i_motor = '0' and was on before...
+          -- TODO: write out current tape position to addr 0
+          --       need to adjust start read/write address to be after header
+        else      
+          -- TODO: Handle reaching limit of tape_position. Everything should stop.
+          -- TODO: Is it possible (or even wanted) to drop the taken/transmit and 
+          -- just have data expected at a fixed rate like a normal tape in motion would?
 
-            if cur_bit = 15 then
-              cur_bit := 0;
+          if bit_taken_r then
+            if tape_position(3 downto 0) = "1111" then
+              -- TODO: cur_data isn't set until tape position has done one 
+              -- 16 bit cycle! really first fileio_data byte should be valid
+              -- before allowing tape to start ticking away?
               -- spi transfers in big endian and uef2raw writes big endian
-              cur_data := fileio_data(15 downto 0);
-              fileio_taken <= '1';            
-            else            
-              cur_bit := cur_bit + 1;
+              cur_data <= fileio_data(15 downto 0);
+              -- fifo can pop data now
+              fileio_taken <= '1';                      
             end if;
 
-            cnt := 6666;
+            tape_position <= tape_position + 1;
           end if;
 
-          cnt := cnt - 1;    
-        end if;    
+          -- TODO: If writing, submit byte to fifo. Clear out data_buf?
+          --       read should continue from where write left off due to
+          --       sharing cur_data and tape_position
 
-      end if;  
+          -- TODO: Handle ffwd/rwnd
+        end if;
 
-      -- Pulse generation: 2400Hz = 0, 2x1200Hz = 1
-      o_cas_fm_fch <= '0';
-      if (cur_data(15-cur_bit) = '1' and cnt > 1666 and cnt < 3333) or
-         (cur_data(15-cur_bit) = '1' and cnt > 4999) or
-         (cur_data(15-cur_bit) = '0' and cnt > 3333) then
-        o_cas_fm_fch <= '1';
       end if;
-
     end if;
   end process;
-  
-  -- TODO: p_tape_write
-  -- Detect 1 and 2 pulse durations on ULA o_cas and convert back to bits
-  -- and write out to sd card. Take care of handling of final 16 bits as
-  -- fifo will be taking 16 bits and last write may be a single byte.
+
+  o_debug(0) <= '1' when bit_taken_r else '0';
+  o_debug(1) <= fileio_taken;
+  o_debug(2) <= '1' when freq_cnt = 0 else '0';
 
   --
   -- FILEIO
@@ -182,7 +273,7 @@ begin
     o_trans_err           => fileio_trans_err, -- aborted, truncated, seek error
 
     -- below latched on ack
-    i_dir                 => '0', -- read only
+    i_dir                 => i_rec,  -- 1 write, 0 read
     i_chan                => "00",
     i_addr                => fileio_addr,
     i_size                => fileio_size,
@@ -203,34 +294,41 @@ begin
     o_fifo_fm_core_level  => open
     );
   
-  -- request 512 16 bits words at a time (half of fifo size per request)
+  -- Filesize in bytes, for 16bit requests must be multiple of 2. 
   fileio_size <= x"0400";
 
   -- Enable/pause data request via the Generic FileIO entity
-  -- Keep FIFO buffer full via new requests as long as a tape inserted
   p_fileio_req : process(i_clk, i_rst)
+    variable cur_dir : bit1;
   begin   
     if (i_rst = '1') then
       fileio_addr <= (others => '0');
       fileio_req  <= '0';
       fileio_req_state <= S_IDLE;
       fileio_rx_flush <= '0';
+      cur_dir := '0';
     elsif rising_edge(i_clk) then
 
       if (i_ena = '1') then
         fileio_req  <= '0';
         fileio_rx_flush <= '0';
 
-        -- Unlike a real tape, virtual tapes rewind upon eject ;) This also
-        -- makes up for the fact that the RWND button doesn't work.
-        if (i_fch_cfg.inserted(0) = '0') then
-          fileio_addr <= (others => '0');
+        -- fileio_req assumes sequential read with flush/reset occuring
+        -- anytime ffwd/rwnd occurs
+        if (i_fch_cfg.inserted(0) = '0') then -- or (cur_dir /= i_rec) then
+          -- TODO: Switching from write to read, if bit position is mid-word 
+          -- does a refetch really need to be made? Would p_read end up
+          -- using wrong data bits? as write won't have been padded out and
+          -- pushed? May not be an issue if motor stops before dir switch?
+          fileio_addr <= "0000" & word(tape_position(31 downto 4)); 
           fileio_req_state <= S_IDLE;
+          -- direction switch, flush buffers (both or just one switching to?)
           fileio_rx_flush <= '1';
+          cur_dir := i_rec;
         else
           case fileio_req_state is
-            when S_IDLE =>
-              if (fileio_rx_level(9) = '0') then -- <hf
+            when S_IDLE =>            
+              if fileio_rx_level(9) = '0' then -- bit 9 would be < half full
                 fileio_req  <= '1'; -- note, request only sent when ack received
               end if;
               if (fileio_ack_req = '1') then
@@ -240,10 +338,11 @@ begin
             when S_WAIT =>
               if (fileio_ack_trans = '1') then
                 if (red_or(fileio_trans_err) = '1') then
-                  -- TODO: Check truncated for end of tape. How to handle?
+                  -- TODO: Check truncated for end of tape. How to handle? Same way
+                  -- as tape_position reaching max val?
                   -- TODO: Should at least stop making new requests until tape rewound or ejected?
-                  -- fileio_addr <= (others => '0');
                 else
+                  -- Only prefetch one word
                   fileio_addr <= fileio_addr + fileio_size;
                 end if;
                 fileio_req_state <= S_IDLE;

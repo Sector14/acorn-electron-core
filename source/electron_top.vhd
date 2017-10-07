@@ -369,7 +369,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => o_debug(7 downto 0)
+    o_debug       => open
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -514,11 +514,14 @@ begin
     i_rwnd         => cfg_cas_rwnd,
 
     i_cas_to_fch   => ula_cas_o,
-    o_cas_fm_fch   => ula_cas_i
+    o_cas_fm_fch   => ula_cas_i,
+
+    o_debug        => o_debug(7 downto 0)
   );
 
   o_debug(8) <= ula_cas_mo;
   o_debug(9) <= ula_cas_o;
+  o_debug(10) <= ula_cas_i;
 
   -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
