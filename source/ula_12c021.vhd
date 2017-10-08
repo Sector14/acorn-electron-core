@@ -336,15 +336,19 @@ begin
 
 
   -- Cassette Timing
-  -- 1 in 8 enable off of div13 to keep 2400Hz oversampling within 8 bits
+  -- 1 in 8 enable off of div13 to keep 2400Hz oversampling within 7 bits
   p_cas_timing : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
       div8_cnt <= 0;
     elsif rising_edge(i_clk_sys) then
+      ena_cas <= '0';
+
       if (i_ena_div13 = '1') then
+
         if (div8_cnt = 7) then
           div8_cnt <= 0;
+          ena_cas <= '1';
         else
           div8_cnt <= div8_cnt + 1;
         end if;
@@ -352,7 +356,7 @@ begin
     end if;
   end process;
 
-  ena_cas <= '1' when i_ena_div13 = '1' and div8_cnt = 0 else '0';
+  o_debug(0) <= ena_cas;
   
   -- ====================================================================
   -- Video
@@ -1002,7 +1006,11 @@ begin
             end if;
 
           when MISC_COMM_MODE_OUTPUT =>
-            multi_counter <= multi_counter + 1;
+            if multi_counter = 127 then
+              multi_counter <= (others => '0');
+            else
+              multi_counter <= multi_counter + 1;
+            end if;
             
           when MISC_COMM_MODE_SOUND =>
             -- TODO: Sound not yet supported.
@@ -1010,6 +1018,7 @@ begin
           when others => null;
         end case;
       
+        
         --
         -- Cassette Reading
         --
@@ -1017,19 +1026,25 @@ begin
            misc_control(MISC_CASSETTE_MOTOR) = '0' then
           cas_hightone <= false;
           cas_state <= CAS_IDLE;
+          o_debug(1) <= '0';
         elsif cas_i_negedge then
+          
+          -- TODO: pull out threshold limits to various constants
 
+          -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
+          --                   2400Hz = 32 high clocks
+          -- Threshold selected in between the two i.e 48.
           case cas_state is
             when CAS_IDLE =>
-              if (multi_counter < 96) then
-                -- 19 more @2400Hz pulses plus this one required for high tone
+              if (multi_counter < 48) then
+                -- 19 more @2400Hz pulses plus this one required for high tone                
                 cas_in_bits <= 19;
                 cas_state <= CAS_HIGHTONE_DETECT;
               end if;
 
             when CAS_HIGHTONE_DETECT =>   
               -- 2400Hz = one 
-              if (multi_counter < 96) then              
+              if (multi_counter < 48) then              
                 if (cas_in_bits = 1) then
                   isr_status(ISR_HIGH_TONE) <= '1';
                   cas_state <= CAS_START_BIT;
@@ -1043,7 +1058,7 @@ begin
 
             when CAS_START_BIT =>
               -- Eat remaining high tone, waiting for start bit '0'
-              if multi_counter >= 96 then        
+              if multi_counter >= 48 then        
                 cas_in_bits <= 8;
                 cas_state <= CAS_DATA;
                 -- TODO: AUG notes this interrupt can be generated even if motor control 
@@ -1065,10 +1080,10 @@ begin
 
               cas_in_bits <= cas_in_bits - 1;
 
-              if (multi_counter < 96) then      -- 2400Hz = one 
+              if (multi_counter < 48) then      -- 2400Hz = one 
                 cas_data_shift <= '1' & cas_data_shift(7 downto 1);
                 cas_state <= CAS_DATA_SKIP;
-              elsif (multi_counter >= 96) then  -- 1200Hz = zero
+              elsif (multi_counter >= 48) then  -- 1200Hz = zero
                 cas_data_shift <= '0' & cas_data_shift(7 downto 1);
               end if;
 
@@ -1082,7 +1097,8 @@ begin
               end if;
               
             when CAS_STOP_BIT =>
-              if multi_counter < 96 then 
+              if multi_counter < 48 then
+                o_debug(1) <= '1';
                 cas_state <= CAS_STOP_BIT_SKIP;
               else
                 -- error?
@@ -1109,7 +1125,7 @@ begin
            cas_out_bits <= 0;
         else
           -- As 1's require two pulses, both 0 or 1 can shift out @1200Hz
-          if (multi_counter = 255) then
+          if (multi_counter = 127) then
             -- shift in high bit to handle stop bit and perpetual high tone until
             -- new data is written into cas_data_shift.
             cas_data_shift <= '1' & cas_data_shift(7 downto 1);
@@ -1126,18 +1142,18 @@ begin
               if isr_status(ISR_TX_EMPTY) = '0' then
                 cas_out_state <= CAS_START_BIT;
                 -- TODO: Did electron ever reset multi_counter? or only change
-                -- states when counter = 255? 
+                -- states when counter = 127? 
                 multi_counter <= (others => '0');
               end if;
 
             when CAS_START_BIT =>
-              if multi_counter = 255 then
+              if multi_counter = 127 then
                 cas_out_bits <= 8;
                 cas_out_state <= CAS_DATA;
               end if;
 
             when CAS_DATA =>
-              if multi_counter = 255 then
+              if multi_counter = 127 then
                 if cas_out_bits = 1 then
                   isr_status(ISR_TX_EMPTY) <= '1';
                   cas_out_state <= CAS_STOP_BIT;
@@ -1146,7 +1162,7 @@ begin
               end if;
 
             when CAS_STOP_BIT =>
-              if multi_counter = 255 then
+              if multi_counter = 127 then
                 cas_out_state <= CAS_IDLE;
               end if;
 
@@ -1163,20 +1179,24 @@ begin
         -- out all the time, only when in write mode or only when in read or write
         -- mode (but not sound mode)? Did it also depend on motor being enabled or not?
         o_cas <= '0';
+
+        -- TODO: Again 255 only works if 306kHz counter?
+
+        -- 255 multi_counter: high cycles 128 = 1200Hz, 64 = 2400Hz
         if cas_out_state = CAS_START_BIT or 
            (cas_out_bits > 0 and cas_data_shift(0) = '0') then 
           -- ~1200Hz
-          if multi_counter < 128 then
+          if multi_counter < 64 then
             o_cas <= '1';
           end if;
         else
           -- ~2400Hz
-          if (multi_counter < 64) or (multi_counter >= 128 and multi_counter < 192) then
+          if (multi_counter < 32) or (multi_counter >= 64 and multi_counter < 96) then
             o_cas <= '1';
           end if;
         end if;
 
-      end if;  -- ena_div13
+      end if;  -- ena_cas
 
     end if;
   end process;

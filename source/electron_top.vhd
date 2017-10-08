@@ -228,10 +228,10 @@ begin
     if (i_rst_sys = '1') then
       cnt := 0;
     elsif rising_edge(i_clk_sys) then
+      div13 <= '0';
+      
       -- cph 0 & 2 to align div13 with ena_ula cph 1 & 3
       if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then
-        div13 <= '0';
-
         cnt := cnt + 1;        
         if (cnt = 13) then
           cnt := 0;
@@ -369,7 +369,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => open
+    o_debug       => o_debug(7 downto 0)
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -516,12 +516,13 @@ begin
     i_cas_to_fch   => ula_cas_o,
     o_cas_fm_fch   => ula_cas_i,
 
-    o_debug        => o_debug(7 downto 0)
+    o_debug        => open --o_debug(7 downto 0)
   );
 
   o_debug(8) <= ula_cas_mo;
   o_debug(9) <= ula_cas_o;
   o_debug(10) <= ula_cas_i;
+  o_debug(11) <= div13;
 
   -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 

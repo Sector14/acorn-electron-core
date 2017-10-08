@@ -106,12 +106,18 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal fileio_req_state       : t_fileio_req_state;
 
   -- tape
+  signal cas_to_fch_l           : bit1;
+  signal cas_to_fch_negedge     : boolean;
   signal bit_taken_r            : boolean;
+  signal bit_valid_w            : boolean;
+  
+  signal ula_to_fileio          : bit1; 
+
   -- Doubtful anyone will want a 500MB tape but why not :)
   signal tape_position          : unsigned(31 downto 0);  -- in bits
   signal freq_cnt               : integer range 6666 downto 0;
 
-  -- prefetched 16 bit data during read, or, write buffer
+  -- current 16 bit data buffer for read / write of tape position
   signal cur_data               : word(15 downto 0);
 begin
 
@@ -130,9 +136,9 @@ begin
   -- uses could obviously do so with the tape recorder but only by stopping
   -- play at the same time.
 
-  -- set signals at 1200 and 2400Hz?
-  -- other processes can avoid basing off the exact cnt value then
-  -- and it'll be easier to change the freq gen for other systems
+  -- 1/8MHz = 125ns. 1/1200Hz = 833.333us
+  -- 833.33us/125ns = 6666 cycles
+  -- 1200Hz with 50% duty cycle = 3333 cycles high.
   p_freq_cnt : process(i_clk, i_ena, i_rst)
   begin
     if (i_rst = '1') then
@@ -148,7 +154,6 @@ begin
           if freq_cnt = 0 then
             freq_cnt <= 6666;
           end if;
-
         end if;
 
       end if;
@@ -156,7 +161,7 @@ begin
   end process;
 
   -- Frequency encode current bit and output to o_cas
-  p_tape_read : process(i_clk, i_ena, i_rst)
+  p_read_encode : process(i_clk, i_ena, i_rst)
     variable cur_bit : integer range 15 downto 0;
   begin
     if (i_rst = '1') then
@@ -173,73 +178,123 @@ begin
 
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
   
-          -- Pulse generation: 2400Hz = 0, 2x1200Hz = 1
+          -- Pulse generation cnt 0..6666: 2400Hz = 0, 2x1200Hz = 1
           if (cur_data(15-cur_bit) = '1' and freq_cnt > 1666 and freq_cnt < 3333) or
              (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
              (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
              o_cas_fm_fch <= '1';
           end if;
-
+          
         end if;
 
       end if;
     end if;
   end process;
 
-  -- p_tape_write : process(i_clk, i_rst, i_ena)
-  -- begin
-  --   if (i_rst = '1') then
-  --     -- bit_transmit_w  <= false; ??
-  --   elsif rising_edge(i_clk) then
-  --     if (i_ena = '1') then
+  -- Decode ULA FSK output back to 0/1 and write to current word
+  p_write_decode : process(i_clk, i_rst, i_ena)
+    variable cur_bit : integer range 15 downto 0;
+    variable high_cnt : integer;
+    variable skip_next_pulse : boolean;
+  begin
+    if (i_rst = '1') then
+      bit_valid_w  <= false;
+      high_cnt := 0;
+      cas_to_fch_l <= '0';
+      skip_next_pulse := false;
+    elsif rising_edge(i_clk) then
+      if (i_ena = '1') then
+        -- TODO: Inserted test?
+        if (i_play = '1' and i_rec = '1' and i_motor = '1') then
 
-  --       -- TODO: Decide how to handle write
-  --       if pos = "1111"
-  --         copy byte to data_write
-  --         signal to bit_take_w
-  --         can't clear cur_data here, tape_position would need to do it
+          cas_to_fch_l <= i_cas_to_fch;
 
-  --     end if;
-  --   end if;
-  -- end;
+          -- TODO: Reset this when not play/rec etc
+          if i_cas_to_fch = '1' then
+            high_cnt := high_cnt + 1;
+          end if;
 
-  -- Decouple tape position changes from read and write processes
-  -- Tape runs on bit position, FIFO runs on 16 bit aligned word addr.  
-  p_tape_position : process(i_clk, i_rst, i_ena)
+          -- TODO: Additional latches to avoid noise triggering negedge?
+          if cas_to_fch_negedge then
+
+            if skip_next_pulse then
+              skip_next_pulse := false;
+            else
+              -- 2400Hz = 1666, 1200Hz = 3333 cycles high
+              -- 5000 cycles threshold between the two
+              if high_cnt > 5000 then
+                ula_to_fileio <= '0';
+              else
+                ula_to_fileio <= '1';
+                skip_next_pulse := true;
+              end if;
+            end if;
+
+            bit_valid_w <= true;          
+          end if;
+        end if;
+
+      end if;
+    end if;
+  end process;
+
+  -- 
+  cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_l) = '1' else false;
+
+  -- Tape is one way sync'd with read/write process and one way 
+  -- sync'd to FileIO request process. No sync back from FIFO
+  -- as ULA will not yield even if ARM transfer stalled.  
+  p_tape_readwrite : process(i_clk, i_rst, i_ena)
+    variable cur_bit : integer range 15 downto 0;
   begin
     if (i_rst = '1') then
       tape_position <= (others => '0');
+      cur_data <= (others => '0');
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
 
         if (i_fch_cfg.inserted(0) = '0') then
           tape_position <= (others => '0');
+          cur_data <= (others => '0');
         -- elsif i_motor = '0' and was on before...
           -- TODO: write out current tape position to addr 0
           --       need to adjust start read/write address to be after header
         else      
-          -- TODO: Handle reaching limit of tape_position. Everything should stop.
-          -- TODO: Is it possible (or even wanted) to drop the taken/transmit and 
-          -- just have data expected at a fixed rate like a normal tape in motion would?
+          -- TODO: Handle reaching limit of tape_position
+          
+          cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
+          -- Reading
           if bit_taken_r then
-            if tape_position(3 downto 0) = "1111" then
+            
+            if cur_bit = 15 then
               -- TODO: cur_data isn't set until tape position has done one 
               -- 16 bit cycle! really first fileio_data byte should be valid
               -- before allowing tape to start ticking away?
               -- spi transfers in big endian and uef2raw writes big endian
               cur_data <= fileio_data(15 downto 0);
-              -- fifo can pop data now
               fileio_taken <= '1';                      
             end if;
 
-            tape_position <= tape_position + 1;
+          -- Writing
+          elsif bit_valid_w then
+            
+            -- write cur bit to cur_data?
+            cur_data(15-cur_bit) <= ula_to_fileio;
+
+            if cur_bit = 15 then
+              -- TODO: If writing, submit byte to fifo. Clear out data_buf?
+              --       read should continue from where write left off due to
+              --       sharing cur_data and tape_position
+            end if;
+
           end if;
 
-          -- TODO: If writing, submit byte to fifo. Clear out data_buf?
-          --       read should continue from where write left off due to
-          --       sharing cur_data and tape_position
+          if (bit_valid_w or bit_taken_r) then
+            tape_position <= tape_position + 1;
+          end if;
+          
 
           -- TODO: Handle ffwd/rwnd
         end if;
@@ -247,10 +302,6 @@ begin
       end if;
     end if;
   end process;
-
-  o_debug(0) <= '1' when bit_taken_r else '0';
-  o_debug(1) <= fileio_taken;
-  o_debug(2) <= '1' when freq_cnt = 0 else '0';
 
   --
   -- FILEIO
@@ -347,6 +398,9 @@ begin
                 end if;
                 fileio_req_state <= S_IDLE;
               end if;
+
+            -- TODO: Write stages?
+
 
             when others => null;
           end case;
