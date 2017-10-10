@@ -845,7 +845,6 @@ begin
   p_registers : process(i_clk_sys, i_n_reset, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
-    variable out_cnt : unsigned(7 downto 0) := (others => '0');
   begin
     if (i_n_reset = '0') or (i_n_por = '0') then
       isr_en <= (others => '0');
@@ -870,10 +869,7 @@ begin
       cas_out_state <= CAS_IDLE;
       cas_hightone <= false;
       cas_in_bits <= 0;      
-
-      -- TODO: DEBUG remove me
-      out_cnt := (others => '0'); -- debug
-
+      
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
       end if;      
@@ -1033,7 +1029,6 @@ begin
            misc_control(MISC_CASSETTE_MOTOR) = '0' then
           cas_hightone <= false;
           cas_state <= CAS_IDLE;
-          o_debug(1) <= '0';
         elsif cas_i_negedge then
           
           -- TODO: pull out threshold limits to various constants
@@ -1105,7 +1100,6 @@ begin
               
             when CAS_STOP_BIT =>
               if multi_counter < 48 then
-                o_debug(1) <= '1';
                 cas_state <= CAS_STOP_BIT_SKIP;
               else
                 -- error?
@@ -1139,13 +1133,7 @@ begin
           -- change wait until 127 wrap?
           case cas_out_state is
             when CAS_IDLE =>
-              -- wait for data to write out
-              cas_out_state <= CAS_HIGHTONE_DETECT;
-              out_cnt := (others => '0');
-             
-            -- TODO: Remove this state, only need CAS_IDLE again
-            when CAS_HIGHTONE_DETECT =>
-              o_debug(2) <= '1';
+              -- wait for data to write out             
               -- TODO: Now STOP bit can transition direct to START, this state can
               -- probably transition out ONLY on 127. So if a high pulse is started
               -- it will be finished.
@@ -1181,7 +1169,7 @@ begin
                   -- If CPU is keeping up, move straight to next byte
                   cas_out_state <= CAS_START_BIT;
                 else
-                  cas_out_state <= CAS_HIGHTONE_DETECT;
+                  cas_out_state <= CAS_IDLE;
                 end if;
               end if;
 

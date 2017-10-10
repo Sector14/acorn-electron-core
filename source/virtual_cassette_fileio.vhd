@@ -303,7 +303,10 @@ begin
 
           -- Writing
           elsif bit_valid_w then
-            
+            -- TODO: if i_rec is disabled before bit 15, the 16bit word is never
+            -- passed to fileio for storage. So far this is not an issue as there's
+            -- ample high tone that losing a bit of it doesn't change anything. Needs
+            -- fixing though.
             if cur_bit = 15 then
               fileio_w_data <= cur_data(15 downto 1) & ula_to_fileio;
               fileio_we <= '1';
