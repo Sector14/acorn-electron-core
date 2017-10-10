@@ -233,13 +233,14 @@ begin
   -- debug
   
   -- ula 0..7, electron top 15..8
-  b_aux_io(12) <= debug(8); -- motor
-  b_aux_io(13) <= debug(9); -- o_cas
-  b_aux_io(14) <= debug(10); -- i_cas
+  --b_aux_io(12) <= debug(8); -- motor
+  b_aux_io(15) <= debug(9); -- o_cas
+  --b_aux_io(14) <= debug(10); -- i_cas
   --b_aux_io(12) <= debug(11); -- div13
 
-  --b_aux_io(12) <= debug(3);
-  --b_aux_io(13) <= debug(2); -- ula_ena
-  --b_aux_io(14) <= debug(1); -- ula div8_cnt
-  b_aux_io(15) <= debug(1); -- ula stop bit
+
+  b_aux_io(12) <= debug(0);
+  b_aux_io(13) <= debug(1);
+  b_aux_io(14) <= debug(2);
+  --b_aux_io(15) <= debug(3);
 end RTL;

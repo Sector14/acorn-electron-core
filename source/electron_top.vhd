@@ -522,7 +522,7 @@ begin
   o_debug(8) <= ula_cas_mo;
   o_debug(9) <= ula_cas_o;
   o_debug(10) <= ula_cas_i;
-  o_debug(11) <= div13;
+  o_debug(11) <= ena_ula;
 
   -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 

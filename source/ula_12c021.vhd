@@ -355,8 +355,6 @@ begin
       end if;
     end if;
   end process;
-
-  o_debug(0) <= ena_cas;
   
   -- ====================================================================
   -- Video
@@ -847,6 +845,7 @@ begin
   p_registers : process(i_clk_sys, i_n_reset, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
+    variable out_cnt : unsigned(7 downto 0) := (others => '0');
   begin
     if (i_n_reset = '0') or (i_n_por = '0') then
       isr_en <= (others => '0');
@@ -866,6 +865,9 @@ begin
       cas_out_state <= CAS_IDLE;
       cas_hightone <= false;
       cas_in_bits <= 0;      
+
+      -- TODO: DEBUG remove me
+      out_cnt := (others => '0'); -- debug
 
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
@@ -1124,13 +1126,9 @@ begin
            cas_out_state <= CAS_IDLE;
            cas_out_bits <= 0;
         else
-          -- As 1's require two pulses, both 0 or 1 can shift out @1200Hz
-          if (multi_counter = 127) then
-            -- shift in high bit to handle stop bit and perpetual high tone until
-            -- new data is written into cas_data_shift.
-            cas_data_shift <= '1' & cas_data_shift(7 downto 1);
-          end if;
-    
+          o_debug(0) <= '0';
+          o_debug(1) <= '0';
+          o_debug(2) <= '0';
           -- TODO: If cas_out is always generating a signal regardless of motor, when
           -- a write mode is entered, multi_counter could be anything should state
           -- change wait until 255 wrap and what determines when enough high tone has
@@ -1139,21 +1137,33 @@ begin
           case cas_out_state is
             when CAS_IDLE =>
               -- wait for data to write out
+              cas_out_state <= CAS_HIGHTONE_DETECT;
+              out_cnt := (others => '0');
+             
+            -- TODO: Rename this state,it's really waiting for TX signal
+            when CAS_HIGHTONE_DETECT =>
+              o_debug(2) <= '1';
+              -- TODO: Is this state causing rogue 1 bit to be output if
+              -- we're in it long enough for a cycle? Can't just keep counter
+              -- at 0 though or high tones would never be output when not active?
               if isr_status(ISR_TX_EMPTY) = '0' then
                 cas_out_state <= CAS_START_BIT;
-                -- TODO: Did electron ever reset multi_counter? or only change
-                -- states when counter = 127? 
                 multi_counter <= (others => '0');
               end if;
-
+      
             when CAS_START_BIT =>
+              o_debug(0) <= '1';
               if multi_counter = 127 then
                 cas_out_bits <= 8;
                 cas_out_state <= CAS_DATA;
               end if;
 
             when CAS_DATA =>
+              o_debug(1) <= '1';
               if multi_counter = 127 then
+                -- shift in one so that constant high tone is output in lieu of data
+                cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+
                 if cas_out_bits = 1 then
                   isr_status(ISR_TX_EMPTY) <= '1';
                   cas_out_state <= CAS_STOP_BIT;
@@ -1162,8 +1172,9 @@ begin
               end if;
 
             when CAS_STOP_BIT =>
+              o_debug(0) <= '1';
               if multi_counter = 127 then
-                cas_out_state <= CAS_IDLE;
+                cas_out_state <= CAS_HIGHTONE_DETECT;
               end if;
 
             when others =>
@@ -1171,6 +1182,13 @@ begin
           end case;
 
         end if;
+
+        -- TODO: Is this generating a rogue 1 bit before START? due to overly short
+        -- pulse? Keep multi_counter at 0, should probably be treated as trough of
+        -- pulse not high part, that way gaps/delays are constant low and would not
+        -- produce a 0 or 1. They will also not produce any actual data recorded as
+        -- a gap though as fileio bit bangs and cannot encode gaps in the raw format.
+        -- UEF write support might be able to handle that though.
 
         -- TODO: Optional generation of pseudo sine wave on o_cas
         -- As long as comm mode is read or write, multi counter will increment.
@@ -1180,18 +1198,16 @@ begin
         -- mode (but not sound mode)? Did it also depend on motor being enabled or not?
         o_cas <= '0';
 
-        -- TODO: Again 255 only works if 306kHz counter?
-
-        -- 255 multi_counter: high cycles 128 = 1200Hz, 64 = 2400Hz
+        -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
         if cas_out_state = CAS_START_BIT or 
            (cas_out_bits > 0 and cas_data_shift(0) = '0') then 
-          -- ~1200Hz
-          if multi_counter < 64 then
+          -- ~1200Hz (Start bit or data 0)
+          if multi_counter >= 64 then
             o_cas <= '1';
           end if;
         else
-          -- ~2400Hz
-          if (multi_counter < 32) or (multi_counter >= 64 and multi_counter < 96) then
+          -- ~2400Hz (Stop bit or data 1)
+          if (multi_counter > 32 and multi_counter < 64) or (multi_counter >= 96) then
             o_cas <= '1';
           end if;
         end if;
