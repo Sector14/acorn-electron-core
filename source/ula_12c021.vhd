@@ -850,6 +850,11 @@ begin
     if (i_n_reset = '0') or (i_n_por = '0') then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
+      -- Does electron default this to 1? Without it, the first byte writing
+      -- to tape prior to series of high-tones will be previous contents of
+      -- shift register causing 1 byte of "garbage" before high tones. Not fatal 
+      -- either way.
+      isr_status(ISR_TX_EMPTY) <= '1';
       isrc_paging(ISRC_ROM_PAGE) <= "000";
       isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
@@ -1131,21 +1136,19 @@ begin
           o_debug(2) <= '0';
           -- TODO: If cas_out is always generating a signal regardless of motor, when
           -- a write mode is entered, multi_counter could be anything should state
-          -- change wait until 255 wrap and what determines when enough high tone has
-          -- being written out? Is the OS responsible for starting motor then waiting
-          -- a short time for high tone writing?
+          -- change wait until 127 wrap?
           case cas_out_state is
             when CAS_IDLE =>
               -- wait for data to write out
               cas_out_state <= CAS_HIGHTONE_DETECT;
               out_cnt := (others => '0');
              
-            -- TODO: Rename this state,it's really waiting for TX signal
+            -- TODO: Remove this state, only need CAS_IDLE again
             when CAS_HIGHTONE_DETECT =>
               o_debug(2) <= '1';
-              -- TODO: Is this state causing rogue 1 bit to be output if
-              -- we're in it long enough for a cycle? Can't just keep counter
-              -- at 0 though or high tones would never be output when not active?
+              -- TODO: Now STOP bit can transition direct to START, this state can
+              -- probably transition out ONLY on 127. So if a high pulse is started
+              -- it will be finished.
               if isr_status(ISR_TX_EMPTY) = '0' then
                 cas_out_state <= CAS_START_BIT;
                 multi_counter <= (others => '0');
@@ -1174,7 +1177,12 @@ begin
             when CAS_STOP_BIT =>
               o_debug(0) <= '1';
               if multi_counter = 127 then
-                cas_out_state <= CAS_HIGHTONE_DETECT;
+                if (isr_status(ISR_TX_EMPTY) = '0') then                  
+                  -- If CPU is keeping up, move straight to next byte
+                  cas_out_state <= CAS_START_BIT;
+                else
+                  cas_out_state <= CAS_HIGHTONE_DETECT;
+                end if;
               end if;
 
             when others =>
@@ -1182,13 +1190,6 @@ begin
           end case;
 
         end if;
-
-        -- TODO: Is this generating a rogue 1 bit before START? due to overly short
-        -- pulse? Keep multi_counter at 0, should probably be treated as trough of
-        -- pulse not high part, that way gaps/delays are constant low and would not
-        -- produce a 0 or 1. They will also not produce any actual data recorded as
-        -- a gap though as fileio bit bangs and cannot encode gaps in the raw format.
-        -- UEF write support might be able to handle that though.
 
         -- TODO: Optional generation of pseudo sine wave on o_cas
         -- As long as comm mode is read or write, multi counter will increment.
