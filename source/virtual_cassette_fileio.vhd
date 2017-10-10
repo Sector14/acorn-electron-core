@@ -426,14 +426,15 @@ begin
                 -- transfer any remaining data in buffer
                 -- NOTE: transfer may still be split into two requests by half full test below
                 if unsigned(fileio_tx_level) /= 0 then
-                  fileio_size <= "00000" & fileio_tx_level;
+                  -- size is in bytes, level in words
+                  fileio_size <= "0000" & fileio_tx_level & "0";
                   fileio_req <= '1';
                 else
                   fileio_req_state <= S_IDLE;
                 end if;
               end if;
         
-              -- buffer >= half full, start transfer
+              -- buffer >= half full (512 words), start transfer
               if (fileio_tx_level(9) = '1') then
                 fileio_req  <= '1';
                 fileio_size <= x"0400";
