@@ -64,46 +64,86 @@ The core boots to the Basic prompt in mode 6 with keyboard support.
 Entering of Basic programs should work. If you find any exceptions to
 that, please send me a minimal program example that illustrates the issue.
 
-Loading of games is also supported although see the Virtual Cassette
-section for file format/usage.
+Loading of games and saving programs is also supported. See the Virtual 
+Cassette section for file format/usage.
 
 The notable missing features are:
+  
+  - Fast Forward / Rewind
+  - Tape position counter
+  - Sound
+  - Any kind of expansions (plus 1 etc)
 
-  - Save support.
-  - FFwd, Rwnd, current tape position counter.
-  - Sound.
-  - Any kind of expansion (plus 1 etc)
 
+# Virtual Cassette Interface
 
-## Virtual Cassette Interface
+## File format
 
-The current cassette interface is a very limited and temporary method
-to allow loading of a raw file off of an SD card. There is no support
-for save/ffwd/rwnd or feedback on the current tape position. You can
-"reset" the tape to the beginning by ejecting the tape and inserting
-again via the menu.
+The current cassette interface is a temporary method to allow loading
+of a raw file off of an SD card. There is no support for ffwd/rwnd or
+feedback on the current tape position. You can "reset" the tape to
+the beginning by ejecting the tape and inserting again via the menu.
+Further improvements are planned once the core is fully functional.
 
-A "raw" file can be obtained by extracting the tape data from a UEF
-file including start/stop bits. A python uef2raw.py script will do this
-for you and can be found in the SVN sw/tools/acorn folder.
+The only supported tape file format at this time is "raw". Such a file
+can be created by extracting the tape data from a UEF file including 
+start/stop bits. A python uef2raw.py script will do this for you and
+can be found in the SVN sw/tools/acorn folder.
 
 Usage:
 
   python uef2raw.py <input_file.uef> <output_file.raw>
 
-Once the "raw" file is inserted via the OSD, it is safe to set PLAY to ON.
-The "tape" will not actually start playing as the core supports motor
-control and will wait until the Electron enables the motor in response
-to a "*CAT" or "*LOAD" action.
+## Loading
 
-Save support, counter feedback, fast forward and rewind will arrive in
-a future update. Direct UEF support is also a future possibility.
+From the "Virtual Tape" OSD menu, select tape "1 (raw)" and choose a 
+raw file (prepared as above). Switch to the "Cassette Player" menu
+and switch "Play" to ON. The core implements motor control so the
+tape will not being playing until a the Electron enables the motor.
+
+Load the program/app/game as normal by issuing
+
+  CHAIN"" 
+
+There is no need to toggle play to OFF, the Electron will pause playback
+as and when needed.
+
+Rewind/Fast forward is not yet supported. You can work around this by
+ejecting and re-inserting the tape which will reset the position to
+the beginning of the tape. Position will be preserved in a future update
+once FFwd/Rwnd are supported.
+
+
+## Saving 
+
+In order to save, you need to again mount a raw file, however as the contents
+of this tape will be overwritten, you can create blank 1 megabyte tape on Linux
+using:-
+
+  dd if=/dev/zero of=tape_1.raw bs=1M count=1
+
+Tapes up to around 500MB in size should be usable although ill advised until
+there's a way to jump to specific counter locations.
+
+Before mounting a tape, ensure PLAY and REC are OFF. Insert the tape then
+switch REC to ON and then PLAY to ON. Save as normal e.g
+
+  SAVE "TESTING"
+
+and press return. 
+
+** WARNING **
+
+Once saving has completed you **MUST** switch REC and/or PLAY to OFF before
+ejecting the tape. Failure to do so may result in a failure to save all
+data.
 
 
 ## Physical Cassette Interface
 
 A physical cassette recorder cannot yet be attached to the Replay Board.
-However the core should support loading once a pin is routed to it.
+However the core should support loading once suitable pins are routed to it.
 
 You will need to replicate the original Acorn cassette hardware interface
 for CAS IN, CAS OUT and CAS MO. CAS RC is not used currently. 
+

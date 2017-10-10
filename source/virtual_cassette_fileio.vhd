@@ -115,10 +115,11 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal fileio_w_data          : word(15 downto 0);
   signal fileio_we              : bit1;
   signal fileio_tx_flush        : bit1;
+  signal fileio_tx_level        : word(10 downto 0);
   signal fileio_w_addr          : word(31 downto 0);
 
   -- fileio req
-  type t_fileio_req_state is (S_IDLE, S_WRITE_WAIT, S_WRITE_WAIT_ACK, S_WAIT);
+  type t_fileio_req_state is (S_IDLE, S_W_IDLE, S_R_IDLE, S_W_WAIT, S_R_WAIT, S_HALT);
   signal fileio_req_state       : t_fileio_req_state;
   
   -- tape
@@ -126,7 +127,6 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal cas_to_fch_negedge     : boolean;
   signal bit_taken_r            : boolean;
   signal bit_valid_w            : boolean;
-  signal word_write_avail       : boolean;
   
   signal ula_to_fileio          : bit1; 
 
@@ -222,14 +222,11 @@ begin
           high_cnt := 0;
           ula_to_fileio <= '0';
           skip_next_pulse := false;
-        -- Write active
         else
-        
+          
           if i_cas_to_fch = '1' then
             high_cnt := high_cnt + 1;
           end if;
-
-          -- TODO: Initial save dumps out random garbage for first byte.
           
           -- TODO: Additional latches to avoid noise triggering negedge?
           if cas_to_fch_negedge then
@@ -239,10 +236,8 @@ begin
             else
               -- 2400Hz = 3333, 1200Hz = 6666 cycles high
               -- 2500 cycles threshold in middle
-              -- 1000 is overkill but handles the single clock (6.5us) high pulse that will
-              -- occur as ULA write transitions from stop bit to waiting for
-              -- ISR_TX_EMPTY if there's data already available. outside of this time
-              -- a high tone might be generated until TX is ready again.
+              -- 1000 is overkill but handles partial high pulse that might occur whilst
+              -- waiting to generate START bit.
               if high_cnt > 2500 then
                 ula_to_fileio <= '0';
                 bit_valid_w <= true;
@@ -262,7 +257,6 @@ begin
     end if;
   end process;
 
-  -- 
   cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_l) = '1' else false;
 
   -- Tape is one way sync'd with read/write process and one way 
@@ -276,11 +270,11 @@ begin
       cur_data <= (others => '0');
       fileio_w_data <= (others => '0');
       fileio_taken <= '0';
-      word_write_avail <= false;
+      fileio_we <= '0';
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
-        word_write_avail <= false;
+        fileio_we <= '0';
 
         if (i_fch_cfg.inserted(0) = '0') then
           tape_position <= (others => '0');
@@ -289,7 +283,7 @@ begin
           -- TODO: write out current tape position to addr 0
           --       need to adjust start read/write address to be after header
         else
-          -- TODO: Handle reaching limit of tape_position
+          -- TODO: Handle reaching limit of tape_position, currently wraps which is bad!
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
@@ -312,15 +306,10 @@ begin
             
             if cur_bit = 15 then
               fileio_w_data <= cur_data(15 downto 1) & ula_to_fileio;
+              fileio_we <= '1';
               cur_data <= (others => '0');
-
-              -- Convert bits to bytes and 2 byte align
-              fileio_w_addr <= "000" & word(tape_position(31 downto 4)) & "0";
-
-              word_write_avail <= true;
             else            
-              -- write bit to cur_data. ula shifts out from right so bit 0
-              -- is the first bit received and can go into bit 15 of cur_data
+              -- ULA shifts out to right. LSB in ULA will end up stored in MSB on tape.
               cur_data(15-cur_bit) <= ula_to_fileio;
             end if;
 
@@ -330,7 +319,7 @@ begin
             tape_position <= tape_position + 1;
           end if;          
 
-          -- TODO: Handle ffwd/rwnd
+          -- TODO: Handle ffwd/rwnd. Will need to cause fileio read and write address changes.
         end if;
 
       end if;
@@ -376,16 +365,13 @@ begin
     i_fifo_fm_core_flush  => fileio_tx_flush,
     i_fifo_fm_core_data   => fileio_w_data,
     i_fifo_fm_core_we     => fileio_we,
-    o_fifo_fm_core_level  => open
+    o_fifo_fm_core_level  => fileio_tx_level
     );
-
-  -- TODO: Allow read/write to use 512 byte transfers
-  fileio_size <= x"0002";
 
   -- TODO: Current setup requires REC be ON before PLAY is turned on
   -- and for disabling, PLAY must be disabled then REC.
 
-  o_debug(0) <= '1' when word_write_avail else '0';
+  o_debug(0) <= '0';
   o_debug(1) <= i_cas_to_fch;
   o_debug(2) <= '1' when bit_valid_w else '0';
   o_debug(3) <= i_ena;
@@ -404,93 +390,101 @@ begin
       if (i_ena = '1') then
         
         fileio_req  <= '0';
-        fileio_we <= '0';
         fileio_rx_flush <= '0';
         fileio_tx_flush <= '0';
 
-        -- fileio_req assumes sequential read with flush/reset occuring
-        -- anytime ffwd/rwnd occurs
-        if (i_fch_cfg.inserted(0) = '0') or (i_play = '0') or (i_motor = '0') then
-          -- TODO: Switching from write to read, if bit position is mid-word 
-          -- does a refetch really need to be made? 
-          -- TODO: switch between read/write needs state managing as a write
-          -- could be pending when motor stopped and changed to write. 
-          -- User toggling i_rec on and off will likely result in corruption
-          -- not sure that situation needs to be handled though.
-          
-          -- TODO: Always starting from 0 after insert. Really should use tape_position
-          -- and that in turn should be zero on reset, but needs to track changes
-          -- due to ffwd/rwnd.
-          -- Convert bits to bytes and 2 byte align
-          fileio_addr <= (others => '0'); --"000" & word(tape_position(31 downto 4)) & "0"; 
+        -- TODO: Handle ffwd/rwnd. fileio addr for r/w needs to track tape_position
+
+        if i_fch_cfg.inserted(0) = '0' then     
+          fileio_addr <= (others => '0');
           fileio_req_state <= S_IDLE;
           fileio_rx_flush <= '1';
-        elsif (i_rec = '1') then
-          fileio_dir <= '1';
-
-          -- Write single word
+          fileio_tx_flush <= '1';
+        else
+          -- TODO: Change i_rec to mean play+rec whilst play is play only and 
+          --       make the two mutually exclusive.
           case fileio_req_state is
-            when S_IDLE =>                          
-              if (word_write_avail) then
-                -- ignoring buffer size, assumption is tape is slow enough that
-                -- last byte write req is served long before even one more bit
-                -- is obtained from the ula. As ULA never yields, not much to
-                -- do if the buffer is not empty anyway. Also not sync'd with sender.
-                -- if we're not in idle state, data loss!
+            when S_IDLE =>
+              -- TODO: Account for any external changes to tape position      
 
-                -- TODO: Setting fileio_addr here causes problems?
-                --fileio_addr <= fileio_w_addr;
-                fileio_we <= '1';
-                fileio_req_state <= S_WRITE_WAIT;
+              if (i_play = '1' and i_rec = '1') then
+                fileio_req_state <= S_W_IDLE;
+                fileio_dir <= '1';
+              elsif (i_play = '1') then
+                fileio_req_state <= S_R_IDLE;
+                fileio_dir <= '0';
               end if;
 
-            when S_WRITE_WAIT =>                         
-              fileio_req  <= '1'; -- note, request only sent when ack received
-              fileio_req_state <= S_WRITE_WAIT_ACK;
+            -- 
+            -- Write states
+            --
+            when S_W_IDLE =>
+              fileio_dir <= '1';              
+              
+              -- Attempting to leave record mode
+              if (i_play = '0' or i_rec = '0') then
+                -- transfer any remaining data in buffer
+                -- NOTE: transfer may still be split into two requests by half full test below
+                if unsigned(fileio_tx_level) /= 0 then
+                  fileio_size <= "00000" & fileio_tx_level;
+                  fileio_req <= '1';
+                else
+                  fileio_req_state <= S_IDLE;
+                end if;
+              end if;
+        
+              -- buffer >= half full, start transfer
+              if (fileio_tx_level(9) = '1') then
+                fileio_req  <= '1';
+                fileio_size <= x"0400";
+              end if;
 
-            when S_WRITE_WAIT_ACK =>   
               if (fileio_ack_req = '1') then
-                fileio_req_state <= S_WAIT;
+                fileio_req_state <= S_W_WAIT;
               end if;
 
-            when S_WAIT =>
+            when S_W_WAIT =>
               if (fileio_ack_trans = '1') then
                 if (red_or(fileio_trans_err) = '1') then
-                  -- TODO: write failed? 
-                else
-                  -- TODO: Support writing in a larger batch?
-                  -- TODO: Should be + fileio_size                  
-                  fileio_addr <= fileio_addr + 2;
+                  -- unhandled - write failed.
+                  fileio_req_state <= S_HALT;
+                else       
+                  fileio_addr <= fileio_addr + fileio_size;
                 end if;
+                fileio_req_state <= S_W_IDLE;
+              end if;
+        
+            --
+            -- Read states
+            --
+            when S_R_IDLE =>
+              fileio_dir <= '0';
+              fileio_size <= x"0400";
+
+              -- Stopping playback or switching to record?
+              if (i_play = '0' or i_rec = '1') then
+                fileio_rx_flush <= '1';
                 fileio_req_state <= S_IDLE;
-              end if;
-            when others => null;
-          end case;
-
-        -- TODO: Review, if turn rec off before play!
-        else
-          fileio_dir <= '0';
-
-          -- read-ahead, fill buffer from current position
-          case fileio_req_state is
-            when S_IDLE =>            
-              if fileio_rx_level(9) = '0' then -- bit 9 would be < half full
-                fileio_req  <= '1'; -- note, request only sent when ack received
-              end if;
-              if (fileio_ack_req = '1') then
-                fileio_req_state <= S_WAIT;
+              else            
+                -- buffer < half full pre-fetch more data
+                if fileio_rx_level(9) = '0' then
+                  fileio_req  <= '1'; -- note, request only sent when ack received
+                end if;
+                if (fileio_ack_req = '1') then
+                  fileio_req_state <= S_R_WAIT;
+                end if;
               end if;
 
-            when S_WAIT =>
+            when S_R_WAIT =>
               if (fileio_ack_trans = '1') then
                 if (red_or(fileio_trans_err) = '1') then
                   -- TODO: Check truncated for end of tape. How to handle? Same way
-                  -- as tape_position reaching max val?
-                  -- TODO: Should at least stop making new requests until tape rewound or ejected?
+                  -- as tape_position reaching max val? Report error status to OSD via flags?
+                  fileio_req_state <= S_HALT;
                 else
                   fileio_addr <= fileio_addr + fileio_size;
                 end if;
-                fileio_req_state <= S_IDLE;
+                fileio_req_state <= S_R_IDLE;
               end if;
 
             when others => null;
