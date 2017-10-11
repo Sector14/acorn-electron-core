@@ -358,13 +358,6 @@ begin
     o_fifo_fm_core_level  => fileio_tx_level
     );
 
-  -- TODO: Current setup requires REC be ON before PLAY is turned on
-  -- and for disabling, PLAY must be disabled then REC.
-
-  o_debug(0) <= '0';
-  o_debug(1) <= i_cas_to_fch;
-  o_debug(2) <= '1' when bit_valid_w else '0';
-  o_debug(3) <= i_ena;
 
   -- Enable/pause data request via the Generic FileIO entity
   p_fileio_req : process(i_clk, i_rst)

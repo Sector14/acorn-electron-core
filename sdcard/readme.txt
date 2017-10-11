@@ -94,6 +94,10 @@ Usage:
 
   python uef2raw.py <input_file.uef> <output_file.raw>
 
+Note: It's advisable to mark these raw files as READ ONLY once transferred
+to the SD card.
+
+
 ## Loading
 
 From the "Virtual Tape" OSD menu, select tape "1 (raw)" and choose a 
@@ -116,13 +120,12 @@ once FFwd/Rwnd are supported.
 
 ## Saving 
 
-In order to save, you need to again mount a raw file, however as the contents
-of this tape will be overwritten, you can create blank 1 megabyte tape on Linux
-using:-
+In order to save, you need to mount a raw file with plenty of space. You
+can create blank 1 megabyte tape on Linux using:-
 
   dd if=/dev/zero of=tape_1.raw bs=1M count=1
 
-Tapes up to around 500MB in size should be usable although ill advised until
+Tapes up to around 400MB in size should be usable although ill advised until
 there's a way to jump to specific counter locations.
 
 Before mounting a tape, ensure PLAY and REC are OFF. Insert the tape then
@@ -131,12 +134,6 @@ switch REC to ON and then PLAY to ON. Save as normal e.g
   SAVE "TESTING"
 
 and press return. 
-
-** WARNING **
-
-Once saving has completed you **MUST** switch REC and/or PLAY to OFF before
-ejecting the tape. Failure to do so may result in a failure to save all
-data.
 
 
 ## Physical Cassette Interface
