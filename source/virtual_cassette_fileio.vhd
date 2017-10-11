@@ -35,10 +35,8 @@
 -- You are responsible for any legal issues arising from your use of this code.
 --
 
--- Interface Frequency based ULA cassette pins with SD Card based 
+-- Interface the frequency based ULA cassette i/o pins with SD Card based 
 -- files using Generic FileIO.
---
--- Assumes start/stop bits are baked into the bitstream already.
 --
 -- File IO only handles 0 or 1 states where as tape has pulses of 0's,
 -- 1's and gaps with level 0. Gaps will end up generating
@@ -46,17 +44,6 @@
 -- not cause too big a problem as the first gap/run of 0's will cause the
 -- stop bit check to fail and a return to looking for a high tone.
 -- There will be a single byte that generates a RX full interrupt however.
-
-
--- TODO: This is quite brittle at the moment. Switch between read<->write
--- is likely not handled safely. 
--- If i_rec is disabled before 16 bits have been written, the cur_data may not
--- be pushed to the write FIFO. If the data is always pushed on negative
--- edge of i_rec, play may kick in too early and write may also not occur.
--- Really it should be considered out of spec for a switch to occur whilst
--- the motor is active. I don't believe the electron ever needs this although
--- uses could obviously do so with the tape recorder but only by stopping
--- play at the same time.
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -396,8 +383,6 @@ begin
         fileio_rx_flush <= '0';
         fileio_tx_flush <= '0';
 
-        -- TODO: Handle ffwd/rwnd. fileio addr for r/w needs to track tape_position
-
         if i_fch_cfg.inserted(0) = '0' then     
           fileio_addr <= (others => '0');
           fileio_req_state <= S_IDLE;
@@ -405,10 +390,11 @@ begin
           fileio_tx_flush <= '1';
         else
           -- TODO: Change i_rec to mean play+rec whilst play is play only and 
-          --       make the two mutually exclusive.
+          --       make the two mutually exclusive?
           case fileio_req_state is
             when S_IDLE =>
-              -- TODO: Account for any external changes to tape position      
+              -- Sync next r/w transfer with current tape position (16 bit aligned)
+              fileio_addr <= "000" & word(tape_position(31 downto 4)) & "0";
 
               if (i_play = '1' and i_rec = '1') then
                 fileio_req_state <= S_W_IDLE;
@@ -424,9 +410,9 @@ begin
             when S_W_IDLE =>
               fileio_dir <= '1';              
               
-              -- Attempting to leave record mode
-              if (i_play = '0' or i_rec = '0') then
-                -- transfer any remaining data in buffer
+              -- User attempting to leave record mode or in case of motor stop, writing
+              -- has finished and remainder of FIFO queue needs transfering asap.
+              if (i_play = '0' or i_rec = '0' or i_motor = '0') then
                 -- NOTE: transfer may still be split into two requests by half full test below
                 if unsigned(fileio_tx_level) /= 0 then
                   -- size is in bytes, level in words
