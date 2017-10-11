@@ -126,10 +126,10 @@ architecture RTL of Virtual_Cassette_FileIO is
 
 begin
 
-  -- TODO: Adapt uef2raw to emit a small header to start of virtual tape.
-  -- tape read/write should skip this. On eject, write to this location
-  -- the current tape position. On insert, read it and set tape_position
-  -- accordingly.
+  -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
+  --       tape read/write should skip this. On eject, write to this location
+  --       the current tape position. On insert, read it and set tape_position
+  --       accordingly.
 
   -- 1/8MHz = 125ns. 1/1200Hz = 833.333us
   -- 833.33us/125ns = 6666 cycles
@@ -215,7 +215,7 @@ begin
             high_cnt := high_cnt + 1;
           end if;
           
-          -- TODO: Additional latches to avoid noise triggering negedge?
+          -- TODO: [Gary] Additional latches to avoid noise triggering negedge?
           if cas_to_fch_negedge then
 
             if skip_next_pulse then
@@ -223,8 +223,6 @@ begin
             else
               -- 2400Hz = 3333, 1200Hz = 6666 cycles high
               -- 2500 cycles threshold in middle
-              -- 1000 is overkill but handles partial high pulse that might occur whilst
-              -- waiting to generate START bit.
               if high_cnt > 2500 then
                 ula_to_fileio <= '0';
                 bit_valid_w <= true;
@@ -232,8 +230,7 @@ begin
                 ula_to_fileio <= '1';
                 skip_next_pulse := true;
                 bit_valid_w <= true;
-              end if;
-              
+              end if;              
             end if;
 
             high_cnt := 0;
@@ -266,11 +263,8 @@ begin
         if (i_fch_cfg.inserted(0) = '0') then
           tape_position <= (others => '0');
           cur_data <= (others => '0');
-        -- elsif i_motor = '0' and was on before...
-          -- TODO: write out current tape position to addr 0
-          --       need to adjust start read/write address to be after header
         else
-          -- TODO: Handle reaching limit of tape_position, currently wraps which is bad!
+          -- TODO: [Gary] Handle reaching limit of tape_position
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
@@ -278,10 +272,10 @@ begin
           if bit_taken_r then
             
             if cur_bit = 15 then
-              -- TODO: cur_data isn't set until tape position has done one 
-              -- 16 bit cycle! really first fileio_data byte should be valid
-              -- before allowing tape to start ticking away? Once move to FSM
-              -- to handle loading tape header this problem will go away.
+              -- TODO: [Gary] cur_data isn't set until tape position has done one 
+              --       16 bit cycle! really first fileio_data byte should be valid
+              --       before allowing tape to start ticking away? Once move to FSM
+              --       to handle loading tape header this problem will go away.
 
               -- spi transfers in big endian and uef2raw writes big endian
               cur_data <= fileio_data(15 downto 0);
@@ -290,10 +284,10 @@ begin
 
           -- Writing
           elsif bit_valid_w then
-            -- TODO: if i_rec is disabled before bit 15, the 16bit word is never
-            -- passed to fileio for storage. So far this is not an issue as there's
-            -- ample high tone that losing a bit of it doesn't change anything. Needs
-            -- fixing though.
+            -- TODO: [Gary] if i_rec is disabled before bit 15, the 16bit word is never
+            --       passed to fileio for storage. So far this is not an issue as there's
+            --       ample high tone that losing a bit of it doesn't change anything. Needs
+            --       fixing though.
             if cur_bit = 15 then
               fileio_w_data <= cur_data(15 downto 1) & ula_to_fileio;
               fileio_we <= '1';
@@ -309,7 +303,7 @@ begin
             tape_position <= tape_position + 1;
           end if;          
 
-          -- TODO: Handle ffwd/rwnd. Will need to cause fileio read and write address changes.
+          -- TODO: [Gary] Handle ffwd/rwnd. Will need to cause fileio read and write address changes.
         end if;
 
       end if;
@@ -382,8 +376,6 @@ begin
           fileio_rx_flush <= '1';
           fileio_tx_flush <= '1';
         else
-          -- TODO: Change i_rec to mean play+rec whilst play is play only and 
-          --       make the two mutually exclusive?
           case fileio_req_state is
             when S_IDLE =>
               -- Sync next r/w transfer with current tape position (16 bit aligned)
@@ -461,8 +453,8 @@ begin
             when S_R_WAIT =>
               if (fileio_ack_trans = '1') then
                 if (red_or(fileio_trans_err) = '1') then
-                  -- TODO: Check truncated for end of tape. How to handle? Same way
-                  -- as tape_position reaching max val? Report error status to OSD via flags?
+                  -- TODO: [Gary] Check truncated for end of tape. How to handle? Same way
+                  --       as tape_position reaching max val? Report error status to OSD via flags?
                   fileio_req_state <= S_HALT;
                 else
                   fileio_addr <= fileio_addr + fileio_size;

@@ -524,7 +524,7 @@ begin
   o_debug(10) <= ula_cas_i;
   o_debug(11) <= ena_ula;
 
-  -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
+  -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --
   -- Sound

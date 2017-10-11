@@ -219,28 +219,12 @@ begin
   o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
-  --b_aux_io(39 downto 0) <= (others => 'Z');
   b_aux_io(39 downto 16) <= (others => 'Z');
   b_aux_io(11 downto  0) <= (others => 'Z');
 
-  -- debug
-  --b_aux_io(15) <= av.vid_sync.ana_de;
-  --b_aux_io(14) <= av.vid_sync.ana_hs;
-  --b_aux_io(13) <= av.vid_sync.dig_hs;
-  --b_aux_io(12) <= av.vid_sync.dig_vs;
-  
-
-  -- debug
-  
-  -- ula 0..7, electron top 15..8
-  --b_aux_io(12) <= debug(8); -- motor
-  b_aux_io(15) <= debug(9); -- o_cas
-  --b_aux_io(14) <= debug(10); -- i_cas
-  --b_aux_io(12) <= debug(11); -- div13
-
-
-  b_aux_io(12) <= debug(0);
-  b_aux_io(13) <= debug(1);
-  b_aux_io(14) <= debug(2);
-  --b_aux_io(15) <= debug(3);
+  -- scope debug via aux io
+  b_aux_io(12) <= debug(8);
+  b_aux_io(13) <= debug(9);
+  b_aux_io(14) <= debug(10);
+  b_aux_io(15) <= debug(11);
 end RTL;

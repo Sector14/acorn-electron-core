@@ -144,3 +144,24 @@ However the core should support loading once suitable pins are routed to it.
 You will need to replicate the original Acorn cassette hardware interface
 for CAS IN, CAS OUT and CAS MO. CAS RC is not used currently. 
 
+
+# Resources
+
+The "Acorn Electron User Guide" is a good starting point. An on-line version
+can be found at:
+
+http://www.acornelectron.co.uk/ugs/acorn/ug-english/contents_eng.html
+
+Following on from that is the "Acorn Electron - Advanced User Guide"
+
+It's worth downloading the "Introductory Cassette" to really follow along
+with the User Guide and when you're bored of that, hop over to
+http://www.elitehomepage.org/c64/index.htm and download the Electron
+version of Elite. Perhaps the only game you'll ever need ;)
+
+So far only a handful of games have been tested with this core and not
+extensively. They include, Elite, Hopper, Sphinx Adventures, Jet Set Willy,
+Monsters, Repton and the Introductory Cassette.
+
+Please report any issues with the core and any games on the fpgaarcade
+forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20

@@ -277,9 +277,6 @@ begin
         clk_phase <= clk_phase + 1;
       end if;
 
-      -- TODO: [Gary] Whilst handling of STOPPED cpu should be accounted for, the whole logic is untested 
-      -- and may turn out to be horribly broken. Extensive testing required when modes 0..3 are implemented.
-
       -- CPU_STOPPED will be asserted after cph(2) has created a pulse, but before cph(3) has changed
       -- states. Likewise /CPU_STOPPED will occur on cph(3) allowing state change to occur without
       -- generating an extra clock pulse that would otherwise cause the delayed RAM access to be lost. 
@@ -421,7 +418,7 @@ begin
   -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
   -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
   -- location so digital h/v passed out for now. This is a bit of a kludge as the
-  -- timing of dig h/v may not match that of analog h/v (or combined csync)
+  -- timing of dig h/v may not match that of analog h/v (or csync)
   o_n_hsync <= dig_hsync;
   o_n_vsync <= dig_vsync;
   o_n_csync <= ana_hsync;
@@ -476,7 +473,6 @@ begin
           
           if (not vid_h_blank) then            
 
-            -- TODO: [Gary] split out decode and lookup from process
             logical_colour := (others => '0');
 
             -- Decode pixel to logical colour
@@ -680,7 +676,10 @@ begin
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
   
-  -- TODO: [Gary] this is ending up as a latch. fix.
+  -- TODO: [Gary] ram_cpu_slot ends up as a latch, needs resolving. 
+  -- Note: ram_cpu_slot needs to be stable before rising edge of "0001" and "1001" as ram_addr 
+  --       will be reg'd however value of ram_cpu_slot depeneds on
+  --       values set on clock phase "0000" and "1000".
   p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, ram_contention)
   begin
     if (rst = '1') then
@@ -695,7 +694,7 @@ begin
         if (nmi = '0') and ram_contention then
           ram_cpu_slot <= '0';
         end if;
-      end if;    
+      end if;
     end if;
   end process;
 
@@ -942,7 +941,7 @@ begin
                 -- bit 8 is ignored according to the AUG?
                 multi_counter <= unsigned('0' & b_pd(6 downto 0));
                 
-                -- TODO: ignore writes when in write cassette mode?
+                -- TODO: [Gary] ignore writes when in write cassette mode?
 
               -- Controls
               when x"7" =>                 
@@ -1001,7 +1000,7 @@ begin
         case misc_control(MISC_COMM_MODE) is
           when MISC_COMM_MODE_INPUT =>                        
             if i_cas = '0' then
-              -- TODO: look for several clocks as a stable value to discount noise?
+              -- TODO: [Gary] look for several clocks as a stable value to discount noise?
               multi_counter <= (others => '0');
             else
               -- count length of high pulses
@@ -1016,7 +1015,7 @@ begin
             end if;
             
           when MISC_COMM_MODE_SOUND =>
-            -- TODO: Sound not yet supported.
+            -- TODO: [Gary] Sound not yet supported.
 
           when others => null;
         end case;
@@ -1031,7 +1030,7 @@ begin
           cas_state <= CAS_IDLE;
         elsif cas_i_negedge then
           
-          -- TODO: pull out threshold limits to various constants
+          -- TODO: [Gary] pull out threshold limits to various constants
 
           -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
           --                   2400Hz = 32 high clocks
@@ -1063,7 +1062,7 @@ begin
               if multi_counter >= 48 then        
                 cas_in_bits <= 8;
                 cas_state <= CAS_DATA;
-                -- TODO: AUG notes this interrupt can be generated even if motor control 
+                -- TODO: [Gary] AUG notes this interrupt can be generated even if motor control 
                 -- is not active? 
                 isr_status(ISR_RX_FULL) <= '0';
                 cas_hightone <= false;
@@ -1124,49 +1123,35 @@ begin
            misc_control(MISC_CASSETTE_MOTOR) = '0' then          
            cas_out_state <= CAS_IDLE;
            cas_out_bits <= 0;
-        else
-          o_debug(0) <= '0';
-          o_debug(1) <= '0';
-          o_debug(2) <= '0';
-          -- TODO: If cas_out is always generating a signal regardless of motor, when
-          -- a write mode is entered, multi_counter could be anything should state
-          -- change wait until 127 wrap?
+        elsif multi_counter = 127 then
+
           case cas_out_state is
             when CAS_IDLE =>
               -- wait for data to write out             
-              if isr_status(ISR_TX_EMPTY) = '0' and multi_counter = 127 then
+              if isr_status(ISR_TX_EMPTY) = '0' then
                 cas_out_state <= CAS_START_BIT;
               end if;
       
             when CAS_START_BIT =>
-              o_debug(0) <= '1';
-              if multi_counter = 127 then
-                cas_out_bits <= 8;
-                cas_out_state <= CAS_DATA;
-              end if;
+              cas_out_bits <= 8;
+              cas_out_state <= CAS_DATA;
 
             when CAS_DATA =>
-              o_debug(1) <= '1';
-              if multi_counter = 127 then
-                -- shift in one so that constant high tone is output in lieu of data
-                cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+              -- shift in one so that constant high tone is output in lieu of data
+              cas_data_shift <= '1' & cas_data_shift(7 downto 1);
 
-                if cas_out_bits = 1 then
-                  isr_status(ISR_TX_EMPTY) <= '1';
-                  cas_out_state <= CAS_STOP_BIT;
-                end if;
-                cas_out_bits <= cas_out_bits - 1;
+              if cas_out_bits = 1 then
+                isr_status(ISR_TX_EMPTY) <= '1';
+                cas_out_state <= CAS_STOP_BIT;
               end if;
+              cas_out_bits <= cas_out_bits - 1;
 
             when CAS_STOP_BIT =>
-              o_debug(0) <= '1';
-              if multi_counter = 127 then
-                if (isr_status(ISR_TX_EMPTY) = '0') then                  
-                  -- If CPU is keeping up, move straight to next byte
-                  cas_out_state <= CAS_START_BIT;
-                else
-                  cas_out_state <= CAS_IDLE;
-                end if;
+              if (isr_status(ISR_TX_EMPTY) = '0') then                  
+                -- If CPU is keeping up, move straight to next byte
+                cas_out_state <= CAS_START_BIT;
+              else
+                cas_out_state <= CAS_IDLE;
               end if;
 
             when others =>
@@ -1175,12 +1160,13 @@ begin
 
         end if;
 
-        -- TODO: Optional generation of pseudo sine wave on o_cas
-        -- As long as comm mode is read or write, multi counter will increment.
-        -- cas out will can generate a high tone in write mode where as read
-        -- mode will depend on incoming pulse durations. Did Electron generate cas
-        -- out all the time, only when in write mode or only when in read or write
-        -- mode (but not sound mode)? Did it also depend on motor being enabled or not?
+        -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
+
+        -- TODO: [Gary] As long as comm mode is read or write, multi counter will increment.
+        --       cas out will can generate a high tone in write mode where as read
+        --       mode will depend on incoming pulse durations. Did Electron generate cas
+        --       out all the time, only when in write mode or only when in read or write
+        --       mode (but not sound mode)? Did it also depend on motor being enabled or not?
         o_cas <= '0';
 
         -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
@@ -1229,9 +1215,9 @@ begin
     end case;
     
     -- TODO: [Gary] May be more to it than this, pastraiser suggests anything
-    -- below 800H caused base_addr to be used (firmware skips clearing this region
-    -- of ram too on startup) as well as other variations/skips. This needs further
-    -- research.
+    --       below 800H caused base_addr to be used (firmware skips clearing this region
+    --       of ram too on startup) as well as other variations/skips. This needs further
+    --       research.
     if screen_start_addr = x"00" & '0' then
       mode_base_addr <= unsigned(base_addr(14 downto 6));
     else
