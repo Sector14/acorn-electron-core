@@ -1134,12 +1134,8 @@ begin
           case cas_out_state is
             when CAS_IDLE =>
               -- wait for data to write out             
-              -- TODO: Now STOP bit can transition direct to START, this state can
-              -- probably transition out ONLY on 127. So if a high pulse is started
-              -- it will be finished.
-              if isr_status(ISR_TX_EMPTY) = '0' then
+              if isr_status(ISR_TX_EMPTY) = '0' and multi_counter = 127 then
                 cas_out_state <= CAS_START_BIT;
-                multi_counter <= (others => '0');
               end if;
       
             when CAS_START_BIT =>
