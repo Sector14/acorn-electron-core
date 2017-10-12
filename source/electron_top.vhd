@@ -228,10 +228,10 @@ begin
     if (i_rst_sys = '1') then
       cnt := 0;
     elsif rising_edge(i_clk_sys) then
+      div13 <= '0';
+      
       -- cph 0 & 2 to align div13 with ena_ula cph 1 & 3
       if (i_cph_sys(0) = '1' or i_cph_sys(2) = '1') then
-        div13 <= '0';
-
         cnt := cnt + 1;        
         if (cnt = 13) then
           cnt := 0;
@@ -514,10 +514,17 @@ begin
     i_rwnd         => cfg_cas_rwnd,
 
     i_cas_to_fch   => ula_cas_o,
-    o_cas_fm_fch   => ula_cas_i
+    o_cas_fm_fch   => ula_cas_i,
+
+    o_debug        => open --o_debug(7 downto 0)
   );
 
-  -- TODO: Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
+  o_debug(8) <= ula_cas_mo;
+  o_debug(9) <= ula_cas_o;
+  o_debug(10) <= ula_cas_i;
+  o_debug(11) <= ena_ula;
+
+  -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
   --
   -- Sound

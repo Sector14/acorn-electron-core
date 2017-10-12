@@ -219,22 +219,12 @@ begin
   o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
-  --b_aux_io(39 downto 0) <= (others => 'Z');
   b_aux_io(39 downto 16) <= (others => 'Z');
   b_aux_io(11 downto  0) <= (others => 'Z');
 
-  -- debug
-  --b_aux_io(15) <= av.vid_sync.ana_de;
-  --b_aux_io(14) <= av.vid_sync.ana_hs;
-  --b_aux_io(13) <= av.vid_sync.dig_hs;
-  --b_aux_io(12) <= av.vid_sync.dig_vs;
-  
-
-  -- debug
-  b_aux_io(13) <= debug(2); -- electron top
-  b_aux_io(12) <= debug(8); -- electron top
-  
-  b_aux_io(15) <= debug(1);  -- ula
-  b_aux_io(14) <= debug(0);  -- ula
-
+  -- scope debug via aux io
+  b_aux_io(12) <= debug(8);
+  b_aux_io(13) <= debug(9);
+  b_aux_io(14) <= debug(10);
+  b_aux_io(15) <= debug(11);
 end RTL;
