@@ -173,8 +173,8 @@ begin
     dis;
 
     -- DDR
-    spi_readbin("../tb/os_basic_d800_da00.rom", x"0000d800", x"0200");
-    spi_readbin("../tb/os_basic_fff0_ffff.rom", x"0000fff0", x"000f");
+    spi_readbin("../tb_roms/os_basic_d800_da00.rom", x"0000d800", x"0200");
+    spi_readbin("../tb_roms/os_basic_fff0_ffff.rom", x"0000fff0", x"000f");
     --spi_readbin("../sdcard/os_basic.rom", x"00008000", x"8000");
 
     -- SRAM
