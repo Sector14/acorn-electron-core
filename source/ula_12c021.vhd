@@ -837,7 +837,7 @@ begin
   -- Register data out
   -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
-          '0' & isr_status         when i_addr( 3 downto 0) = x"0" else
+          '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
           cas_data_shift           when i_addr( 3 downto 0) = x"4" else
           (others => 'Z');
 
