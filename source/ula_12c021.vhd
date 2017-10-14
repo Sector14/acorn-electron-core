@@ -128,6 +128,7 @@ entity ULA_12C021 is
 end;
 
 architecture RTL of ULA_12C021 is
+  constant c_vidparam : r_Vidparam_int := c_Vidparam_832x287p_50_16MHz;
 
   -- Framework Video
   signal ana_hsync, ana_vsync, ana_de : bit1;
@@ -381,14 +382,14 @@ begin
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
-      g_param               => c_Vidparam_832x287p_50_16MHz
+      g_param               => c_vidparam
       )
     port map (
       i_clk                 => i_clk_sys,
       i_ena                 => i_ena_ula,
       i_rst                 => vid_rst,
       --
-      i_param               => c_Vidparam_832x287p_50_16MHz,
+      i_param               => c_vidparam,
       i_sof                 => '0',
       i_f2_flip             => '0',
       --
@@ -955,12 +956,13 @@ begin
 
         end if;
          
-        -- Interrupt Generation
-        -- TODO: [Gary] check -1, may be off by 1 depending on when vtotal inc occurs
-        -- TODO: [Gary] See AUG draft 3 p214. Both this and rtc_count need adjusting to
-        --       match the scoped output showing in the AUG for exact timing.
-        if (unsigned(vpix) = unsigned(vtotal)-1) then
-          isr_status(ISR_FRAME_END) <= '1';        
+        -- Display Interrupt Generation
+        -- Aligned to end of hsync on the line after active display
+        if (unsigned(vpix) = 16+256 and not vid_text_mode) or
+           (unsigned(vpix) = 16+250 and vid_text_mode) then
+          if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
+            isr_status(ISR_FRAME_END) <= '1';
+          end if;        
         end if;
 
         -- 50Hz RTC interrupt every 320000 clocks  
