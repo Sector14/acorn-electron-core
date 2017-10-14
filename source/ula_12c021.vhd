@@ -955,23 +955,20 @@ begin
           end if;
 
         end if;
-         
-        -- Display Interrupt Generation
-        -- Aligned to end of hsync on the line after active display
-        if (unsigned(vpix) = 16+256 and not vid_text_mode) or
-           (unsigned(vpix) = 16+250 and vid_text_mode) then
-          if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
-            isr_status(ISR_FRAME_END) <= '1';
-          end if;        
-        end if;
+                 
+        -- Interrupt Generation
+        -- Aligned to end of hsync
+        if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
+          -- Display, generate on the line after last active display line
+          if (unsigned(vpix) = 16+256 and not vid_text_mode) or
+             (unsigned(vpix) = 16+250 and vid_text_mode) then
+              isr_status(ISR_FRAME_END) <= '1';
+          end if;
 
-        -- 50Hz RTC interrupt every 320000 clocks  
-        -- TODO: [Gary] See AUG draft 3 p214. Generate 8192us after the 160us vsync pulse ends.    
-        if (rtc_count = 320000-1) then
-          rtc_count <= (others => '0');
-          isr_status(ISR_RTC) <= '1';
-        else
-          rtc_count <= rtc_count + 1;
+          -- RTC 10ms before FRAME END interrupt
+          if unsigned(vpix) = 16+100 then
+            isr_status(ISR_RTC) <= '1';
+          end if;
         end if;
 
       end if; -- ena_ual
