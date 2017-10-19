@@ -165,7 +165,7 @@ architecture RTL of ULA_12C021 is
                        CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
   signal cas_state     : t_cas_state;
   signal cas_out_state : t_cas_state;
-  signal cas_in_bits   : integer range 19 downto 0;
+  signal cas_in_bits   : integer range 8 downto 0;
   signal cas_out_bits  : integer range 8 downto 0;
 
   -- CPU Timing
@@ -200,7 +200,8 @@ architecture RTL of ULA_12C021 is
   signal isr_status           : word(6 downto 0);
   
   signal screen_start_addr    : word(14 downto 6);
-  signal cas_data_shift  : word(7 downto 0);
+  signal cas_o_data_shift     : word(7 downto 0);
+  signal cas_i_data_shift     : word(7 downto 0);
   
   -- Interrupt clear & ROM Paging
   subtype ISRC_ROM_PAGE is integer range 2 downto 0;
@@ -841,7 +842,7 @@ begin
   -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
           '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
-          cas_data_shift           when i_addr( 3 downto 0) = x"4" else
+          cas_i_data_shift           when i_addr( 3 downto 0) = x"4" else
           (others => 'Z');
 
   p_registers : process(i_clk_sys, i_n_reset, i_n_por)
@@ -860,7 +861,7 @@ begin
       sound_reg <= (others => '0');
       misc_control <= (others => '0');
       misc_control(MISC_DISPLAY_MODE) <= "110";
-      misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_SOUND;
+      misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
 
@@ -918,7 +919,7 @@ begin
               -- Cassette
               when x"4" =>
                 isr_status(ISR_TX_EMPTY) <= '0';
-                cas_data_shift <= b_pd;
+                cas_o_data_shift <= b_pd;
 
               -- Paged ROM/Interrupt clear
               when x"5" =>
@@ -1052,8 +1053,8 @@ begin
         --
         -- Cassette Reading
         --
-        -- TODO: ULA appears to allow clocking based on counter rather than negedge
-        -- which allows RD Full to trigger on startup
+        -- TODO: ULA appears to do clocking based on counter rather than negedge
+        -- which allows RD Full to trigger on startup.
         if cas_i_negedge then
           -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
           --                   2400Hz = 32 high clocks
@@ -1087,10 +1088,10 @@ begin
               cas_in_bits <= cas_in_bits - 1;
 
               if (multi_counter < 48) then      -- 2400Hz = one 
-                cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+                cas_i_data_shift <= '1' & cas_i_data_shift(7 downto 1);
                 cas_state <= CAS_DATA_SKIP;
               elsif (multi_counter >= 48) then  -- 1200Hz = zero
-                cas_data_shift <= '0' & cas_data_shift(7 downto 1);
+                cas_i_data_shift <= '0' & cas_i_data_shift(7 downto 1);
               end if;
 
             when CAS_DATA_SKIP =>
@@ -1129,12 +1130,11 @@ begin
         -- Cassette Writing
         --        
 
-        -- TX Empty appears to fire in sound mode too
+        -- TODO: TX Empty appears to fire in input mode too?
         if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT then
-        --    --misc_control(MISC_CASSETTE_MOTOR) = '0' then          
-          cas_out_state <= CAS_IDLE;
-        --  cas_out_bits <= 0;
+          cas_out_state <= CAS_IDLE;          
         elsif multi_counter = 0 then
+          -- TODO: Original ULA appears to trigger on counter of 63 rather than 0?
 
           case cas_out_state is
             when CAS_IDLE =>
@@ -1148,10 +1148,8 @@ begin
               cas_out_state <= CAS_DATA;
 
             when CAS_DATA =>
-              if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
-                -- shift in one so that constant high tone is output in lieu of data
-                cas_data_shift <= '1' & cas_data_shift(7 downto 1);
-              end if;
+              -- shift in one so that constant high tone is output in lieu of data
+              cas_o_data_shift <= '1' & cas_o_data_shift(7 downto 1);
 
               if cas_out_bits = 1 then
                 isr_status(ISR_TX_EMPTY) <= '1';
@@ -1176,13 +1174,13 @@ begin
         -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
 
         -- TODO: [Gary] As long as comm mode is read/write/sound, multi counter will change.
-        --       cas out will can generate a high tone in write mode where as read
+        --       cas out will generate a high tone in write mode where as read/sound
         --       mode will depend on incoming pulse durations.
         o_cas <= '0';
 
         -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
         if cas_out_state = CAS_START_BIT or 
-           (cas_out_bits > 0 and cas_data_shift(0) = '0') then 
+           (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
           -- ~1200Hz (Start bit or data 0)
           if multi_counter < 64 then
             o_cas <= '1';
