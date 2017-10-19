@@ -161,11 +161,10 @@ architecture RTL of ULA_12C021 is
   -- Cassette
   signal cas_i_l       : bit1;
   signal cas_i_negedge : boolean;
-  type t_cas_state is (CAS_IDLE, CAS_HIGHTONE_DETECT, CAS_START_BIT, CAS_DATA, 
+  type t_cas_state is (CAS_IDLE, CAS_START_BIT, CAS_DATA, 
                        CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
   signal cas_state     : t_cas_state;
   signal cas_out_state : t_cas_state;
-  signal cas_hightone  : boolean;
   signal cas_in_bits   : integer range 19 downto 0;
   signal cas_out_bits  : integer range 8 downto 0;
 
@@ -214,6 +213,9 @@ architecture RTL of ULA_12C021 is
 
   -- Multipurpose Counter
   signal multi_counter           : unsigned(7 downto 0);
+
+  -- Sound
+  signal sound_reg               : unsigned(7 downto 0);
 
   -- Misc control
   subtype MISC_COMM_MODE is integer range 2 downto 1;
@@ -845,19 +847,17 @@ begin
   p_registers : process(i_clk_sys, i_n_reset, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
+    variable hightone_cnt : integer range 0 to 20;
+    variable hightone : boolean;
   begin
     if (i_n_reset = '0') or (i_n_por = '0') then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
-      -- Does electron default this to 1? Without it, the first byte writing
-      -- to tape prior to series of high-tones will be previous contents of
-      -- shift register causing 1 byte of "garbage" before high tones. Not fatal 
-      -- either way.
-      isr_status(ISR_TX_EMPTY) <= '1';
       isrc_paging(ISRC_ROM_PAGE) <= "000";
       isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
       multi_counter <= (others => '0');
+      sound_reg <= (others => '0');
       misc_control <= (others => '0');
       misc_control(MISC_DISPLAY_MODE) <= "110";
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_SOUND;
@@ -867,9 +867,11 @@ begin
       cas_i_l <= '0';
       cas_state <= CAS_IDLE;
       cas_out_state <= CAS_IDLE;
-      cas_hightone <= false;
       cas_in_bits <= 0;      
       
+      hightone := false;
+      hightone_cnt := 0;
+
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
       end if;      
@@ -939,8 +941,13 @@ begin
 
               -- Counter/Cassette control (write only)
               when x"6" => 
+                -- TODO: Is it just sound that resets to the specified counter variable?
+                -- does multi_counter even need setting here? did programs clear it in any
+                -- mode outside of sound?
+
                 -- bit 8 is ignored according to the AUG?
                 multi_counter <= unsigned('0' & b_pd(6 downto 0));
+                sound_reg <= unsigned(b_pd);
                 
                 -- TODO: [Gary] ignore writes when in write cassette mode?
 
@@ -976,15 +983,10 @@ begin
       --
       -- Cassette Interface 
       --
-      -- NOTE: I have very little confidence in the cassette interface as there's
-      -- very little documentation to go on. This is based on AUG, guesswork and
-      -- reference to Hoglet's ElectronFPGA which has been shown to load/save.
-      -- Treat this implementation with caution until interchange with a real Electron
-      -- has been confirmed as working.
-      --
-      -- I'm not confident over when the RX and TX interrupts can occur. Information
-      -- leads to suggest they may occur outside of the corresponding read/write mode.
-      -- More research needed on nearly all the cassete i/o.
+      -- With recently released ULA schematics, it's clear the real ULA handles cassette 
+      -- logic quite differently. There are likely observable behaviour differences due
+      -- to this.
+
       --
       -- ena_cas @ 153.85kHz
       -- CUTS signal with (64 crossings) 1200Hz = 0 and (128 crossings) 2400Hz = 1
@@ -1007,68 +1009,72 @@ begin
             end if;
 
           when MISC_COMM_MODE_OUTPUT =>
-            if multi_counter = 127 then
-              multi_counter <= (others => '0');
+            if multi_counter = 0 then
+              multi_counter <= x"7F"; -- 127
             else
-              multi_counter <= multi_counter + 1;
+              multi_counter <= multi_counter - 1;
             end if;
             
           when MISC_COMM_MODE_SOUND =>
-            -- TODO: [Gary] Sound not yet supported.
+            -- TODO: Implement sound. This counter is just to allow interrupts to 
+            --       still trigger when in sound comm mode.
+            if multi_counter = 0 then
+              multi_counter <= sound_reg;
+            else
+              multi_counter <= multi_counter - 1;
+            end if;
 
           when others => null;
         end case;
       
-        
+        --
+        -- Cassette HiTone Detection
+        --
+        -- TODO: Move to seperate process?
+        if misc_control(MISC_CASSETTE_MOTOR) = '0' then
+          hightone_cnt := 0;
+          hightone := false;
+        elsif cas_i_negedge then
+          if (multi_counter >= 48) then
+            -- zero pulse
+            hightone_cnt := 0;
+          elsif hightone_cnt /= 20 then
+            -- two pulses needed for each "1" bit
+            hightone_cnt := hightone_cnt + 1;
+          end if;
+
+          hightone := false;
+          if hightone_cnt = 20 then
+            hightone := true;
+          end if;
+        end if;
+
         --
         -- Cassette Reading
         --
-        if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_INPUT or
-           misc_control(MISC_CASSETTE_MOTOR) = '0' then
-          cas_hightone <= false;
-          cas_state <= CAS_IDLE;
-        elsif cas_i_negedge then
-          
-          -- TODO: [Gary] pull out threshold limits to various constants
-
+        -- TODO: ULA appears to allow clocking based on counter rather than negedge
+        -- which allows RD Full to trigger on startup
+        if cas_i_negedge then
           -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
           --                   2400Hz = 32 high clocks
           -- Threshold selected in between the two i.e 48.
           case cas_state is
             when CAS_IDLE =>
-              if (multi_counter < 48) then
-                -- 19 more @2400Hz pulses plus this one required for high tone                
-                cas_in_bits <= 19;
-                cas_state <= CAS_HIGHTONE_DETECT;
+              if not hightone then
+                -- leaving reset due to end of high tone also counts as a start bit
+                cas_state <= CAS_DATA;
+                cas_in_bits <= 8;
               end if;
-
-            when CAS_HIGHTONE_DETECT =>   
-              -- 2400Hz = one 
-              if (multi_counter < 48) then              
-                if (cas_in_bits = 1) then
-                  isr_status(ISR_HIGH_TONE) <= '1';
-                  cas_state <= CAS_START_BIT;
-                  cas_hightone <= true;                  
-                end if;
-                cas_in_bits <= cas_in_bits - 1;
-              -- 1200Hz = zero
-              else  
-                cas_state <= CAS_IDLE;
-              end if;
-
+            
             when CAS_START_BIT =>
-              -- Eat remaining high tone, waiting for start bit '0'
+              -- TODO: This could be idle state and keep trying to move out on start bit
+              -- allowing hightone process to trigger and move back to idle ?
               if multi_counter >= 48 then        
                 cas_in_bits <= 8;
                 cas_state <= CAS_DATA;
-                -- TODO: [Gary] AUG notes this interrupt can be generated even if motor control 
-                -- is not active? 
-                isr_status(ISR_RX_FULL) <= '0';
-                cas_hightone <= false;
-              elsif not cas_hightone then
+              else
                 -- just finished reading a byte and rather than start bit, received possible HT
-                cas_state <= CAS_HIGHTONE_DETECT;
-                cas_in_bits <= 19;
+                cas_state <= CAS_IDLE;
               end if;
 
             when CAS_DATA =>
@@ -1111,18 +1117,24 @@ begin
             when others => null;
           end case;
 
+          if hightone then
+            cas_state <= CAS_IDLE;
+            -- Reg'd until cleared via interrupt clear write
+            isr_status(ISR_HIGH_TONE) <= '1';
+          end if;
+
         end if;
 
         --
         -- Cassette Writing
         --        
-        
-        -- Only shift out data during write mode
-        if misc_control(MISC_COMM_MODE) /= MISC_COMM_MODE_OUTPUT or
-           misc_control(MISC_CASSETTE_MOTOR) = '0' then          
-           cas_out_state <= CAS_IDLE;
-           cas_out_bits <= 0;
-        elsif multi_counter = 127 then
+
+        -- TX Empty appears to fire in sound mode too
+        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT then
+        --    --misc_control(MISC_CASSETTE_MOTOR) = '0' then          
+          cas_out_state <= CAS_IDLE;
+        --  cas_out_bits <= 0;
+        elsif multi_counter = 0 then
 
           case cas_out_state is
             when CAS_IDLE =>
@@ -1136,8 +1148,10 @@ begin
               cas_out_state <= CAS_DATA;
 
             when CAS_DATA =>
-              -- shift in one so that constant high tone is output in lieu of data
-              cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+              if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
+                -- shift in one so that constant high tone is output in lieu of data
+                cas_data_shift <= '1' & cas_data_shift(7 downto 1);
+              end if;
 
               if cas_out_bits = 1 then
                 isr_status(ISR_TX_EMPTY) <= '1';
@@ -1161,23 +1175,22 @@ begin
 
         -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
 
-        -- TODO: [Gary] As long as comm mode is read or write, multi counter will increment.
+        -- TODO: [Gary] As long as comm mode is read/write/sound, multi counter will change.
         --       cas out will can generate a high tone in write mode where as read
-        --       mode will depend on incoming pulse durations. Did Electron generate cas
-        --       out all the time, only when in write mode or only when in read or write
-        --       mode (but not sound mode)? Did it also depend on motor being enabled or not?
+        --       mode will depend on incoming pulse durations.
         o_cas <= '0';
 
         -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
         if cas_out_state = CAS_START_BIT or 
            (cas_out_bits > 0 and cas_data_shift(0) = '0') then 
           -- ~1200Hz (Start bit or data 0)
-          if multi_counter >= 64 then
+          if multi_counter < 64 then
             o_cas <= '1';
           end if;
         else
           -- ~2400Hz (Stop bit or data 1)
-          if (multi_counter > 32 and multi_counter < 64) or (multi_counter >= 96) then
+          -- if (multi_counter > 32 and multi_counter < 64) or (multi_counter >= 96) then
+          if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
             o_cas <= '1';
           end if;
         end if;
@@ -1196,7 +1209,6 @@ begin
   --
   -- Video Address
   -- 
-  
 
   p_screen_addr : process(screen_start_addr, misc_control)
     variable base_addr : word(15 downto 6);
