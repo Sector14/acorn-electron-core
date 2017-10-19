@@ -214,9 +214,7 @@ architecture RTL of ULA_12C021 is
 
   -- Multipurpose Counter
   signal multi_counter           : unsigned(7 downto 0);
-
-  -- Sound
-  signal sound_reg               : unsigned(7 downto 0);
+  signal multi_cnt_reg           : unsigned(7 downto 0);
 
   -- Misc control
   subtype MISC_COMM_MODE is integer range 2 downto 1;
@@ -845,20 +843,20 @@ begin
           cas_i_data_shift           when i_addr( 3 downto 0) = x"4" else
           (others => 'Z');
 
-  p_registers : process(i_clk_sys, i_n_reset, i_n_por)
+  p_registers : process(i_clk_sys, rst, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
     variable hightone_cnt : integer range 0 to 20;
     variable hightone : boolean;
   begin
-    if (i_n_reset = '0') or (i_n_por = '0') then
+    if rst = '1' then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
       isrc_paging(ISRC_ROM_PAGE) <= "000";
       isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
       multi_counter <= (others => '0');
-      sound_reg <= (others => '0');
+      multi_cnt_reg <= (others => '0');
       misc_control <= (others => '0');
       misc_control(MISC_DISPLAY_MODE) <= "110";
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
@@ -941,16 +939,9 @@ begin
                 isr_status(ISR_FRAME_END) <= isr_status(ISR_FRAME_END) and not b_pd(ISRC_FRAME_END);
 
               -- Counter/Cassette control (write only)
-              when x"6" => 
-                -- TODO: Is it just sound that resets to the specified counter variable?
-                -- does multi_counter even need setting here? did programs clear it in any
-                -- mode outside of sound?
-
-                -- bit 8 is ignored according to the AUG?
-                multi_counter <= unsigned('0' & b_pd(6 downto 0));
-                sound_reg <= unsigned(b_pd);
-                
+              when x"6" =>
                 -- TODO: [Gary] ignore writes when in write cassette mode?
+                multi_cnt_reg <= unsigned(b_pd);              
 
               -- Controls
               when x"7" =>                 
@@ -973,7 +964,7 @@ begin
               isr_status(ISR_FRAME_END) <= '1';
           end if;
 
-          -- RTC 10ms before FRAME END interrupt
+          -- RTC 10ms before FRAME END interrupt, roughly display line 100
           if unsigned(vpix) = 16+100 then
             isr_status(ISR_RTC) <= '1';
           end if;
@@ -1001,6 +992,9 @@ begin
         --
         case misc_control(MISC_COMM_MODE) is
           when MISC_COMM_MODE_INPUT =>                        
+            -- TODO: Detection should not be based on negedge and counting high time
+            -- as otherwise RX Full will not trigger when there's no cas input.
+            -- Also, this prevents TX Empty triggering 
             if i_cas = '0' then
               -- TODO: [Gary] look for several clocks as a stable value to discount noise?
               multi_counter <= (others => '0');
@@ -1010,6 +1004,8 @@ begin
             end if;
 
           when MISC_COMM_MODE_OUTPUT =>
+            -- As counter is single freq clocked atm, need to use 1/2 of it
+            -- to obtain suitable output frequency
             if multi_counter = 0 then
               multi_counter <= x"7F"; -- 127
             else
@@ -1019,8 +1015,11 @@ begin
           when MISC_COMM_MODE_SOUND =>
             -- TODO: Implement sound. This counter is just to allow interrupts to 
             --       still trigger when in sound comm mode.
-            if multi_counter = 0 then
-              multi_counter <= sound_reg;
+            --       Timing is wrong on this as multi_counter is clocked by a single
+            --       freq atm, real ula uses 3 different frequencies depending on comm mode.
+            --       also reset in sound does not occur on 63 but CNT[9]
+            if multi_counter = 63 then
+              multi_counter <= multi_cnt_reg;
             else
               multi_counter <= multi_counter - 1;
             end if;
@@ -1054,7 +1053,8 @@ begin
         -- Cassette Reading
         --
         -- TODO: ULA appears to do clocking based on counter rather than negedge
-        -- which allows RD Full to trigger on startup.
+        -- which allows RD Full to trigger on startup. Input clocking looks strange in the
+        -- ULA. CASSCK appears to be based on 4MHz + S15, but S15 itself is based on CASSCK?
         if cas_i_negedge then
           -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
           --                   2400Hz = 32 high clocks
@@ -1130,11 +1130,17 @@ begin
         -- Cassette Writing
         --        
 
-        -- TODO: TX Empty appears to fire in input mode too?
-        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT then
-          cas_out_state <= CAS_IDLE;          
-        elsif multi_counter = 0 then
-          -- TODO: Original ULA appears to trigger on counter of 63 rather than 0?
+        -- TODO: Original ULA appears to toggle cnt[8] when 6&7 first reach 0, eg value
+        --       63 and lower. This clocks the shift reg/bit count @ 1200Hz. With current cnt setup
+        --       clock runs such that 63 is hit @1200Hz, so can't toggle off this
+        --       but can use it directly. Note, CNT[8] is reset in INPUT or SOUND modes only
+        --       and @1200Hz only applies in OUTPUT mode.
+        if multi_counter = 63 then
+
+          -- TODO: Write to reg that clears TX should cause cas_out_bits counter to also reset
+          --       Although writes usually would occur when TX empty high and already in idle
+          --       The time this might come into play is if any game uses TX writes mid byte
+          --       to reset the 8 count and delay TX Empty
 
           case cas_out_state is
             when CAS_IDLE =>
@@ -1173,23 +1179,21 @@ begin
 
         -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
 
-        -- TODO: [Gary] As long as comm mode is read/write/sound, multi counter will change.
-        --       cas out will generate a high tone in write mode where as read/sound
-        --       mode will depend on incoming pulse durations.
         o_cas <= '0';
 
-        -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
-        if cas_out_state = CAS_START_BIT or 
-           (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
-          -- ~1200Hz (Start bit or data 0)
-          if multi_counter < 64 then
-            o_cas <= '1';
-          end if;
-        else
-          -- ~2400Hz (Stop bit or data 1)
-          -- if (multi_counter > 32 and multi_counter < 64) or (multi_counter >= 96) then
-          if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
-            o_cas <= '1';
+        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
+          -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
+          if cas_out_state = CAS_START_BIT or 
+            (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
+            -- ~1200Hz (Start bit or data 0)
+            if multi_counter < 64 then
+              o_cas <= '1';
+            end if;
+          else
+            -- ~2400Hz (Stop bit or data 1)
+            if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
+              o_cas <= '1';
+            end if;
           end if;
         end if;
 

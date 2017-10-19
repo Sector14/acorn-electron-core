@@ -161,6 +161,7 @@ begin
   begin
     if (i_rst = '1') then
       bit_taken_r <= false;
+      o_cas_fm_fch <= '0';
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         o_cas_fm_fch <= '0';
