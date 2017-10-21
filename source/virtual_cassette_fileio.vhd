@@ -425,7 +425,7 @@ begin
                   -- unhandled - write failed.
                   fileio_req_state <= S_HALT;
                 else       
-                  fileio_addr <= fileio_addr + fileio_size;
+                  fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
                 fileio_req_state <= S_W_IDLE;
               end if;
@@ -458,7 +458,7 @@ begin
                   --       as tape_position reaching max val? Report error status to OSD via flags?
                   fileio_req_state <= S_HALT;
                 else
-                  fileio_addr <= fileio_addr + fileio_size;
+                  fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
                 fileio_req_state <= S_R_IDLE;
               end if;
