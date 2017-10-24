@@ -223,8 +223,8 @@ begin
   b_aux_io(11 downto  0) <= (others => 'Z');
 
   -- scope debug via aux io
-  b_aux_io(12) <= debug(8);
-  b_aux_io(13) <= debug(9);
-  b_aux_io(14) <= debug(10);
-  b_aux_io(15) <= debug(11);
+  b_aux_io(12) <= debug(0);
+  b_aux_io(13) <= debug(1);
+  b_aux_io(14) <= debug(2);
+  b_aux_io(15) <= debug(3);
 end RTL;

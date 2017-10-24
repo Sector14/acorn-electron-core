@@ -90,8 +90,8 @@ entity ULA_12C021 is
     o_green       : out bit1;            
     o_blue        : out bit1; 
   
-    -- Clock (used via enables rather than direct clock))
-    i_ena_ula     : in bit1;                    
+    -- Clock (used via enables rather than direct clock and must be aligned)
+    i_ena_ula     : in bit1;                   
     i_ena_div13   : in bit1;
        
     -- RAM (4x64k 1 bit)       
@@ -159,14 +159,14 @@ architecture RTL of ULA_12C021 is
   signal ram_n_w      : bit1;
 
   -- Cassette
-  signal cas_i_l       : bit1;
-  signal cas_i_negedge : boolean;
+  signal cas_i_delay1  : bit1;
+  signal cas_i_delay2  : bit1;
+  signal cas_i_edge    : boolean;
+  signal cas_i_bit     : bit1;
   type t_cas_state is (CAS_IDLE, CAS_START_BIT, CAS_DATA, 
                        CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
-  signal cas_state     : t_cas_state;
   signal cas_out_state : t_cas_state;
-  signal cas_in_bits   : integer range 8 downto 0;
-  signal cas_out_bits  : integer range 8 downto 0;
+  signal cas_hightone  : boolean;
 
   -- CPU Timing
   type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
@@ -179,9 +179,14 @@ architecture RTL of ULA_12C021 is
 
   signal rtc_count : unsigned(18 downto 0);
 
-  -- Cassette Timing
-  signal ena_cas   : bit1;
-  signal div8_cnt  : integer range 7 downto 0;
+  -- Cassette Timing enables
+  -- These are internally generated and thus stretched across multiple sys clocks
+  -- ensure they're only ever used within ena_ula.
+  signal ck_div128 : bit1;
+  signal ck_div26  : bit1;
+  signal ck_div52  : bit1;
+  signal ck_cas    : bit1;
+  signal ck_freqx  : bit1;
 
   -- 
   -- Registers (AUG p206)
@@ -213,7 +218,7 @@ architecture RTL of ULA_12C021 is
   signal isrc_paging             : word(3 downto 0);
 
   -- Multipurpose Counter
-  signal multi_counter           : unsigned(7 downto 0);
+  signal multi_counter           : unsigned(8 downto 0);
   signal multi_cnt_reg           : unsigned(7 downto 0);
 
   -- Misc control
@@ -265,7 +270,7 @@ begin
     if (rst = '1') then
       vid_rst <= '1';    
       clk_phase <= "0000";
-      cpu_clk_state <= CLK_1MHz;
+      cpu_clk_state <= CLK_1MHz;      
     elsif rising_edge(i_clk_sys) then
 
       phi_out <= '0';
@@ -320,7 +325,7 @@ begin
           end case;
         end if;
       end if;
-
+  
     end if;
   end process;
 
@@ -332,29 +337,63 @@ begin
                     CPU_1MHz;                                           -- Ram access  
 
   o_ena_phi_out <= phi_out and i_cph_sys(3);
-
-
-  -- Cassette Timing
-  -- 1 in 8 enable off of div13 to keep 2400Hz oversampling within 7 bits
-  p_cas_timing : process(i_clk_sys, rst)
+  
+  --
+  -- Additional Timing Frequencies
+  -- Used by Cassette I/O and Sound.
+  p_clk_divider : process(i_clk_sys, rst)
+    variable div128 : integer range 127 downto 0;
+    variable div26  : bit1;
+    variable div52  : bit1;
   begin
     if (rst = '1') then
-      div8_cnt <= 0;
+      ck_div128 <= '0';
+      ck_div26 <= '0';
+      ck_div52 <= '0';
+      div128 := 0;
+      div26 := '0';
+      div52 := '0';
     elsif rising_edge(i_clk_sys) then
-      ena_cas <= '0';
+      -- NOTE: These must be used within i_ena_ula as they stretch multiple sys clocks.
+      -- NOTE: div13 is must be aligned with ula_ena and used within ena_ula.
+      --       Without this assumption FREQX/multi counter will need reviewing as
+      --       it uses enables derived from both.
+      
+      if i_ena_ula = '1' then
+        ck_div128 <= '0';
 
-      if (i_ena_div13 = '1') then
-
-        if (div8_cnt = 7) then
-          div8_cnt <= 0;
-          ena_cas <= '1';
+        -- (M/8): 16MHz/128 = 0.125MHz for SOUND
+        if (div128 = 127) then
+          div128 := 0;
+          ck_div128 <= '1';
         else
-          div8_cnt <= div8_cnt + 1;
+          div128 := div128 + 1;
         end if;
+
+        -- (S8M13 and S8M13/2): ~615kHz and ~307kHz for cassette I/O
+        ck_div26 <= '0';
+        ck_div52 <= '0';
+        if i_ena_div13 = '1' then
+          div26 := not div26;
+
+          if div26 = '1' then
+            div52 := not div52;
+          end if;
+
+          ck_div26 <= div26;
+          ck_div52 <= div26 and div52;
+        end if;
+
       end if;
     end if;
   end process;
-  
+
+  -- Mode based frequency selection
+  ck_freqx <= ck_div128 when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND else
+              ck_cas    when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT else
+              ck_div26  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
+              '0';
+
   -- ====================================================================
   -- Video
   -- ====================================================================
@@ -827,27 +866,16 @@ begin
   -- FEX8-XF - Palette registers
   -- 
   -- Addressed via page 0xFExx. 16 byte aliasing, ie 0xFE00 and 0xFE10 both refer to register 0.
-  
-  -- Flag master irq for enabled and active interrupts only.
-  isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
-                                (isr_status(ISR_RTC) and isr_en(ISR_RTC)) or
-                                (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
-                                (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
-                                (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
-  o_n_irq <= not isr_status(ISR_MASTER_IRQ);
-
-  -- Register data out
-  -- TODO: [Gary] Is it just 0 and 4 that are readable?
-  b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
-          '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
-          cas_i_data_shift           when i_addr( 3 downto 0) = x"4" else
-          (others => 'Z');
 
   p_registers : process(i_clk_sys, rst, i_n_por)
     -- delay POR reset until next CPU clock
     variable delayed_por_reset : bit1 := '0';
-    variable hightone_cnt : integer range 0 to 20;
-    variable hightone : boolean;
+
+    variable in_reset : boolean;
+    variable frameck_ena : boolean;
+    variable frameck_cnt : integer range 0 to 3;
+    variable cas_i_bits : integer range 0 to 9;
+    variable cas_o_bits : integer range 8 downto 0;
   begin
     if rst = '1' then
       isr_en <= (others => '0');
@@ -855,7 +883,6 @@ begin
       isrc_paging(ISRC_ROM_PAGE) <= "000";
       isrc_paging(ISRC_ROM_PAGE_ENABLE) <= '0';
       screen_start_addr <= (others => '0');
-      multi_counter <= (others => '0');
       multi_cnt_reg <= (others => '0');
       misc_control <= (others => '0');
       misc_control(MISC_DISPLAY_MODE) <= "110";
@@ -863,13 +890,12 @@ begin
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
 
-      cas_i_l <= '0';
-      cas_state <= CAS_IDLE;
       cas_out_state <= CAS_IDLE;
-      cas_in_bits <= 0;      
-      
-      hightone := false;
-      hightone_cnt := 0;
+
+      in_reset := false;
+      frameck_cnt := 0;
+      cas_i_bits := 0;
+      cas_o_bits := 0;
 
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
@@ -940,7 +966,6 @@ begin
 
               -- Counter/Cassette control (write only)
               when x"6" =>
-                -- TODO: [Gary] ignore writes when in write cassette mode?
                 multi_cnt_reg <= unsigned(b_pd);              
 
               -- Controls
@@ -969,160 +994,55 @@ begin
             isr_status(ISR_RTC) <= '1';
           end if;
         end if;
-
-      end if; -- ena_ual
-
-      --
-      -- Cassette Interface 
-      --
-      -- With recently released ULA schematics, it's clear the real ULA handles cassette 
-      -- logic quite differently. There are likely observable behaviour differences due
-      -- to this.
-
-      --
-      -- ena_cas @ 153.85kHz
-      -- CUTS signal with (64 crossings) 1200Hz = 0 and (128 crossings) 2400Hz = 1
-      if (ena_cas = '1') then
-
-        -- edge detection latch
-        cas_i_l <= i_cas;
-
+     
         --
-        -- Cassette Timing
+        -- Cassette Registers
         --
-        case misc_control(MISC_COMM_MODE) is
-          when MISC_COMM_MODE_INPUT =>                        
-            -- TODO: Detection should not be based on negedge and counting high time
-            -- as otherwise RX Full will not trigger when there's no cas input.
-            -- Also, this prevents TX Empty triggering 
-            if i_cas = '0' then
-              -- TODO: [Gary] look for several clocks as a stable value to discount noise?
-              multi_counter <= (others => '0');
-            else
-              -- count length of high pulses
-              multi_counter <= multi_counter + 1;
+        if ck_div52 = '1' then
+
+          -- 
+          -- Reading
+          --
+          if cas_hightone or cas_i_bits = 8 then
+            if cas_hightone then
+              isr_status(ISR_HIGH_TONE) <= '1';
+              isr_status(ISR_RX_FULL) <= '0';
             end if;
 
-          when MISC_COMM_MODE_OUTPUT =>
-            -- As counter is single freq clocked atm, need to use 1/2 of it
-            -- to obtain suitable output frequency
-            if multi_counter = 0 then
-              multi_counter <= x"7F"; -- 127
+            cas_i_bits := 0;
+            frameck_cnt := 0;
+            in_reset := true;
+          elsif (multi_counter(7 downto 0) = 250 or    -- S1
+                 multi_counter(7 downto 0) = 170) then -- S11                 
+            if frameck_cnt = 3 then
+              frameck_cnt := 0;
+              if not in_reset then
+                frameck_ena := true;
+              end if;
+              in_reset := false;
             else
-              multi_counter <= multi_counter - 1;
+              frameck_cnt := frameck_cnt + 1;
             end if;
-            
-          when MISC_COMM_MODE_SOUND =>
-            -- TODO: Implement sound. This counter is just to allow interrupts to 
-            --       still trigger when in sound comm mode.
-            --       Timing is wrong on this as multi_counter is clocked by a single
-            --       freq atm, real ula uses 3 different frequencies depending on comm mode.
-            --       also reset in sound does not occur on 63 but CNT[9]
-            if multi_counter = 63 then
-              multi_counter <= multi_cnt_reg;
-            else
-              multi_counter <= multi_counter - 1;
+          end if;
+          
+          if in_reset then
+            cas_i_bits := 0;
+            if cas_i_bit = '1' then
+              -- 1/2 of 1200Hz pulse will have already happened by the time start
+              -- bit is detected, pre-sync counter.
+              frameck_cnt := 2;
             end if;
-
-          when others => null;
-        end case;
-      
-        --
-        -- Cassette HiTone Detection
-        --
-        -- TODO: Move to seperate process?
-        if misc_control(MISC_CASSETTE_MOTOR) = '0' then
-          hightone_cnt := 0;
-          hightone := false;
-        elsif cas_i_negedge then
-          if (multi_counter >= 48) then
-            -- zero pulse
-            hightone_cnt := 0;
-          elsif hightone_cnt /= 20 then
-            -- two pulses needed for each "1" bit
-            hightone_cnt := hightone_cnt + 1;
+          end if;
+          
+          if frameck_ena then
+            cas_i_bits := cas_i_bits + 1;
+            cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
+            if cas_i_bits = 8 then 
+              isr_status(ISR_RX_FULL) <= '1';
+            end if;
           end if;
 
-          hightone := false;
-          if hightone_cnt = 20 then
-            hightone := true;
-          end if;
-        end if;
-
-        --
-        -- Cassette Reading
-        --
-        -- TODO: ULA appears to do clocking based on counter rather than negedge
-        -- which allows RD Full to trigger on startup. Input clocking looks strange in the
-        -- ULA. CASSCK appears to be based on 4MHz + S15, but S15 itself is based on CASSCK?
-        if cas_i_negedge then
-          -- (1/1200Hz)/(1/153.85kHz) = 64 high clocks (50% Duty)
-          --                   2400Hz = 32 high clocks
-          -- Threshold selected in between the two i.e 48.
-          case cas_state is
-            when CAS_IDLE =>
-              if not hightone then
-                -- leaving reset due to end of high tone also counts as a start bit
-                cas_state <= CAS_DATA;
-                cas_in_bits <= 8;
-              end if;
-            
-            when CAS_START_BIT =>
-              -- TODO: This could be idle state and keep trying to move out on start bit
-              -- allowing hightone process to trigger and move back to idle ?
-              if multi_counter >= 48 then        
-                cas_in_bits <= 8;
-                cas_state <= CAS_DATA;
-              else
-                -- just finished reading a byte and rather than start bit, received possible HT
-                cas_state <= CAS_IDLE;
-              end if;
-
-            when CAS_DATA =>
-              if cas_in_bits = 1 then
-                cas_state <= CAS_STOP_BIT;
-                -- trigger as soon as 8th data bit received, don't wait for stop bit
-                isr_status(ISR_RX_FULL) <= '1';
-              end if;
-
-              cas_in_bits <= cas_in_bits - 1;
-
-              if (multi_counter < 48) then      -- 2400Hz = one 
-                cas_i_data_shift <= '1' & cas_i_data_shift(7 downto 1);
-                cas_state <= CAS_DATA_SKIP;
-              elsif (multi_counter >= 48) then  -- 1200Hz = zero
-                cas_i_data_shift <= '0' & cas_i_data_shift(7 downto 1);
-              end if;
-
-            when CAS_DATA_SKIP =>
-              -- assume it's a 2400Hz pulse. A 1200Hz here would be an error
-              -- but no idea how the electron handled that atm.
-              if cas_in_bits = 0 then
-                cas_state <= CAS_STOP_BIT;
-              else
-                cas_state <= CAS_DATA;
-              end if;
-              
-            when CAS_STOP_BIT =>
-              if multi_counter < 48 then
-                cas_state <= CAS_STOP_BIT_SKIP;
-              else
-                -- error?
-                cas_state <= CAS_IDLE;
-              end if;
-
-            when CAS_STOP_BIT_SKIP =>
-              -- eat the 2nd '1' pulse
-              cas_state <= CAS_START_BIT;
-            
-            when others => null;
-          end case;
-
-          if hightone then
-            cas_state <= CAS_IDLE;
-            -- Reg'd until cleared via interrupt clear write
-            isr_status(ISR_HIGH_TONE) <= '1';
-          end if;
+          frameck_ena := false;
 
         end if;
 
@@ -1130,83 +1050,96 @@ begin
         -- Cassette Writing
         --        
 
-        -- TODO: Original ULA appears to toggle cnt[8] when 6&7 first reach 0, eg value
-        --       63 and lower. This clocks the shift reg/bit count @ 1200Hz. With current cnt setup
-        --       clock runs such that 63 is hit @1200Hz, so can't toggle off this
-        --       but can use it directly. Note, CNT[8] is reset in INPUT or SOUND modes only
-        --       and @1200Hz only applies in OUTPUT mode.
-        if multi_counter = 63 then
+        --   -- TODO: Original ULA appears to toggle cnt[8] when 6&7 first reach 0, eg value
+        --   --       63 and lower. This clocks the shift reg/bit count @ 1200Hz. With current cnt setup
+        --   --       clock runs such that 63 is hit @1200Hz, so can't toggle off this
+        --   --       but can use it directly. Note, CNT[8] is reset in INPUT or SOUND modes only
+        --   --       and @1200Hz only applies in OUTPUT mode.
+        --   if multi_counter = 63 then
 
-          -- TODO: Write to reg that clears TX should cause cas_out_bits counter to also reset
-          --       Although writes usually would occur when TX empty high and already in idle
-          --       The time this might come into play is if any game uses TX writes mid byte
-          --       to reset the 8 count and delay TX Empty
+        --     -- TODO: Write to reg that clears TX should cause cas_out_bits counter to also reset
+        --     --       Although writes usually would occur when TX empty high and already in idle
+        --     --       The time this might come into play is if any game uses TX writes mid byte
+        --     --       to reset the 8 count and delay TX Empty
 
-          case cas_out_state is
-            when CAS_IDLE =>
-              -- wait for data to write out             
-              if isr_status(ISR_TX_EMPTY) = '0' then
-                cas_out_state <= CAS_START_BIT;
-              end if;
-      
-            when CAS_START_BIT =>
-              cas_out_bits <= 8;
-              cas_out_state <= CAS_DATA;
+        --     case cas_out_state is
+        --       when CAS_IDLE =>
+        --         -- wait for data to write out             
+        --         if isr_status(ISR_TX_EMPTY) = '0' then
+        --           cas_out_state <= CAS_START_BIT;
+        --         end if;
+        
+        --       when CAS_START_BIT =>
+        --         cas_out_bits <= 8;
+        --         cas_out_state <= CAS_DATA;
 
-            when CAS_DATA =>
-              -- shift in one so that constant high tone is output in lieu of data
-              cas_o_data_shift <= '1' & cas_o_data_shift(7 downto 1);
+        --       when CAS_DATA =>
+        --         -- shift in one so that constant high tone is output in lieu of data
+        --         cas_o_data_shift <= '1' & cas_o_data_shift(7 downto 1);
 
-              if cas_out_bits = 1 then
-                isr_status(ISR_TX_EMPTY) <= '1';
-                cas_out_state <= CAS_STOP_BIT;
-              end if;
-              cas_out_bits <= cas_out_bits - 1;
+        --         if cas_out_bits = 1 then
+        --           isr_status(ISR_TX_EMPTY) <= '1';
+        --           cas_out_state <= CAS_STOP_BIT;
+        --         end if;
+        --         cas_out_bits <= cas_out_bits - 1;
 
-            when CAS_STOP_BIT =>
-              if (isr_status(ISR_TX_EMPTY) = '0') then                  
-                -- If CPU is keeping up, move straight to next byte
-                cas_out_state <= CAS_START_BIT;
-              else
-                cas_out_state <= CAS_IDLE;
-              end if;
+        --       when CAS_STOP_BIT =>
+        --         if (isr_status(ISR_TX_EMPTY) = '0') then                  
+        --           -- If CPU is keeping up, move straight to next byte
+        --           cas_out_state <= CAS_START_BIT;
+        --         else
+        --           cas_out_state <= CAS_IDLE;
+        --         end if;
 
-            when others =>
-              null;              
-          end case;
+        --       when others =>
+        --         null;              
+        --     end case;
 
-        end if;
+        --   end if;
 
-        -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
+        --   -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
 
-        o_cas <= '0';
+        --   o_cas <= '0';
 
-        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
-          -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
-          if cas_out_state = CAS_START_BIT or 
-            (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
-            -- ~1200Hz (Start bit or data 0)
-            if multi_counter < 64 then
-              o_cas <= '1';
-            end if;
-          else
-            -- ~2400Hz (Stop bit or data 1)
-            if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
-              o_cas <= '1';
-            end if;
-          end if;
-        end if;
+        -- TODO: Should this be based on the FREQ ena? or should it still be based on ula
+        --       enable but checking multi counter value?
+        -- Values need adjusting to account for 255 counter @ freqx now.      
+        --   if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
+        --     -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
+        --     if cas_out_state = CAS_START_BIT or 
+        --       (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
+        --       -- ~1200Hz (Start bit or data 0)
+        --       if multi_counter < 64 then
+        --         o_cas <= '1';
+        --       end if;
+        --     else
+        --       -- ~2400Hz (Stop bit or data 1)
+        --       if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
+        --         o_cas <= '1';
+        --       end if;
+        --     end if;
+        --   end if;
 
-      end if;  -- ena_cas
-
+      end if; -- end_ula      
     end if;
   end process;
-  
+
+  -- Flag master irq for enabled and active interrupts only.
+  isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
+                                (isr_status(ISR_RTC) and isr_en(ISR_RTC)) or
+                                (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
+                                (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
+                                (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
+  o_n_irq <= not isr_status(ISR_MASTER_IRQ);
+
+  -- Register data out
+  -- TODO: [Gary] Is it just 0 and 4 that are readable?
+  b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
+          '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
+          cas_i_data_shift         when i_addr( 3 downto 0) = x"4" else
+          (others => 'Z');
+
   o_cas_mo <= misc_control(MISC_CASSETTE_MOTOR);
-
-  -- Falling edge detection
-  cas_i_negedge <= true when (not i_cas and cas_i_l) = '1' else false;
-
 
   --
   -- Video Address
@@ -1257,7 +1190,132 @@ begin
                                    isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
                                   (others => 'Z');
   o_caps_lock <= misc_control(MISC_CAPS_LOCK);
-  
+
+  --
+  -- Cassette/sound multi counter
+  -- 
+  p_multi_counter : process(i_clk_sys, rst)
+  begin
+    if (rst = '1') then
+      multi_counter <= (others => '0');
+    elsif rising_edge(i_clk_sys) then
+      if i_ena_ula = '1' then
+
+        -- TODO: remove ck_freqx as only needed in this process. Use mode+ck_* instead.
+        if ck_freqx = '1' then           
+          multi_counter <= multi_counter - 1;
+
+          -- MSB indicates a wrap around from 0. Also used as an enable
+          -- by cassette data shift and sound output. Only sound resets on wrap.
+          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
+            if multi_counter(8) = '1' then
+              multi_counter <= '0' & multi_cnt_reg;
+            end if;
+          end if;
+        end if;
+
+
+        if ck_div52 = '1' then
+          -- TODO: Reset on pulse edges in input mode also depend upon DATACNT?
+          if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
+            multi_counter <= '0' & multi_cnt_reg;
+          end if;
+        end if;
+
+      end if;
+    end if;
+  end process;
+ 
+  -- 
+  -- Cassette Interface
+  --
+  -- Based on sheet 4 & 10 of the Synertek ULA schematics with noted exceptions.
+  -- NOTE: S* signals are ranged based on the ULA but only a single value has been
+  --       used in this implementation currently.
+
+  -- Edge detection
+  p_cas_edge : process(i_clk_sys, rst)
+  begin
+    if rst = '1' then
+      cas_i_delay1 <= i_cas;
+      cas_i_delay2 <= i_cas;
+    elsif rising_edge(i_clk_sys) then
+      if i_ena_ula = '1' then
+        
+        if ck_div52 = '1' then
+          cas_i_delay1 <= i_cas;    
+          cas_i_delay2 <= cas_i_delay1;
+        end if;
+      
+      end if;
+    end if;
+  end process;
+
+  cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
+
+  -- Stop clocking cas counter to resync if S15 reached with no detected edge  
+  ck_cas <= '0' when multi_counter(7 downto 0) = 138 else ck_div52;
+
+  -- Frequency detection
+  p_cas_freq_decode : process(i_clk_sys, rst)
+    variable candidate : bit1;
+  begin
+    if rst = '1' then
+      cas_i_bit <= '0';
+      candidate := '0';
+    elsif rising_edge(i_clk_sys) then
+      if i_ena_ula = '1' then
+        if ck_div52 = '1' then
+          
+          -- candidate 1/0 decode
+          if multi_counter(7 downto 0) = 242 then     -- S2
+            candidate := '1';
+          elsif multi_counter(7 downto 0) = 170 then  -- S11
+            candidate := '0';
+          end if;
+
+          if cas_i_edge then
+            cas_i_bit <= candidate;
+          end if;
+        end if;
+      end if;
+    end if;    
+  end process;
+
+  -- Hightone detection
+  -- NOTE: This is not based on actual ULA which uses external CAS RC
+  p_cas_hightone : process(i_clk_sys, rst)
+    variable hightone_cnt : integer range 0 to 40;    
+  begin
+    if rst = '1' then
+      cas_hightone <= false;
+      hightone_cnt := 0;
+    elsif rising_edge(i_clk_sys) then
+      if i_ena_ula = '1' then          
+        if ck_div52 = '1' then
+
+          if misc_control(MISC_CASSETTE_MOTOR) = '0' or
+             multi_counter(7 downto 0) = 138 then  -- S15
+            hightone_cnt := 0;
+            cas_hightone <= false;
+          elsif cas_i_edge then
+            cas_hightone <= false;
+
+            if cas_i_bit = '0' then
+              hightone_cnt := 0;
+            elsif hightone_cnt /= 40 then
+              -- 40 edges = 20x2400Hz = 10 '1' bits
+              hightone_cnt := hightone_cnt + 1;
+            else
+              cas_hightone <= true;
+            end if;      
+          end if;
+
+        end if;
+      end if;
+    end if;  
+  end process;
+
   -- 
   -- Sound Interface
   --
