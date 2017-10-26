@@ -205,7 +205,7 @@ architecture RTL of ULA_12C021 is
   signal isr_status           : word(6 downto 0);
   
   signal screen_start_addr    : word(14 downto 6);
-  signal cas_o_data_shift     : word(7 downto 0);
+  signal cas_o_data_shift     : word(9 downto 0);
   signal cas_i_data_shift     : word(7 downto 0);
   
   -- Interrupt clear & ROM Paging
@@ -875,7 +875,11 @@ begin
     variable frameck_ena : boolean;
     variable frameck_cnt : integer range 0 to 3;
     variable cas_i_bits : integer range 0 to 9;
-    variable cas_o_bits : integer range 8 downto 0;
+    
+    variable cas_o_bits : integer range 0 to 10;
+    variable cas_o_data : bit1;
+    variable cas_o_halt : boolean;
+    variable cas_o_init : boolean;
   begin
     if rst = '1' then
       isr_en <= (others => '0');
@@ -895,13 +899,17 @@ begin
       in_reset := false;
       frameck_cnt := 0;
       cas_i_bits := 0;
-      cas_o_bits := 0;
 
+      cas_o_bits := 0;
+      cas_o_init := false;
+      cas_o_halt := false;
+      
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
       end if;      
     elsif rising_edge(i_clk_sys) then
-      if (i_ena_ula = '1') then      
+      if (i_ena_ula = '1') then 
+
         -- Delayed POR reset pending?
         if (delayed_por_reset = '1' and phi_out = '1') then
           delayed_por_reset := '0';
@@ -942,8 +950,9 @@ begin
               
               -- Cassette
               when x"4" =>
-                isr_status(ISR_TX_EMPTY) <= '0';
-                cas_o_data_shift <= b_pd;
+                cas_o_data_shift(9 downto 2) <= b_pd;
+                cas_o_data_shift(1) <= '0';
+                cas_o_init := false;
 
               -- Paged ROM/Interrupt clear
               when x"5" =>
@@ -998,7 +1007,10 @@ begin
         --
         -- Cassette Registers
         --
-        if ck_div52 = '1' then
+        -- TODO: Read and write can be split out to separate processes with
+        --       ISR for RX and TX based on external signals just as hightone
+        --       set and clear is.
+        if ck_freqx = '1' then
 
           -- 
           -- Reading
@@ -1048,81 +1060,79 @@ begin
 
         --
         -- Cassette Writing
-        --        
+        --
+        o_debug(2) <= '0';
+        if ck_freqx = '1' then     
+          -- Reset counter after register write ends
+          if i_n_w = '1' or i_addr(3 downto 0) /= x"4" then
+            -- writes made during a transfer do not reset counter
+            if not cas_o_init then
+              cas_o_bits := 0;
+            end if;
+          end if;
 
-        --   -- TODO: Original ULA appears to toggle cnt[8] when 6&7 first reach 0, eg value
-        --   --       63 and lower. This clocks the shift reg/bit count @ 1200Hz. With current cnt setup
-        --   --       clock runs such that 63 is hit @1200Hz, so can't toggle off this
-        --   --       but can use it directly. Note, CNT[8] is reset in INPUT or SOUND modes only
-        --   --       and @1200Hz only applies in OUTPUT mode.
-        --   if multi_counter = 63 then
+          if multi_counter = '1' & x"FF" then
+            -- no clocking shift reg/counter during halt
+            if not cas_o_halt then
+              cas_o_data_shift <= '1' & cas_o_data_shift(9 downto 1);
+              cas_o_bits := cas_o_bits + 1;
+            end if;
+            o_debug(2) <= '1';
+          end if;
 
-        --     -- TODO: Write to reg that clears TX should cause cas_out_bits counter to also reset
-        --     --       Although writes usually would occur when TX empty high and already in idle
-        --     --       The time this might come into play is if any game uses TX writes mid byte
-        --     --       to reset the 8 count and delay TX Empty
+          if cas_o_bits /= 10 then
+            cas_o_halt := false;
+            cas_o_init := true;
+          end if;
 
-        --     case cas_out_state is
-        --       when CAS_IDLE =>
-        --         -- wait for data to write out             
-        --         if isr_status(ISR_TX_EMPTY) = '0' then
-        --           cas_out_state <= CAS_START_BIT;
-        --         end if;
+          if cas_o_bits = 10 then
+            -- start of transfering 10th bit (stop bit) notify cpu
+            isr_status(ISR_TX_EMPTY) <= '1';
+            cas_o_halt := true;
+          else
+            isr_status(ISR_TX_EMPTY) <= '0';
+          end if;
+
+          if cas_o_halt then
+            cas_o_data_shift(0) <= '1';
+          end if;
+        end if;
+
+
         
-        --       when CAS_START_BIT =>
-        --         cas_out_bits <= 8;
-        --         cas_out_state <= CAS_DATA;
-
-        --       when CAS_DATA =>
-        --         -- shift in one so that constant high tone is output in lieu of data
-        --         cas_o_data_shift <= '1' & cas_o_data_shift(7 downto 1);
-
-        --         if cas_out_bits = 1 then
-        --           isr_status(ISR_TX_EMPTY) <= '1';
-        --           cas_out_state <= CAS_STOP_BIT;
-        --         end if;
-        --         cas_out_bits <= cas_out_bits - 1;
-
-        --       when CAS_STOP_BIT =>
-        --         if (isr_status(ISR_TX_EMPTY) = '0') then                  
-        --           -- If CPU is keeping up, move straight to next byte
-        --           cas_out_state <= CAS_START_BIT;
-        --         else
-        --           cas_out_state <= CAS_IDLE;
-        --         end if;
-
-        --       when others =>
-        --         null;              
-        --     end case;
-
-        --   end if;
-
-        --   -- TODO: [Gary] Optional generation of pseudo sine wave on o_cas
-
-        --   o_cas <= '0';
-
-        -- TODO: Should this be based on the FREQ ena? or should it still be based on ula
-        --       enable but checking multi counter value?
-        -- Values need adjusting to account for 255 counter @ freqx now.      
-        --   if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
-        --     -- 127 multi_counter: high cycles 64 = 1200Hz, 32 = 2400Hz
-        --     if cas_out_state = CAS_START_BIT or 
-        --       (cas_out_bits > 0 and cas_o_data_shift(0) = '0') then 
-        --       -- ~1200Hz (Start bit or data 0)
-        --       if multi_counter < 64 then
-        --         o_cas <= '1';
-        --       end if;
-        --     else
-        --       -- ~2400Hz (Stop bit or data 1)
-        --       if multi_counter <= 32 or (multi_counter >= 64 and multi_counter < 96) then
-        --         o_cas <= '1';
-        --       end if;
-        --     end if;
-        --   end if;
-
+        -- TODO: This is a square wave based o_cas for use with virtual cassette interface
+        --       need to also generate a pseudo sine wave to output to aux pins for real cassette.
+        --       It bears little resemblence to the ULA CASA0..2 interface
+        o_cas <= '0';
+      
+        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then 
+          if multi_counter = '1' & x"FF" then -- ???
+            cas_o_data := cas_o_data_shift(0); 
+          end if;
+          -- 9 bit counter clocked at 615kHz
+          -- 255 multi_counter: high cycles 128 = 1200Hz, 64 = 2400Hz 
+          if cas_o_data = '0' then  
+            -- ~1200Hz '0'
+            if multi_counter < 256 then 
+              o_cas <= '1'; 
+            end if; 
+          else 
+            -- ~2400Hz '1'
+            if multi_counter < 128 or (multi_counter >= 256 and multi_counter < 384) then 
+              o_cas <= '1'; 
+            end if; 
+          end if; 
+        end if; 
+   
       end if; -- end_ula      
     end if;
+  
+    
   end process;
+
+  o_debug(0) <= cas_o_data_shift(1);
+  o_debug(1) <= cas_o_data_shift(0);
+  o_debug(3) <= isr_status(ISR_TX_EMPTY);
 
   -- Flag master irq for enabled and active interrupts only.
   isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
