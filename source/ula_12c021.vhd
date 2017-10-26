@@ -1062,14 +1062,15 @@ begin
         -- Cassette Writing
         --
         o_debug(2) <= '0';
-        if ck_freqx = '1' then     
-          -- Reset counter after register write ends
-          if i_n_w = '1' or i_addr(3 downto 0) /= x"4" then
-            -- writes made during a transfer do not reset counter
-            if not cas_o_init then
-              cas_o_bits := 0;
-            end if;
+        -- Reset counter after register write ends
+        if i_n_w = '1' or i_addr(3 downto 0) /= x"4" then
+          -- writes made during a transfer do not reset counter
+          if not cas_o_init then
+            cas_o_bits := 0;
           end if;
+        end if;
+
+        if ck_freqx = '1' then     
 
           if multi_counter = '1' & x"FF" then
             -- no clocking shift reg/counter during halt
@@ -1080,24 +1081,21 @@ begin
             o_debug(2) <= '1';
           end if;
 
-          if cas_o_bits /= 10 then
-            cas_o_halt := false;
-            cas_o_init := true;
-          end if;
-
-          if cas_o_bits = 10 then
-            -- start of transfering 10th bit (stop bit) notify cpu
-            isr_status(ISR_TX_EMPTY) <= '1';
-            cas_o_halt := true;
-          else
-            isr_status(ISR_TX_EMPTY) <= '0';
-          end if;
-
-          if cas_o_halt then
-            cas_o_data_shift(0) <= '1';
-          end if;
         end if;
 
+        if cas_o_bits = 10 then
+          -- start of transfering 10th bit (stop bit) notify cpu
+          isr_status(ISR_TX_EMPTY) <= '1';
+          cas_o_halt := true;
+        else
+          isr_status(ISR_TX_EMPTY) <= '0';
+          cas_o_halt := false;
+          cas_o_init := true;
+        end if;
+
+        if cas_o_halt then
+          cas_o_data_shift(0) <= '1';
+        end if;
 
         
         -- TODO: This is a square wave based o_cas for use with virtual cassette interface
