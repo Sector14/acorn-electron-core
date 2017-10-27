@@ -163,9 +163,6 @@ architecture RTL of ULA_12C021 is
   signal cas_i_delay2  : bit1;
   signal cas_i_edge    : boolean;
   signal cas_i_bit     : bit1;
-  type t_cas_state is (CAS_IDLE, CAS_START_BIT, CAS_DATA, 
-                       CAS_DATA_SKIP, CAS_STOP_BIT, CAS_STOP_BIT_SKIP);
-  signal cas_out_state : t_cas_state;
   signal cas_hightone  : boolean;
 
   -- CPU Timing
@@ -270,7 +267,8 @@ begin
     if (rst = '1') then
       vid_rst <= '1';    
       clk_phase <= "0000";
-      cpu_clk_state <= CLK_1MHz;      
+      cpu_clk_state <= CLK_1MHz;
+      phi_out <= '0';
     elsif rising_edge(i_clk_sys) then
 
       phi_out <= '0';
@@ -869,7 +867,7 @@ begin
 
   p_registers : process(i_clk_sys, rst, i_n_por)
     -- delay POR reset until next CPU clock
-    variable delayed_por_reset : bit1 := '0';
+    variable delayed_por_reset : bit1;
 
     variable in_reset : boolean;
     variable frameck_ena : boolean;
@@ -881,7 +879,7 @@ begin
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
   begin
-    if rst = '1' then
+    if rst = '1' then      
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
       isrc_paging(ISRC_ROM_PAGE) <= "000";
@@ -893,17 +891,23 @@ begin
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
       colour_palettes <= (others => (others => '0'));
       rtc_count <= (others => '0');
+      
+      cas_o_data_shift <= (others => '0');
 
-      cas_out_state <= CAS_IDLE;
+      delayed_por_reset := '0';
 
       in_reset := false;
+      frameck_ena := false;
       frameck_cnt := 0;
       cas_i_bits := 0;
 
+      cas_o_data := '0';
       cas_o_bits := 0;
       cas_o_init := false;
-      cas_o_halt := false;
+      cas_o_halt := false;      
       
+      o_cas <= '0';
+
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
       end if;      
