@@ -381,6 +381,7 @@ begin
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
       n_por <= '0';
+      ula_n_reset_in <= '0';
     elsif (kbd_n_break = '0') then
       ula_n_reset_in <= '0';
     elsif rising_edge(i_clk_sys) then

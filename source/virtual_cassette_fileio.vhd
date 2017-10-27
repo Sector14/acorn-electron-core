@@ -161,6 +161,7 @@ begin
   begin
     if (i_rst = '1') then
       bit_taken_r <= false;
+      o_cas_fm_fch <= '0';
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         o_cas_fm_fch <= '0';
@@ -424,7 +425,7 @@ begin
                   -- unhandled - write failed.
                   fileio_req_state <= S_HALT;
                 else       
-                  fileio_addr <= fileio_addr + fileio_size;
+                  fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
                 fileio_req_state <= S_W_IDLE;
               end if;
@@ -457,7 +458,7 @@ begin
                   --       as tape_position reaching max val? Report error status to OSD via flags?
                   fileio_req_state <= S_HALT;
                 else
-                  fileio_addr <= fileio_addr + fileio_size;
+                  fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
                 fileio_req_state <= S_R_IDLE;
               end if;
