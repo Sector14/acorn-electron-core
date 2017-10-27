@@ -1216,8 +1216,11 @@ begin
           -- MSB indicates a wrap around from 0. Also used as an enable
           -- by cassette data shift and sound output. Only sound resets on wrap.
           if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if multi_counter(8) = '1' then
+            if multi_counter = 255 then
               multi_counter <= '0' & multi_cnt_reg;
+
+              -- TODO: Toggle sound output bit?
+              -- TODO: Check if this is working at correct freq
             end if;
           end if;
         end if;
