@@ -74,7 +74,7 @@ entity ULA_12C021 is
     -- Cassette I/O (not yet supported)
     i_cas         : in bit1; 
     o_cas         : out bit1;                  -- pseudo sine-wave
-    b_cas_rc      : inout bit1;                -- Purpose not yet understood.
+    b_cas_rc      : inout bit1;                -- Not used, see hightone process.
     o_cas_mo      : out bit1;                  -- Motor relay
            
     -- Audio
@@ -903,7 +903,7 @@ begin
 
       cas_o_data := '0';
       cas_o_bits := 0;
-      cas_o_init := false;
+      cas_o_init := true;
       cas_o_halt := false;      
       
       o_cas <= '0';

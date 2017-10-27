@@ -20,6 +20,8 @@ Exceptions to this are:
 
   - : and the shifted * are moved to the key for "'" and "@" key
   - COPY key is bound to "["
+  - BREAK key bound to SCROLL LOCK. Use SCROLL LOCK for soft reset or
+    CTRL+SCROLL LOCK for hard reset.
 
 For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown

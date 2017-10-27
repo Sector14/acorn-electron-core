@@ -83,7 +83,7 @@ architecture RTL of PS2_Translate is
   signal key_release  : bit1;
   signal key_extended : bit1;
   
-  signal key_n_pausebreak : bit1;
+  signal key_n_break : bit1;
 
 begin
 
@@ -96,17 +96,13 @@ begin
       key_extended <= '0';
       key_release <= '0';
       key_state <= (others => (others => '1'));
-      key_n_pausebreak <= '1';
+      key_n_break <= '1';
     elsif rising_edge(i_clk_sys) then
-      -- No release code, active for one clock pulse only
-      key_n_pausebreak <= '1';
-
+      
       -- Framework strobes only on activity
       if (i_kb_ps2_we = '1' and i_kb_inhibit = '0') then
 
-        if (i_kb_ps2_data = c_KEY_PAUSE) then
-          key_n_pausebreak <= '0';
-        elsif (i_kb_ps2_data = c_KEY_RELEASE) then
+        if (i_kb_ps2_data = c_KEY_RELEASE) then
           key_release <= '1'; 
         elsif (i_kb_ps2_data = c_KEY_EXTENDED) then
           key_extended <= '1';
@@ -119,6 +115,8 @@ begin
             when c_PS2_LEFT_CTRL | c_PS2_RIGHT_CTRL   => key_state(13)(2) <= key_release;
             when c_PS2_LEFT_SHIFT | c_PS2_RIGHT_SHIFT => key_state(13)(3) <= key_release;
            
+            when c_PS2_SCROLL_LOCK => key_n_break <= key_release;
+
             when c_PS2_1 => key_state(12)(0) <= key_release;
             when c_PS2_Q => key_state(12)(1) <= key_release;
             when c_PS2_A => key_state(12)(2) <= key_release;
@@ -209,6 +207,6 @@ begin
     o_data <= result;
   end process;
 
-  o_n_break <= key_n_pausebreak;
+  o_n_break <= key_n_break;
 
 end RTL;
