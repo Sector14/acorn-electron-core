@@ -124,6 +124,7 @@ entity Electron_Top is
     o_disk_led            : out bit1;
     o_pwr_led             : out bit1;  -- note these are active high outputs
 
+    o_sound_op            : out bit1;
     o_debug               : out word(15 downto 0)
     );
 end;
@@ -324,11 +325,11 @@ begin
     -- Cassette I/O
     i_cas         => ula_cas_i,
     o_cas         => ula_cas_o,
-    b_cas_rc      => open,                      -- ??
+    b_cas_rc      => open,                      -- Not implemented
     o_cas_mo      => ula_cas_mo,                -- Motor relay
        
-    -- Audio      (not yet supported)       
-    o_sound_op    => open,            
+    -- Audio
+    o_sound_op    => o_sound_op,            
        
     -- Reset             
     i_n_por       => n_por,                     -- /Power on reset

@@ -195,6 +195,7 @@ begin
     o_disk_led            => o_disk_led,
     o_pwr_led             => o_pwr_led,
 
+    o_sound_op            => b_aux_io(6),
     o_debug               => debug(15 downto 0)
     );
 
@@ -219,8 +220,8 @@ begin
   o_rs232_rts <= '0';
 
   b_io(54 downto 0)     <= (others => 'Z');
-  b_aux_io(39 downto 16) <= (others => 'Z');
-  b_aux_io(11 downto  0) <= (others => 'Z');
+  b_aux_io(39 downto 0) <= (others => 'Z');
+  --b_aux_io(11 downto  0) <= (others => 'Z');
 
   -- scope debug via aux io
   b_aux_io(12) <= debug(0);

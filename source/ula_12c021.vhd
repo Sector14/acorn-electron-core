@@ -142,6 +142,9 @@ architecture RTL of ULA_12C021 is
 
   signal ram_contention : boolean;
 
+  -- Audio
+  signal snd_data       : bit1;
+
   -- Adjusted screen base and wrap addr for current mode
   signal mode_base_addr : unsigned(14 downto 6);
   signal mode_wrap_addr : unsigned(14 downto 6);
@@ -1213,18 +1216,14 @@ begin
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
 
-        -- TODO: remove ck_freqx as only needed in this process. Use mode+ck_* instead.
         if ck_freqx = '1' then           
           multi_counter <= multi_counter - 1;
 
           -- MSB indicates a wrap around from 0. Also used as an enable
           -- by cassette data shift and sound output. Only sound resets on wrap.
           if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if multi_counter = 255 then
+            if multi_counter(8) = '1' then -- = 255 then
               multi_counter <= '0' & multi_cnt_reg;
-
-              -- TODO: Toggle sound output bit?
-              -- TODO: Check if this is working at correct freq
             end if;
           end if;
         end if;
@@ -1335,5 +1334,34 @@ begin
   -- Sound Interface
   --
 
+  p_sound : process(i_clk_sys, rst)
+    variable snd_cnt9 : bit1;
+    variable snd_src  : bit1;
+  begin
+    if (rst = '1') then
+      o_sound_op <= '0';
+      snd_cnt9 := '0';
+      snd_src := '0';
+    elsif rising_edge(i_clk_sys) then
+      if i_ena_ula = '1' then
+        if ck_freqx = '1' then           
+
+          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
+            if multi_counter(8) = '1' then
+              snd_cnt9 := not snd_cnt9;
+              if snd_cnt9 = '0' then
+                snd_src := not snd_src;
+              end if;
+            end if;
+
+            o_sound_op <= snd_src;
+          else
+            o_sound_op <= '0';
+          end if;
+
+        end if;
+      end if;
+    end if;
+  end process;
 
 end;
