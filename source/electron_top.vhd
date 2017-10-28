@@ -183,6 +183,8 @@ architecture RTL of Electron_Top is
 
   signal ula_cas_i, ula_cas_o, ula_cas_mo : bit1;
 
+  signal ula_sound_o : bit1;
+
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
   signal ula_rgb : word(23 downto 0);
@@ -207,9 +209,6 @@ begin
   o_fchb_fm_core        <= z_Fileio_fm_core;
 
   o_memio_fm_core       <= z_Memio_fm_core;
-
-  o_audio_l             <= (others => '0');
-  o_audio_r             <= (others => '0');
 
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
@@ -329,7 +328,7 @@ begin
     o_cas_mo      => ula_cas_mo,                -- Motor relay
        
     -- Audio
-    o_sound_op    => o_sound_op,            
+    o_sound_op    => ula_sound_o,            
        
     -- Reset             
     i_n_por       => n_por,                     -- /Power on reset
@@ -531,6 +530,22 @@ begin
   --
   -- Sound
   --
+  p_audio_out : process(i_clk_sys, i_rst_sys)
+  begin 
+    if i_rst_sys = '1' then
+      o_audio_l <= (others => '0');
+      o_audio_r <= (others => '0');
+    elsif rising_edge(i_clk_sys) then
+      if (ena_ula = '1') then
+        -- ULA @16MHz supports from 244Hz to 62.5kHz
+        o_audio_l <= "0" & (22 downto 0 => ula_sound_o);
+        o_audio_r <= "0" & (22 downto 0 => ula_sound_o);
+      end if;
+    end if;
+  end process;
+
+  -- Make audio available on external aux i/o pin
+  o_sound_op <= ula_sound_o;
 
   --
   -- Expansion roms
@@ -605,7 +620,7 @@ begin
           tick <= '0';
           if (tick_pre1 = '1') then
             if (precounter2 = x"000") then
-              precounter2 <= x"19B";
+              precounter2 <= x"00B"; -- x"19B";
               tick <= '1';
             else
               precounter2 <= precounter2 - "1";
@@ -623,14 +638,14 @@ begin
     elsif rising_edge(i_clk_sys) then
       if (i_ena_sys = '1') then
         if (tick = '1') then
-          led  <= not led;
+          led  <= ula_cas_i or ula_cas_o;
         end if;
       end if;
     end if;
   end process;
 
   o_disk_led        <= led;
-  o_pwr_led         <= not led;
+  o_pwr_led         <= ula_n_reset_out;
 
   --o_disk_led <= ula_cas_i;
   --o_pwr_led <= ula_cas_o;
