@@ -1223,7 +1223,8 @@ begin
           -- MSB indicates a wrap around from 0. Also used as an enable
           -- by cassette data shift and sound output. Only sound resets on wrap.
           if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if multi_counter(8) = '1' then -- = 255 then
+            -- ULA used async reset on wrap to 511, putting counter back on 0 (if fe06=0)
+            if multi_counter = 0 then
               multi_counter <= '0' & multi_cnt_reg;
             end if;
           end if;
@@ -1336,23 +1337,18 @@ begin
   --
 
   p_sound : process(i_clk_sys, rst)
-    variable snd_cnt9 : bit1;
     variable snd_src  : bit1;
   begin
     if (rst = '1') then
       o_sound_op <= '0';
-      snd_cnt9 := '0';
       snd_src := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         if ck_freqx = '1' then           
 
           if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if multi_counter(8) = '1' then
-              snd_cnt9 := not snd_cnt9;
-              if snd_cnt9 = '0' then
-                snd_src := not snd_src;
-              end if;
+            if multi_counter = 0 then
+              snd_src := not snd_src;
             end if;
 
             o_sound_op <= snd_src;
