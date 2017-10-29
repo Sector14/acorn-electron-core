@@ -218,8 +218,10 @@ architecture RTL of ULA_12C021 is
   signal isrc_paging             : word(3 downto 0);
 
   -- Multipurpose Counter
-  signal multi_counter           : unsigned(8 downto 0);
+  signal multi_cnt               : unsigned(8 downto 0);
   signal multi_cnt_reg           : unsigned(7 downto 0);
+  -- ck_freqx wide enable on counter wrap around
+  signal ck_multi_cnt_wrap       : boolean;
 
   -- Misc control
   subtype MISC_COMM_MODE is integer range 2 downto 1;
@@ -1031,9 +1033,9 @@ begin
             cas_i_bits := 0;
             frameck_cnt := 0;
             in_reset := true;
-          elsif (multi_counter(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                 multi_counter(7 downto 0) = 58 or
-                 multi_counter(6 downto 0) = 42) then -- S11, 170 or 42
+          elsif (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
+                 multi_cnt(7 downto 0) = 58 or
+                 multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
             if frameck_cnt = 3 then
               frameck_cnt := 0;
               if not in_reset then
@@ -1080,7 +1082,7 @@ begin
 
         if ck_freqx = '1' then     
 
-          if multi_counter = '1' & x"FF" then
+          if ck_multi_cnt_wrap then
             -- no clocking shift reg/counter during halt
             if not cas_o_halt then
               cas_o_data_shift <= '1' & cas_o_data_shift(9 downto 1);
@@ -1104,7 +1106,6 @@ begin
         if cas_o_halt then
           cas_o_data_shift(0) <= '1';
         end if;
-
         
         -- TODO: This is a square wave based o_cas for use with virtual cassette interface
         --       need to also generate a pseudo sine wave to output to aux pins for real cassette.
@@ -1112,19 +1113,20 @@ begin
         o_cas <= '0';
       
         if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then 
-          if multi_counter = '1' & x"FF" then -- ???
+          if ck_freqx = '1' and ck_multi_cnt_wrap then
             cas_o_data := cas_o_data_shift(0); 
           end if;
+
           -- 9 bit counter clocked at 615kHz
-          -- 255 multi_counter: high cycles 128 = 1200Hz, 64 = 2400Hz 
+          -- 255 multi_cnt: high cycles 128 = 1200Hz, 64 = 2400Hz 
           if cas_o_data = '0' then  
             -- ~1200Hz '0'
-            if multi_counter < 256 then 
+            if multi_cnt < 256 then 
               o_cas <= '1'; 
             end if; 
           else 
             -- ~2400Hz '1'
-            if multi_counter < 128 or (multi_counter >= 256 and multi_counter < 384) then 
+            if multi_cnt < 128 or (multi_cnt >= 256 and multi_cnt < 384) then 
               o_cas <= '1'; 
             end if; 
           end if; 
@@ -1210,31 +1212,37 @@ begin
   --
   -- Cassette/sound multi counter
   -- 
-  p_multi_counter : process(i_clk_sys, rst)
+  p_multi_cnt : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      multi_counter <= (others => '0');
+      multi_cnt <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
 
-        if ck_freqx = '1' then           
-          multi_counter <= multi_counter - 1;
+        if ck_freqx = '1' then
+          multi_cnt <= multi_cnt - 1;
 
-          -- MSB indicates a wrap around from 0. Also used as an enable
-          -- by cassette data shift and sound output. Only sound resets on wrap.
-          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            -- ULA used async reset on wrap to 511, putting counter back on 0 (if fe06=0)
-            if multi_counter = 0 then
-              multi_counter <= '0' & multi_cnt_reg;
+          -- NOTE: MSB should indicate a wrap around from 0 however as sound does 
+          -- async reset on wrap on real ULA, counter will (when FE06=0) go 0->0.
+          -- Anything that needs to depend on a "wrap" _cannot_ just test 
+          -- for multi_cnt = 0 as 1->0 should not be included. Instead use
+          -- ck_multi_cnt_wrap as an enable guarded by ck_freqx
+          ck_multi_cnt_wrap <= false;
+          if multi_cnt = 0 then
+            ck_multi_cnt_wrap <= true;
+          end if;
+
+          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then            
+            if multi_cnt = 0 then
+              multi_cnt <= '0' & multi_cnt_reg;                        
             end if;
           end if;
         end if;
 
-
         if ck_div52 = '1' then
           -- TODO: Reset on pulse edges in input mode also depend upon DATACNT?
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
-            multi_counter <= '0' & multi_cnt_reg;
+            multi_cnt <= '0' & multi_cnt_reg;
           end if;
         end if;
 
@@ -1270,7 +1278,7 @@ begin
   cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
   -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
-  ck_cas <= '0' when multi_counter(6 downto 0) = 10 else ck_div52;
+  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_div52;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1284,9 +1292,9 @@ begin
         if ck_div52 = '1' then
           
           -- candidate 1/0 decode
-          if multi_counter(6 downto 0) = 114 then    -- S2, 242 or 114
+          if multi_cnt(6 downto 0) = 114 then    -- S2, 242 or 114
             candidate := '1';
-          elsif multi_counter(6 downto 0) = 42 then  -- S11, 170 or 42
+          elsif multi_cnt(6 downto 0) = 42 then  -- S11, 170 or 42
             candidate := '0';
           end if;
 
@@ -1311,7 +1319,7 @@ begin
         if ck_div52 = '1' then
 
           if misc_control(MISC_CASSETTE_MOTOR) = '0' or
-             multi_counter(6 downto 0) = 10 then  -- S15, 138 or 10
+             multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;
             cas_hightone <= false;
           elsif cas_i_edge then
@@ -1342,18 +1350,21 @@ begin
     if (rst = '1') then
       o_sound_op <= '0';
       snd_src := '0';
+      o_debug(1) <= '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         if ck_freqx = '1' then           
 
           if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if multi_counter = 0 then
+            if ck_multi_cnt_wrap then
               snd_src := not snd_src;
             end if;
 
             o_sound_op <= snd_src;
+            o_debug(1) <= snd_src;
           else
             o_sound_op <= '0';
+            o_debug(1) <= '0';
           end if;
 
         end if;
