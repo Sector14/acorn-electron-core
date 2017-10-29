@@ -73,7 +73,6 @@ The notable missing features are:
   
   - Fast Forward / Rewind
   - Tape position counter
-  - Sound
   - Any kind of expansions (plus 1 etc)
 
 
