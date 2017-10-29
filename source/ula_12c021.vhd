@@ -1031,7 +1031,8 @@ begin
             cas_i_bits := 0;
             frameck_cnt := 0;
             in_reset := true;
-          elsif (multi_counter(6 downto 0) = 122 or   -- S1,  250 or 122
+          elsif (multi_counter(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
+                 multi_counter(7 downto 0) = 58 or
                  multi_counter(6 downto 0) = 42) then -- S11, 170 or 42
             if frameck_cnt = 3 then
               frameck_cnt := 0;
