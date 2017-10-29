@@ -1071,7 +1071,6 @@ begin
         --
         -- Cassette Writing
         --
-        o_debug(2) <= '0';
         -- Reset counter after register write ends
         if i_n_w = '1' or i_addr(3 downto 0) /= x"4" then
           -- writes made during a transfer do not reset counter
@@ -1088,7 +1087,6 @@ begin
               cas_o_data_shift <= '1' & cas_o_data_shift(9 downto 1);
               cas_o_bits := cas_o_bits + 1;
             end if;
-            o_debug(2) <= '1';
           end if;
 
         end if;
@@ -1137,10 +1135,6 @@ begin
   
     
   end process;
-
-  o_debug(0) <= cas_o_data_shift(1);
-  o_debug(1) <= cas_o_data_shift(0);
-  o_debug(3) <= isr_status(ISR_TX_EMPTY);
 
   -- Flag master irq for enabled and active interrupts only.
   isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
@@ -1350,7 +1344,6 @@ begin
     if (rst = '1') then
       o_sound_op <= '0';
       snd_src := '0';
-      o_debug(1) <= '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         if ck_freqx = '1' then           
@@ -1361,10 +1354,8 @@ begin
             end if;
 
             o_sound_op <= snd_src;
-            o_debug(1) <= snd_src;
           else
             o_sound_op <= '0';
-            o_debug(1) <= '0';
           end if;
 
         end if;
