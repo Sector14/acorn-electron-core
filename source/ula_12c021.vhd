@@ -1031,8 +1031,8 @@ begin
             cas_i_bits := 0;
             frameck_cnt := 0;
             in_reset := true;
-          elsif (multi_counter(7 downto 0) = 250 or    -- S1
-                 multi_counter(7 downto 0) = 170) then -- S11                 
+          elsif (multi_counter(6 downto 0) = 122 or   -- S1,  250 or 122
+                 multi_counter(6 downto 0) = 42) then -- S11, 170 or 42
             if frameck_cnt = 3 then
               frameck_cnt := 0;
               if not in_reset then
@@ -1245,7 +1245,7 @@ begin
   --
   -- Based on sheet 4 & 10 of the Synertek ULA schematics with noted exceptions.
   -- NOTE: S* signals are ranged based on the ULA but only a single value has been
-  --       used in this implementation currently.
+  --       used in this implementation due to clock enables.
 
   -- Edge detection
   p_cas_edge : process(i_clk_sys, rst)
@@ -1267,8 +1267,8 @@ begin
 
   cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
-  -- Stop clocking cas counter to resync if S15 reached with no detected edge  
-  ck_cas <= '0' when multi_counter(7 downto 0) = 138 else ck_div52;
+  -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
+  ck_cas <= '0' when multi_counter(6 downto 0) = 10 else ck_div52;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1282,9 +1282,9 @@ begin
         if ck_div52 = '1' then
           
           -- candidate 1/0 decode
-          if multi_counter(7 downto 0) = 242 then     -- S2
+          if multi_counter(6 downto 0) = 114 then    -- S2, 242 or 114
             candidate := '1';
-          elsif multi_counter(7 downto 0) = 170 then  -- S11
+          elsif multi_counter(6 downto 0) = 42 then  -- S11, 170 or 42
             candidate := '0';
           end if;
 
@@ -1309,7 +1309,7 @@ begin
         if ck_div52 = '1' then
 
           if misc_control(MISC_CASSETTE_MOTOR) = '0' or
-             multi_counter(7 downto 0) = 138 then  -- S15
+             multi_counter(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;
             cas_hightone <= false;
           elsif cas_i_edge then
