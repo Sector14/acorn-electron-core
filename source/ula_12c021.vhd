@@ -240,6 +240,11 @@ architecture RTL of ULA_12C021 is
   signal colour_palettes : t_colour_palettes;
    
 begin
+  o_debug(0) <= isr_status(ISR_RX_FULL);
+  o_debug(1) <= isr_status(ISR_TX_EMPTY);
+  o_debug(2) <= '1' when cas_hightone else '0';
+  o_debug(3) <= cas_i_bit;
+
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
   o_n_reset <= i_n_por and i_n_reset;
@@ -1046,7 +1051,7 @@ begin
               frameck_cnt := frameck_cnt + 1;
             end if;
           end if;
-          
+
           if in_reset then
             cas_i_bits := 0;
             if cas_i_bit = '1' then

@@ -131,7 +131,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
   
   -- Config
   signal cfg_dblscan : bit1;
@@ -200,6 +200,8 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
+  -- Debug
+  signal debug        : word(15 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -369,7 +371,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => o_debug(7 downto 0)
+    o_debug       => debug(7 downto 0)
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -517,13 +519,8 @@ begin
     i_cas_to_fch   => ula_cas_o,
     o_cas_fm_fch   => ula_cas_i,
 
-    o_debug        => open --o_debug(7 downto 0)
+    o_debug        => debug(11 downto 8)
   );
-
-  o_debug(8) <= ula_cas_mo;
-  o_debug(9) <= ula_cas_o;
-  o_debug(10) <= ula_cas_i;
-  o_debug(11) <= ena_ula;
 
   -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
 
@@ -650,6 +647,11 @@ begin
   --o_disk_led <= ula_cas_i;
   --o_pwr_led <= ula_cas_o;
 
+  debug(12) <= ula_cas_o;
+  debug(13) <= ula_cas_i;
+
+  o_debug <= debug;
+
   -- ====================================================================
   -- Chipscope
   -- ====================================================================
@@ -691,7 +693,8 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62 downto 0) <= (others => '0');
+      cs_trig(62 downto 16) <= (others => '0');
+      cs_trig(15 downto 0) <= debug(15 downto 0);
     end generate electrontop_cs;
 
   end block cs_debug;

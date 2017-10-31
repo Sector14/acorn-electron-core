@@ -74,7 +74,7 @@ entity Virtual_Cassette_FileIO is
     i_cas_to_fch         : in bit1;
     o_cas_fm_fch         : out bit1;
 
-    o_debug              : out word(7 downto 0)
+    o_debug              : out word(3 downto 0)
   );
 end;
 
