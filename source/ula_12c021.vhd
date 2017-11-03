@@ -1302,6 +1302,17 @@ begin
           if cas_i_edge then
             cas_i_bit <= candidate;
           end if;
+
+          -- TODO: This is inaccurate. Electron after loading a program
+          -- can still generate RD Full interrupts without needing a soft reset.
+          -- Not sure why as CDATA (cas_i_bit) cannot change without a CAS IN
+          -- edge being detected and would remain at a '1' due to last receiving
+          -- a stop bit or high tone. This is a hacky workaround to allow
+          -- southern belle to load until the real solution becomes clear.
+          if  misc_control(MISC_CASSETTE_MOTOR) = '0' then
+            cas_i_bit <= '0';
+          end if;
+
         end if;
       end if;
     end if;    
