@@ -546,7 +546,7 @@ begin
                 -- 2 colour
                 case to_integer(logical_colour) is 
                   when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(8)(4) & colour_palettes(8)(4);
+                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
                   when others => -- 1
                     rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
                 end case;
