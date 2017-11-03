@@ -989,7 +989,7 @@ begin
 
               -- Counter/Cassette control (write only)
               when x"6" =>
-                multi_cnt_reg <= unsigned(b_pd);              
+                multi_cnt_reg <= unsigned(b_pd);     
 
               -- Controls
               when x"7" =>                 
@@ -1077,7 +1077,9 @@ begin
         -- Cassette Writing
         --
         -- Reset counter after register write ends
-        if i_n_w = '1' or i_addr(3 downto 0) /= x"4" then
+        if i_n_w = '1' or 
+           i_addr(15 downto 8) /= x"FE" or
+           i_addr(3 downto 0) /= x"4" then
           -- writes made during a transfer do not reset counter
           if not cas_o_init then
             cas_o_bits := 0;
@@ -1308,7 +1310,7 @@ begin
   -- Hightone detection
   -- NOTE: This is not based on actual ULA which uses external CAS RC
   p_cas_hightone : process(i_clk_sys, rst)
-    variable hightone_cnt : integer range 0 to 40;    
+    variable hightone_cnt : integer range 0 to 80;
   begin
     if rst = '1' then
       cas_hightone <= false;
@@ -1317,8 +1319,7 @@ begin
       if i_ena_ula = '1' then          
         if ck_div52 = '1' then
 
-          if misc_control(MISC_CASSETTE_MOTOR) = '0' or
-             multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
+          if multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;
             cas_hightone <= false;
           elsif cas_i_edge then
@@ -1326,8 +1327,10 @@ begin
 
             if cas_i_bit = '0' then
               hightone_cnt := 0;
-            elsif hightone_cnt /= 40 then
-              -- 40 edges = 20x2400Hz = 10 '1' bits
+            elsif hightone_cnt /= 80 then
+              -- 80 edges = 40x2400Hz = 20 '1' bits
+              -- Selected under assumption (from forum post) RC would take 56ms to charge
+              -- after motor on which is ~67 bits and "high" level would be before full charge.
               hightone_cnt := hightone_cnt + 1;
             else
               cas_hightone <= true;
