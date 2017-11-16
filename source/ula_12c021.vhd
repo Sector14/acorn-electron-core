@@ -1241,6 +1241,11 @@ begin
         end if;
 
         if ck_div52 = '1' then
+          -- TODO: Counter reset appears to assume it only occurs when all bits are 1
+          --       due to nor gate for reset signal. In input mode this is unlikely
+          --       to ever be the case, as the reg should be all 0's for correct
+          --       operation. May want to ensure nor loading is accounted for to
+          --       match Electron operation if a non 0 reg is used.
           -- TODO: Reset on pulse edges in input mode also depend upon DATACNT?
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
             multi_cnt <= '0' & multi_cnt_reg;
@@ -1359,19 +1364,27 @@ begin
 
   p_sound : process(i_clk_sys, rst)
     variable snd_src  : bit1;
+    variable cnt9 : bit1;
   begin
     if (rst = '1') then
       o_sound_op <= '0';
       snd_src := '0';
+      cnt9 := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         if ck_freqx = '1' then           
 
-          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
-            if ck_multi_cnt_wrap then
+          if ck_multi_cnt_wrap then
+            -- Schematics don't appear to show cnt9 as an exta div2 stage
+            -- however frequency output suggests this is the case on an Electron.
+            cnt9 := not cnt9;
+
+            if cnt9 = '1' then
               snd_src := not snd_src;
             end if;
+          end if;
 
+          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
             o_sound_op <= snd_src;
           else
             o_sound_op <= '0';
