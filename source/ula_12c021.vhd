@@ -130,6 +130,10 @@ end;
 architecture RTL of ULA_12C021 is
   constant c_vidparam : r_Vidparam_int := c_Vidparam_832x287p_50_16MHz;
 
+  -- Blank border
+  constant c_voffset : integer := 9;
+  constant c_hoffset : integer := 96;
+
   -- Framework Video
   signal ana_hsync, ana_vsync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
@@ -475,10 +479,10 @@ begin
   
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
-  vid_v_blank <= (unsigned(vpix) < 16) or
-                 (unsigned(vpix) >= 16+256) or
-                 (unsigned(vpix) >= 16+250 and vid_text_mode);
-  vid_h_blank <= unsigned(hpix) < 64 or unsigned(hpix) >= 704;
+  vid_v_blank <= (unsigned(vpix) < c_voffset) or
+                 (unsigned(vpix) >= c_voffset+256) or
+                 (unsigned(vpix) >= c_voffset+250 and vid_text_mode);
+  vid_h_blank <= unsigned(hpix) < c_hoffset or unsigned(hpix) >= (c_hoffset+640);
   
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pixel_data : word(7 downto 0);
@@ -663,7 +667,7 @@ begin
       
         if (not vid_v_blank) then
           -- end of active line
-          if (unsigned(hpix) = 704) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
+          if (unsigned(hpix) = (c_hoffset + 640)) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
             if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
               vid_row_count <= 0;
               if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
@@ -1007,13 +1011,13 @@ begin
         -- Aligned to end of hsync
         if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
           -- Display, generate on the line after last active display line
-          if (unsigned(vpix) = 16+256 and not vid_text_mode) or
-             (unsigned(vpix) = 16+250 and vid_text_mode) then
+          if (unsigned(vpix) = c_voffset+256 and not vid_text_mode) or
+             (unsigned(vpix) = c_voffset+250 and vid_text_mode) then
               isr_status(ISR_FRAME_END) <= '1';
           end if;
 
           -- RTC 10ms before FRAME END interrupt, roughly display line 100
-          if unsigned(vpix) = 16+100 then
+          if unsigned(vpix) = c_voffset+100 then
             isr_status(ISR_RTC) <= '1';
           end if;
         end if;
