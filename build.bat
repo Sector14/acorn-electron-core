@@ -44,6 +44,7 @@ xcopy /y %REPLAYLIBCOMMONPATH%\*.ut
 xcopy /y %REPLAYLIBCOMMONPATH%\replay_common.ucf
 
 xcopy /y %LIBPATH%\cpu\t65\T65*.vhd
+xcopy /y %LIBPATH%\generic\filters\rc_butter_1O\*.vhd 
 
 xcopy /y ..\source\*.vhd
 xcopy /y ..\source\override_lib\*.vhd
