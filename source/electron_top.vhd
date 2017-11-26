@@ -192,7 +192,9 @@ architecture RTL of Electron_Top is
   -- ULA Glue
   signal div13       : bit1;
   signal n_por       : bit1;
-  
+  signal audio_filter_in_s  : signed(15 downto 0);
+  signal audio_filter_out_s : signed(15 downto 0);
+
   -- CPU/ULA Glue
   signal n_nmi        : bit1;
   
@@ -534,14 +536,39 @@ begin
       o_audio_r <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       if (ena_ula = '1') then
-        -- ULA @16MHz supports from 244Hz to 62.5kHz
-        o_audio_l <= "0" & (22 downto 0 => ula_sound_o);
-        o_audio_r <= "0" & (22 downto 0 => ula_sound_o);
+        -- ULA @16MHz supports from 122Hz to 31.25kHz
+        -- hpf = sig - lpf(sig)
+        o_audio_l <= std_logic_vector(unsigned(audio_filter_in_s - audio_filter_out_s)) & x"00";
+        o_audio_r <= std_logic_vector(unsigned(audio_filter_in_s - audio_filter_out_s)) & x"00";
       end if;
     end if;
   end process;
 
-  -- Make audio available on external aux i/o pin
+  audio_filter_in_s <= "0" & (14 downto 0 => ula_sound_o);
+
+  -- lpf used to derive a hpf that simulates sound circuit C11 and 16ohm speaker
+	p_audio_lpf_filter : entity work.rc_bypass
+  generic map (
+    -- sampling frequency given by clk_i or clk_i/fen_i
+    fsamp_MHz => 16.0,
+    -- RC configuration in kOhms and uF
+    R_kO => 0.0160,
+    C_uF => 10.0,
+    width_ext => 16,
+    accurate => true
+  )
+  port map (
+    -- system clock
+    clk_i    => i_clk_sys,
+    clk_en_i => ena_ula,
+    fen_i    => '1',
+    byp_i    => '0',
+    vbyp_i   => x"0000",
+    vin_i    => audio_filter_in_s,
+    vout_o   => audio_filter_out_s
+  );
+  
+  -- Unfiltered audio available on external aux i/o pin
   o_sound_op <= ula_sound_o;
 
   --

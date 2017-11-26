@@ -45,6 +45,8 @@ vhdl    work    T65_MCode.vhd
 vhdl    work    T65_ALU.vhd
 vhdl    work    T65.vhd
 
+vhdl    work    rc_bypass.vhd
+
 vhdl    work    core_pack.vhd
 vhdl    work    ram_d32k_w8.vhd
 vhdl    work    tm4164ea4_64k_w4.vhd
