@@ -193,6 +193,7 @@ architecture RTL of Electron_Top is
   signal div13       : bit1;
   signal n_por       : bit1;
   signal audio_filter_in_s  : signed(15 downto 0);
+  signal audio_filter_lpf_s  : signed(15 downto 0);
   signal audio_filter_out_s : signed(15 downto 0);
 
   -- CPU/ULA Glue
@@ -544,10 +545,32 @@ begin
     end if;
   end process;
 
-  audio_filter_in_s <= "0" & (14 downto 0 => ula_sound_o);
+  audio_filter_in_s <= "00" & (13 downto 0 => ula_sound_o);
 
-  -- lpf used to derive a hpf that simulates sound circuit C11 and 16ohm speaker
+  -- R61 47ohm lpf
 	p_audio_lpf_filter : entity work.rc_bypass
+  generic map (
+    -- sampling frequency given by clk_i or clk_i/fen_i
+    fsamp_MHz => 16.0,
+    -- RC configuration in kOhms and uF
+    R_kO => 0.047,
+    C_uF => 10.0,
+    width_ext => 16,
+    accurate => true
+  )
+  port map (
+    -- system clock
+    clk_i    => i_clk_sys,
+    clk_en_i => ena_ula,
+    fen_i    => '1',
+    byp_i    => '0',
+    vbyp_i   => x"0000",
+    vin_i    => audio_filter_in_s,
+    vout_o   => audio_filter_lpf_s
+  );
+
+  -- Really a lpf but used to derive a hpf that simulates sound circuit C11 and 16ohm speaker
+	p_audio_hpf_filter : entity work.rc_bypass
   generic map (
     -- sampling frequency given by clk_i or clk_i/fen_i
     fsamp_MHz => 16.0,
@@ -564,7 +587,7 @@ begin
     fen_i    => '1',
     byp_i    => '0',
     vbyp_i   => x"0000",
-    vin_i    => audio_filter_in_s,
+    vin_i    => audio_filter_lpf_s,
     vout_o   => audio_filter_out_s
   );
   
