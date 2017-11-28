@@ -166,3 +166,16 @@ Monsters, Repton and the Introductory Cassette.
 
 Please report any issues with the core and any games on the fpgaarcade
 forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
+
+
+# Change Log
+
+* 28/Nov/2017
+  - Improve accuracy of audio waveform with low+high pass filter
+  - Active video region offset to match Electron.
+
+* 16/Nov/2017
+  - Adjust audio tone frequency with extra div2.
+
+* 04/Nov/2017
+  - Initial release, feature complete.
