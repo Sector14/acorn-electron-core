@@ -1,6 +1,26 @@
-# xilinx build intermediates
-**/build/
+# ROMS
+sdcard/os_basic.rom
+sdcard/basic.rom
+sdcard/os.rom
+
+# Test Bench ROMS
+tb/os_basic_fff0_ffff.rom
+tb/os_basic_d800_da00.rom
+
+# Build files
+sdcard/acorn_electron.bin
 
 # Ignore sym links
 lib
 replay_lib
+
+# xilinx build/sim intermediates
+**/build/
+**/sim/
+_impactbatch.log
+
+# vscode workspace
+.vscode
+
+
+

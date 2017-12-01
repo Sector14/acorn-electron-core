@@ -1,0 +1,59 @@
+
+# WWW.FPGAArcade.COM
+# REPLAY 1.0
+# Retro Gaming Platform
+# No Emulation No Compromise
+
+NET i_clk_a     TNM_NET = clk_a_grp;
+NET i_clk_b     TNM_NET = clk_b_grp;
+NET i_clk_c     TNM_NET = clk_c_grp;
+
+TIMESPEC TS03 = PERIOD : clk_a_grp :  7.85 ;  # 114,545MHz + 10%
+#TIMESPEC TS02 = PERIOD : clk_b_grp : 18.30 ;  #  49,152MHz + 10%
+TIMESPEC TS01 = PERIOD : clk_c_grp : 31.40 ;  #  ~27 MHzz + 10%
+
+INST "u_Lib/u_ClockGen/u_a_dcm" LOC = "DCM_X2Y0";
+INST "u_Lib/u_ClockGen/phase_ctrl.u_a2_dcm" LOC = "DCM_X1Y0";
+INST "u_Lib/u_ClockGen/u_b_dcm" LOC = "DCM_X1Y3";
+INST "u_Lib/u_ClockGen/u_c_dcm" LOC = "DCM_X2Y3";
+
+INST "u_Lib/u_ClockGen/u_dcm_a_clk_div_bufg" LOC = "BUFGMUX_X1Y1";
+INST "u_Lib/u_ClockGen/u_dcm_a_clk_0_bufg"   LOC = "BUFGMUX_X2Y1";
+INST "u_Lib/u_ClockGen/u_dcm_a_clk_90_bufg"  LOC = "BUFGMUX_X1Y0";
+INST "u_Lib/u_ClockGen/phase_ctrl.u_dcm_a2_clk_bufg"  LOC = "BUFGMUX_X2Y0";
+
+NET "i_clk_b" CLOCK_DEDICATED_ROUTE = FALSE;
+PIN "u_Lib/u_ClockGen/u_b_dcm.CLKIN" CLOCK_DEDICATED_ROUTE = FALSE;
+
+INST "u_Lib/u_spi_bufg"                      LOC = "BUFGMUX_X1Y11";
+INST "u_Lib/u_ClockGen/u_dcm_b_clk_0_bufg"   LOC = "BUFGMUX_X1Y10";
+INST "u_Lib/u_ClockGen/u_dcm_c_clk_0_bufg"   LOC = "BUFGMUX_X2Y10";
+INST "u_Lib/u_ClockGen/u_dcm_c_clk_90_bufg"  LOC = "BUFGMUX_X2Y11";
+
+NET "i_fpga_spi_clk" TNM_NET = spi_clk;
+TIMESPEC TS_I_FPGA_SPI_CLK = PERIOD "spi_clk" 20 ns HIGH 50%;
+
+# domain crossing
+NET "u_Lib/clk_ram"     TNM_NET = clk_ram_grp;
+NET "u_Lib/clk_capture" TNM_NET = clk_capture_grp;
+NET "u_Lib/clk_ctl"     TNM_NET = clk_ctl_grp;
+
+TIMESPEC TS_20 = FROM "clk_ctl_grp" TO "clk_capture_grp" TIG;
+TIMESPEC TS_21 = FROM "clk_ram_grp" TO "clk_capture_grp" TIG;
+TIMESPEC TS_22 = FROM "clk_capture_grp" TO "clk_ram_grp" TIG;
+
+# area constraints
+INST "u_Lib/u_Syscon/u_spi" AREA_GROUP = "AG_syscon_spi" ;
+AREA_GROUP "AG_syscon_spi" RANGE = SLICE_X32Y149:SLICE_X41Y140 ;
+
+INST "u_Lib/g_use_fileio_true.u_FileIO/u_spi" AREA_GROUP = "AG_fileio_spi" ;
+AREA_GROUP "AG_fileio_spi" RANGE = SLICE_X42Y149:SLICE_X49Y140 ;
+
+INST "u_Lib/u_spi_input_mux" LOC = "SLICE_X47Y151";
+
+INST "u_Lib/g_use_dram_true.u_DDRCtrl/u_ddr_ctrl/u_datapath" AREA_GROUP = "AG_ddr_datapath" ;
+AREA_GROUP "AG_ddr_datapath" RANGE = SLICE_X112Y0:SLICE_X115Y151 ;
+
+INST "u_Lib/u_ClockGen/u_reset" AREA_GROUP = "AG_clockgen_reset" ;
+AREA_GROUP "AG_clockgen_reset" RANGE = SLICE_X50Y143:SLICE_X55Y138 ;
+

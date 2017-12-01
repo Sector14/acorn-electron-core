@@ -1,0 +1,8 @@
+
+verilog work ddr.v
+vhdl work replay_i2c_ch7301.vhd
+vhdl work replay_tb_pack.vhd
+vhdl work replay_tb_wrap.vhd
+vhdl work tm4164ea3_64k_w4_tb.vhd
+
+nosort
