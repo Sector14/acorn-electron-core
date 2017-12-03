@@ -409,27 +409,30 @@ begin
   -- Video
   -- ====================================================================
 
-  -- Mode reads required on phase 0 or 8 ready for following phase as follows:
-  -- Mode | Res                  | Read Phase  | cnt
-  --  0   | 640x256 1bpp         | 1000, 0000  | 1   
-  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
-  --  2   | 160x256 4bpp         | 1000, 0000  | 4   
-  --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1   
-  --  4   | 320x256 1bpp         | 1000        | 2   
-  --  5   | 160x256 2bpp         | 1000        | 4   
-  --  6   | 320x250 1bpp (text)  | 1000        | 2   
-  --
-  -- E.g mode 6 needs 1 byte read during phase 8, ready for output on phase 0
-  -- Due to 1bpp and repeated pixels, one byte covers phase 0-7 & 8-15.
-  -- Mode 3 lacks repeated pixels and needs a new byte every 0 & 8 and only
-  -- one byte covers at most either 0-7 or 8-15.
-  --
-  -- See AUG:
-  --   p214 Colour palette
-  --   p234 Graphics Modes (Appendix C)
-  --   
+  -- TODO: Electron uses interlaced 312.5 fields but there may be a quirk
+  --       due to the appearance of four partial pulses that add up to two
+  --       full scanlines and are split either side of vsync. This _might_
+  --       be another way to do a pseudo progressive display whilst retaining
+  --       all 625 lines.
+  --       Electron's video gen hw has yet to be implemented. Using replay for now.
 
-  -- TODO: [Gary] Did Electron generate offset/interlaced display or use matching fields for 256p?
+  -- Horizontal:
+  --   Standard is hs=4.7us, fp=1.65us, bp=5.7us
+  --   Measurements indicate border+fp = 8us, hs=4us and bp+border=12us
+  --   Assuming a border of 6us gives the following:
+  --     hs=4us (64px), fp=2us (32px), bp=6us (96px)
+  --     borders=6us (96px), active=40us (640px)
+  --   Note: hs+fp+bs must be >= 12us
+  --
+  -- Vertical: 
+  --   Standard is 625 lines, two fields 312.5 lines each with 2nd field 1/2 scanline offset.  
+  --   Measurements indicate 1/2 scanline offset is not used. Vsync instead occurs within
+  --   hsync pulses producing a partial offset.
+  --   Example mode 6 (l = 64us scanlines)
+  --     Fn   = vysnc 2.5l, partial 11us, 28sl, 250sl active, 31sl, partial 17us
+  --     Fn+1 = vsync 2.5l, partial 43us, 28sl, 250sl active, 31sl, partial 49us 
+  --   Partials either side of vsync when added = 60us making a full scanline once 4us hs accounted for.
+
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
       g_enabledynamic       => '0',
@@ -475,14 +478,35 @@ begin
   o_n_vsync <= dig_vsync;
   o_n_csync <= ana_hsync;
   o_de      <= ana_de;
-  
+   
+
+  -- Mode reads required on phase 0 or 8 ready for following phase as follows:
+  -- Mode | Res                  | Read Phase  | cnt
+  --  0   | 640x256 1bpp         | 1000, 0000  | 1   
+  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
+  --  2   | 160x256 4bpp         | 1000, 0000  | 4   
+  --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1   
+  --  4   | 320x256 1bpp         | 1000        | 2   
+  --  5   | 160x256 2bpp         | 1000        | 4   
+  --  6   | 320x250 1bpp (text)  | 1000        | 2   
+  --
+  -- E.g mode 6 needs 1 byte read during phase 8, ready for output on phase 0
+  -- Due to 1bpp and repeated pixels, one byte covers phase 0-7 & 8-15.
+  -- Mode 3 lacks repeated pixels and needs a new byte every 0 & 8 and only
+  -- one byte covers at most either 0-7 or 8-15.
+  --
+  -- See AUG:
+  --   p214 Colour palette
+  --   p234 Graphics Modes (Appendix C)
+  --   
+
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
   vid_v_blank <= (unsigned(vpix) < c_voffset) or
                  (unsigned(vpix) >= c_voffset+256) or
                  (unsigned(vpix) >= c_voffset+250 and vid_text_mode);
   vid_h_blank <= unsigned(hpix) < c_hoffset or unsigned(hpix) >= (c_hoffset+640);
-  
+
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pixel_data : word(7 downto 0);
     variable pix_idx : integer range 0 to 7;
