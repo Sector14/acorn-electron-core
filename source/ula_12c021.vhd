@@ -139,8 +139,7 @@ architecture RTL of ULA_12C021 is
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
   signal vid_rst : bit1;
-  signal vpix, hpix, vtotal : word(13 downto 0);
-  signal vid_sol : bit1;  
+  signal vpix, hpix : word(13 downto 0);
   signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
   signal vid_row_count : integer range 0 to 10;
 
@@ -447,7 +446,7 @@ begin
       --
       o_hactive             => open,
       o_hrep                => open,
-      o_vactive             => vtotal,
+      o_vactive             => open,
       --
       o_dig_hs              => dig_hsync,
       o_dig_vs              => dig_vsync,
@@ -455,7 +454,7 @@ begin
       o_dig_ha              => open,
       o_dig_va              => open,
       o_dig_sof             => open,
-      o_dig_sol             => vid_sol,
+      o_dig_sol             => open,
       o_ana_hs              => ana_hsync,
       o_ana_vs              => ana_vsync,
       o_ana_de              => ana_de,
