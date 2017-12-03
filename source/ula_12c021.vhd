@@ -675,8 +675,19 @@ begin
           --              and no more bytes follow it, just h_sync/border. render process needs 704 
           --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
           --              under contention than needed.
-          ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
-                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          -- ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
+          --                    misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          
+          -- Ram contention does not need to start before active video as ULA always has
+          -- at least slot 8 to prepare first byte of data. It may however be able to end
+          -- before the end of the active period once last byte of data needed has been read.
+          -- TODO: Change from pixels to vid_hactive +- border etc
+          ram_contention <= not vid_v_blank and (vid_row_count < 8) and                            
+                            (hpix >= c_hoffset) and
+                            ( (misc_control(MISC_DISPLAY_MODE) = "000" and (hpix < 728)) or -- 1bpp
+                              (misc_control(MISC_DISPLAY_MODE) = "001" and (hpix < 732)) or -- 2bpp
+                              (misc_control(MISC_DISPLAY_MODE) = "010" and (hpix < 734)) or -- 4bpp
+                              (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
         end if;
 
         if (unsigned(vpix) = 0) then
