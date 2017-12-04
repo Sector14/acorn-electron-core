@@ -1042,20 +1042,30 @@ begin
         end if;
                  
         -- Interrupt Generation
-        -- Aligned to end of hsync
-        if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
+        -- The rate of these occurs too frequently due to pseudo progressive lost scanline 
+        -- and also inability to sync outside the active pixel ranges.
+        -- Redo once moved from ReplayVideo to generating h/vsync similar to Electron method.
+        --
+        -- TODO: Can't align this with falling edge of hsync as 0..832 range of active
+        --       pixels does not cover the blanking periods. Will be about 8us too early.
+        if unsigned(hpix) = 832 - 2 then
           -- Display, generate on the line after last active display line
           if (unsigned(vpix) = c_voffset+256 and not vid_text_mode) or
              (unsigned(vpix) = c_voffset+250 and vid_text_mode) then
               isr_status(ISR_FRAME_END) <= '1';
           end if;
+        end if;
 
-          -- RTC 10ms before FRAME END interrupt, roughly display line 100
-          if unsigned(vpix) = c_voffset+100 then
+        if unsigned(hpix) = 832 - 2 then
+          -- TODO: hpix value was derived based on 10ms prior to end frame. This however
+          -- will be incorrectly placed due to frame end not being aligned to hsync neg edge.
+          -- It also suffers from limited range issue and needs to occur 160 pixels later
+          -- than above.
+          if unsigned(vpix) = 103 then
             isr_status(ISR_RTC) <= '1';
           end if;
         end if;
-     
+
         --
         -- Cassette Registers
         --
