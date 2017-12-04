@@ -243,7 +243,7 @@ architecture RTL of ULA_12C021 is
   signal colour_palettes : t_colour_palettes;
    
 begin
-  o_debug(0) <= '0';
+  o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
   o_debug(1) <= ana_hsync;
   o_debug(2) <= isr_status(ISR_FRAME_END);
   o_debug(3) <= isr_status(ISR_RTC);
