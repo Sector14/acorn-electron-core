@@ -180,14 +180,17 @@ architecture RTL of ULA_12C021 is
   signal phi_out   : bit1;
   signal clk_phase : unsigned(3 downto 0);
 
-  signal rtc_count : unsigned(18 downto 0);
+  -- Clock Enables
+  -- ck_* are internally generated and thus stretched across multiple sys clocks.
+  -- Ensure usage is guarded by ena_ula. Assumes ena_div13 is aligned to ena_ula!
+  -- Otherwise adjust existing usage of ena_div13 and treat as a separate clock domain.
+  signal ck_s16m16  : bit1; -- 1MHz
+  signal ck_s16m32  : bit1; -- 0.5MHz
+  signal ck_s16m128 : bit1; -- 0.125MHz
+  signal ck_s8m13   : bit1; -- 615kHz
+  signal ck_s4m13   : bit1; -- 307kHz     
 
-  -- Cassette Timing enables
-  -- These are internally generated and thus stretched across multiple sys clocks
-  -- ensure they're only ever used within ena_ula.
-  signal ck_div128 : bit1;
-  signal ck_div26  : bit1;
-  signal ck_div52  : bit1;
+  -- Multiplexed clock enables
   signal ck_cas    : bit1;
   signal ck_freqx  : bit1;
 
@@ -354,36 +357,58 @@ begin
   -- Used by Cassette I/O and Sound.
   p_clk_divider : process(i_clk_sys, rst)
     variable div128 : integer range 127 downto 0;
+    variable div32  : integer range 31 downto 0;
+
     variable div26  : bit1;
     variable div52  : bit1;
   begin
     if (rst = '1') then
-      ck_div128 <= '0';
-      ck_div26 <= '0';
-      ck_div52 <= '0';
+      ck_s16m128 <= '0';
+      ck_s16m32 <= '0';
+      ck_s16m16 <= '0';
+      ck_s8m13 <= '0';
+      ck_s4m13 <= '0';
+
       div128 := 0;
-      div26 := '0';
+      div32 := 0;
+
       div52 := '0';
+      div26 := '0';
     elsif rising_edge(i_clk_sys) then
-      -- NOTE: These must be used within i_ena_ula as they stretch multiple sys clocks.
-      -- NOTE: div13 is must be aligned with ula_ena and used within ena_ula.
+      -- NOTE: ck_* must be used within i_ena_ula as they stretch multiple sys clocks
+      --       and occur on falling edge of i_ena_ula/i_ena_div13
+      -- NOTE: Assumes div13 is aligned with ula_ena and use is guarded by ena_ula.
       --       Without this assumption FREQX/multi counter will need reviewing as
       --       it uses enables derived from both.
-      
       if i_ena_ula = '1' then
-        ck_div128 <= '0';
+        ck_s16m128 <= '0';
+        ck_s16m32 <= '0';
+        ck_s16m16 <= '0';
+
+        -- (M): 16MHz/16 = 1MHz for display logic
+        if (div32 = 15 or div32 = 31) then
+          ck_s16m16 <= '1';
+        end if;
+
+        -- (M/2): 16MHz/32 = 0.5MHz for display logic
+        if div32 = 31 then
+          ck_s16m32 <= '1';
+          div32 := 0;
+        else
+          div32 := div32 + 1;
+        end if;
 
         -- (M/8): 16MHz/128 = 0.125MHz for SOUND
         if (div128 = 127) then
           div128 := 0;
-          ck_div128 <= '1';
+          ck_s16m128 <= '1';
         else
           div128 := div128 + 1;
         end if;
 
-        -- (S8M13 and S8M13/2): ~615kHz and ~307kHz for cassette I/O
-        ck_div26 <= '0';
-        ck_div52 <= '0';
+        -- (S8M13 and S4M13): ~615kHz and ~307kHz for cassette I/O
+        ck_s8m13 <= '0';
+        ck_s4m13 <= '0';
         if i_ena_div13 = '1' then
           div26 := not div26;
 
@@ -391,8 +416,8 @@ begin
             div52 := not div52;
           end if;
 
-          ck_div26 <= div26;
-          ck_div52 <= div26 and div52;
+          ck_s8m13 <= div26;
+          ck_s4m13 <= div26 and div52;
         end if;
 
       end if;
@@ -400,9 +425,9 @@ begin
   end process;
 
   -- Mode based frequency selection
-  ck_freqx <= ck_div128 when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND else
+  ck_freqx <= ck_s16m128 when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND else
               ck_cas    when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT else
-              ck_div26  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
+              ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
   -- ====================================================================
@@ -938,7 +963,6 @@ begin
       misc_control(MISC_DISPLAY_MODE) <= "110";
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
       colour_palettes <= (others => (others => '0'));
-      rtc_count <= (others => '0');
       
       cas_o_data_shift <= (others => '0');
 
@@ -1288,7 +1312,7 @@ begin
           end if;
         end if;
 
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
           -- TODO: Counter reset appears to assume it only occurs when all bits are 1
           --       due to nor gate for reset signal. In input mode this is unlikely
           --       to ever be the case, as the reg should be all 0's for correct
@@ -1320,7 +1344,7 @@ begin
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
           cas_i_delay1 <= i_cas;    
           cas_i_delay2 <= cas_i_delay1;
         end if;
@@ -1332,7 +1356,7 @@ begin
   cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
   -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
-  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_div52;
+  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_s4m13;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1343,7 +1367,7 @@ begin
       candidate := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
           
           -- candidate 1/0 decode
           if multi_cnt(6 downto 0) = 114 then    -- S2, 242 or 114
@@ -1381,7 +1405,7 @@ begin
       hightone_cnt := 0;
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then          
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
 
           if multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;
