@@ -700,6 +700,7 @@ begin
   debug(12) <= ula_cas_o;
   debug(13) <= ula_cas_i;
   debug(14) <= ula_r or ula_g or ula_b;  
+  debug(15) <= i_clk_sys;
 
   o_debug <= debug;
 

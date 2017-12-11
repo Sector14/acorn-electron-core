@@ -135,7 +135,7 @@ architecture RTL of ULA_12C021 is
   constant c_hoffset : integer := 96;
 
   -- Framework Video
-  signal ana_hsync, ana_vsync, ana_de : bit1;
+  signal ana_hsync, ana_vsync, ana_csync, ana_de : bit1;
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
   signal vid_rst : bit1;
@@ -246,10 +246,15 @@ architecture RTL of ULA_12C021 is
   signal colour_palettes : t_colour_palettes;
    
 begin
-  o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
-  o_debug(1) <= ana_hsync;
-  o_debug(2) <= isr_status(ISR_FRAME_END);
-  o_debug(3) <= isr_status(ISR_RTC);
+  -- o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
+  -- o_debug(1) <= ana_hsync;
+  -- o_debug(2) <= isr_status(ISR_FRAME_END);
+  -- o_debug(3) <= isr_status(ISR_RTC);
+
+  o_debug(0) <= ck_s16m32;
+  o_debug(1) <= i_ena_ula; -- ana_hsync;
+  o_debug(2) <= ana_vsync;
+  o_debug(3) <= ana_csync;
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -289,6 +294,10 @@ begin
 
       phi_out <= '0';
 
+      -- TODO: [Gary] Is this still required with switch to ula_display_logic?
+      --              if so will it be required once hpix/vpix replaced?
+      --              and if so, is the alignment still correct? rearranging code
+      --              may have shifted timing!      
       -- Bring video out of reset to align hpix 0 with phase 0
       if (i_cph_sys(0) = '1' and vid_rst = '1' and clk_phase = "1111") then
         vid_rst <= '0';
@@ -434,29 +443,24 @@ begin
   -- Video
   -- ====================================================================
 
-  -- TODO: Electron uses interlaced 312.5 fields but there may be a quirk
-  --       due to the appearance of four partial pulses that add up to two
-  --       full scanlines and are split either side of vsync. This _might_
-  --       be another way to do a pseudo progressive display whilst retaining
-  --       all 625 lines.
-  --       Electron's video gen hw has yet to be implemented. Using replay for now.
+  -- TODO: Instantiate ula_display_logic and output to debug pins to
+  --       check if signal looks correct before replacing replay_videotiming.
 
-  -- Horizontal:
-  --   Standard is hs=4.7us, fp=1.65us, bp=5.7us
-  --   Measurements indicate border+fp = 8us, hs=4us and bp+border=12us
-  --   Assuming a border of 6us gives the following:
-  --     hs=4us (64px), fp=2us (32px), bp=6us (96px)
-  --     borders=6us (96px), active=40us (640px)
-  --   Note: hs+fp+bs must be >= 12us
-  --
-  -- Vertical: 
-  --   Standard is 625 lines, two fields 312.5 lines each with 2nd field 1/2 scanline offset.  
-  --   Measurements indicate 1/2 scanline offset is not used. Vsync instead occurs within
-  --   hsync pulses producing a partial offset.
-  --   Example mode 6 (l = 64us scanlines)
-  --     Fn   = vysnc 2.5l, partial 11us, 28sl, 250sl active, 31sl, partial 17us
-  --     Fn+1 = vsync 2.5l, partial 43us, 28sl, 250sl active, 31sl, partial 49us 
-  --   Partials either side of vsync when added = 60us making a full scanline once 4us hs accounted for.
+  u_DisplayLogic : entity work.ula_display_logic
+  port map (
+    i_clk                   => i_clk_sys,
+    i_ena                   => i_ena_ula,
+    i_rst                   => vid_rst,
+
+    i_ck_s1m                => ck_s16m16,
+    i_ck_s1m2               => ck_s16m32,
+
+    i_gmode                 => '1',
+
+    o_hsync                 => ana_hsync,
+    o_vsync                 => ana_vsync,
+    o_csync                 => ana_csync
+  );
 
   u_VideoTiming : entity work.Replay_VideoTiming
     generic map (
@@ -483,9 +487,9 @@ begin
       o_dig_va              => open,
       o_dig_sof             => open,
       o_dig_sol             => open,
-      o_ana_hs              => ana_hsync,
-      o_ana_vs              => ana_vsync,
-      o_ana_de              => ana_de,
+      o_ana_hs              => open, --ana_hsync,
+      o_ana_vs              => open, --ana_vsync,
+      o_ana_de              => open, --ana_de,
       --
       o_hpix                => hpix,
       o_vpix                => vpix,
@@ -499,9 +503,12 @@ begin
   -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
   -- location so digital h/v passed out for now. This is a bit of a kludge as the
   -- timing of dig h/v may not match that of analog h/v (or csync)
-  o_n_hsync <= dig_hsync;
-  o_n_vsync <= dig_vsync;
-  o_n_csync <= ana_hsync;
+  o_n_hsync <= ana_hsync;
+  o_n_vsync <= ana_vsync;
+  o_n_csync <= ana_csync;
+
+  -- TODO: Check what this represents and why +-18 in the setting?
+  --       Might correspond to the new "o_blank"?
   o_de      <= ana_de;
    
 
