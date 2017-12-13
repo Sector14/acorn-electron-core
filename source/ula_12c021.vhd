@@ -143,6 +143,7 @@ architecture RTL of ULA_12C021 is
   signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
   signal vid_row_count : integer range 0 to 10;
 
+  signal disp_rtc, disp_frame_end : boolean;
   signal ram_contention : boolean;
 
   -- Audio
@@ -244,7 +245,7 @@ architecture RTL of ULA_12C021 is
   subtype t_colour_palette is word( 7 downto 0);
   type t_colour_palettes is array(15 downto 8) of t_colour_palette;
   signal colour_palettes : t_colour_palettes;
-   
+  
 begin
   -- o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
   -- o_debug(1) <= ana_hsync;
@@ -252,7 +253,8 @@ begin
   -- o_debug(3) <= isr_status(ISR_RTC);
 
   o_debug(0) <= ck_s16m32;
-  o_debug(1) <= i_ena_ula; -- ana_hsync;
+  -- o_debug(1) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
+  o_debug(1) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);   
   o_debug(2) <= ana_vsync;
   o_debug(3) <= ana_csync;
 
@@ -455,11 +457,14 @@ begin
     i_ck_s1m                => ck_s16m16,
     i_ck_s1m2               => ck_s16m32,
 
-    i_gmode                 => '1',
+    i_gmode                 => not vid_text_mode,
 
     o_hsync                 => ana_hsync,
     o_vsync                 => ana_vsync,
-    o_csync                 => ana_csync
+    o_csync                 => ana_csync,
+
+    o_rtc                   => disp_rtc,
+    o_dispend               => disp_frame_end
   );
 
   u_VideoTiming : entity work.Replay_VideoTiming
@@ -1073,28 +1078,15 @@ begin
         end if;
                  
         -- Interrupt Generation
-        -- The rate of these occurs too frequently due to pseudo progressive lost scanline 
-        -- and also inability to sync outside the active pixel ranges.
-        -- Redo once moved from ReplayVideo to generating h/vsync similar to Electron method.
-        --
-        -- TODO: Can't align this with falling edge of hsync as 0..832 range of active
-        --       pixels does not cover the blanking periods. Will be about 8us too early.
-        if unsigned(hpix) = 832 - 2 then
-          -- Display, generate on the line after last active display line
-          if (unsigned(vpix) = c_voffset+256 and not vid_text_mode) or
-             (unsigned(vpix) = c_voffset+250 and vid_text_mode) then
-              isr_status(ISR_FRAME_END) <= '1';
-          end if;
+        -- TODO: [Gary] These end up one ena_ula clock delayed due to display process
+        --       which amounts to 62.5ns.
+        -- TODO: [Gary] Add leading edge detection so RTC can be high multiple pulses
+        if disp_rtc then
+          isr_status(ISR_RTC) <= '1';
         end if;
 
-        if unsigned(hpix) = 832 - 2 then
-          -- TODO: hpix value was derived based on 10ms prior to end frame. This however
-          -- will be incorrectly placed due to frame end not being aligned to hsync neg edge.
-          -- It also suffers from limited range issue and needs to occur 160 pixels later
-          -- than above.
-          if unsigned(vpix) = 103 then
-            isr_status(ISR_RTC) <= '1';
-          end if;
+        if disp_frame_end then
+          isr_status(ISR_FRAME_END) <= '1';
         end if;
 
         --

@@ -77,17 +77,17 @@ entity ULA_DISPLAY_LOGIC is
       i_ck_s1m                : in bit1; -- 1MHz enable
       i_ck_s1m2               : in bit1; -- 0.5MHz enable
 
-      -- Graphics mode (0,1,2,4,5)
-      i_gmode                 : in bit1;
+      -- Graphics mode 0,1,2,4,5
+      i_gmode                 : boolean;
 
       -- Sync
       o_hsync                 : out bit1;
       o_vsync                 : out bit1;
-      o_csync                 : out bit1
+      o_csync                 : out bit1;
 
       -- Interrupts
-      --o_rtc                 : out bit1;
-      --o_dispend             : out bit1;
+      o_rtc                 : out boolean;
+      o_dispend             : out boolean
 
       --o_pause_cpu           : out bit1;
       
@@ -97,7 +97,7 @@ entity ULA_DISPLAY_LOGIC is
 
       -- TODO: Electron display logic didn't output hpix/vpix, not sure where that
       --       was tracked. Handle with separate process that gens same as replay did
-      --       with 0..1023 h range and 0..625 v?
+      --       with 0..1023 h range and 0..625 v? and temp export from here for now?
   );
 end;
 
@@ -114,13 +114,14 @@ begin
   o_hsync <= hsync;
   o_vsync <= vsync_l;
 
-  p_hsync : process(i_clk, i_ena, i_rst)
+  p_hsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       hsync <= '0';
       hsync_cnt <= (others => '0');
     elsif rising_edge(i_clk) then
       if i_ena = '1' and i_ck_s1m2 = '1' then
+
         hsync <= '0';
 
         -- 4us pulse
@@ -134,35 +135,39 @@ begin
     end if;
   end process;
 
+  -- TODO: Pipeline hsync so it can be used in other processes whilst retaining alignment?
 
-  p_vsync : process(i_clk, i_ena, i_rst)
+  p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       vsync <= '0';
       vsync_cnt <= (others => '0');
     elsif rising_edge(i_clk) then
-      -- TODO: [Gary] Review schematics, what causes the 1us extra delay on Electron?  
-      --       Propagation delay from ripple counter and vsync reset/ff?
-      --       The 1us early triggering causes partials to be 42,50 & 10,18us rather
-      --       than 43,49 & 11,17us. Difference is unlikely to matter.
-      -- if i_ena = '1' and i_ck_s1m = '1' then
-      --   vsync_l <= vsync;
-      -- end if;
+      if i_ena = '1' then
 
-      if i_ena = '1' and i_ck_s1m2 = '1' then       
-        vsync <= '0';
-
-        if vsync_cnt >= 620 and vsync_cnt <= 624 then
-          -- TODO: [Gary] really VReset occurs and generates 2.5 or 3 lines? of vsync
-          vsync <= '1';
+        if i_ck_s1m = '1' then
+          -- delay by 1us to match Electron's partial scanlines either side of vsync
+          vsync_l <= vsync;
         end if;
 
-        -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
-        if hsync_cnt = 0 or hsync_cnt = 16 then
-          if vsync_cnt = 624 then
-            vsync_cnt <= (others => '0');
-          else
-            vsync_cnt <= vsync_cnt + 1; 
+        if i_ck_s1m2 = '1' then       
+          vsync <= '0';         
+
+          -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
+          -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
+          -- the state 00 lasts 2 lines. Although seems to amount to 3.5 rather than 2.5
+          -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
+          if vsync_cnt >= 564 and vsync_cnt <= 568 then
+            vsync <= '1';
+          end if;
+
+          -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
+          if hsync_cnt = 0 or hsync_cnt = 16 then
+            if vsync_cnt = 624 then
+              vsync_cnt <= (others => '0');              
+            else
+              vsync_cnt <= vsync_cnt + 1; 
+            end if;
           end if;
         end if;
 
@@ -170,4 +175,41 @@ begin
     end if;
   end process;
 
+  p_display_interrupts : process(i_clk, i_rst)
+  begin
+    if i_rst = '1' then
+      o_rtc <= false;
+      o_dispend <= false;
+    elsif rising_edge(i_clk) then
+      if i_ena = '1' then
+        if i_ck_s1m2 = '1' then       
+
+          o_rtc <= false;
+
+          -- TODO: [Gary] Reset for this occurred on vcnt 0 with LSN1 & LSN2
+          --       as it's used for pausing cpu too. Handle that as separate signal instead?
+          o_dispend <= false;
+                  
+          -- DISPg0 range [500,503], DISPg1 range [512,625) isr clocked by falling edge.
+          -- Aligned to hsync leading edge.
+          if hsync_cnt = 26 then
+            if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
+              o_dispend <= true;
+            end if;
+
+            -- TODO: [Gary] Check duration of dispend for graphics modes.
+            if i_gmode and vsync_cnt >= 512 then
+              o_dispend <= true;
+            end if;
+          end if;
+
+          -- Real RTC is high for range [200,207], isr clocked by falling edge
+          if vsync_cnt = 200 then
+            o_rtc <= true;
+          end if;
+
+        end if;
+      end if;
+    end if;
+  end process;
 end;
