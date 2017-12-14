@@ -131,7 +131,6 @@ architecture RTL of ULA_12C021 is
   constant c_vidparam : r_Vidparam_int := c_Vidparam_832x287p_50_16MHz;
 
   -- Blank border
-  constant c_voffset : integer := 9;
   constant c_hoffset : integer := 96;
 
   -- Framework Video
@@ -139,7 +138,7 @@ architecture RTL of ULA_12C021 is
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
   signal vid_rst : bit1;
-  signal vpix, hpix : word(13 downto 0);
+  signal vpix, hpix : unsigned(13 downto 0);
   signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
   signal vid_row_count : integer range 0 to 10;
 
@@ -252,11 +251,11 @@ begin
   -- o_debug(2) <= isr_status(ISR_FRAME_END);
   -- o_debug(3) <= isr_status(ISR_RTC);
 
-  o_debug(0) <= ck_s16m32;
+  o_debug(0) <= ana_csync;
   -- o_debug(1) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
   o_debug(1) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);   
   o_debug(2) <= ana_vsync;
-  o_debug(3) <= ana_csync;
+  o_debug(3) <= ck_s16m32;
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -464,58 +463,16 @@ begin
     o_csync                 => ana_csync,
 
     o_rtc                   => disp_rtc,
-    o_dispend               => disp_frame_end
+    o_dispend               => disp_frame_end,
+
+    o_hpix                  => hpix,
+    o_vpix                  => vpix,
+    o_de                    => o_de
   );
 
-  u_VideoTiming : entity work.Replay_VideoTiming
-    generic map (
-      g_enabledynamic       => '0',
-      g_param               => c_vidparam
-      )
-    port map (
-      i_clk                 => i_clk_sys,
-      i_ena                 => i_ena_ula,
-      i_rst                 => vid_rst,
-      --
-      i_param               => c_vidparam,
-      i_sof                 => '0',
-      i_f2_flip             => '0',
-      --
-      o_hactive             => open,
-      o_hrep                => open,
-      o_vactive             => open,
-      --
-      o_dig_hs              => dig_hsync,
-      o_dig_vs              => dig_vsync,
-      o_dig_de              => dig_de,
-      o_dig_ha              => open,
-      o_dig_va              => open,
-      o_dig_sof             => open,
-      o_dig_sol             => open,
-      o_ana_hs              => open, --ana_hsync,
-      o_ana_vs              => open, --ana_vsync,
-      o_ana_de              => open, --ana_de,
-      --
-      o_hpix                => hpix,
-      o_vpix                => vpix,
-      --
-      o_f2                  => open,
-      o_voddline            => open,
-      o_stdprog             => open
-      );
-
-  -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
-  -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
-  -- location so digital h/v passed out for now. This is a bit of a kludge as the
-  -- timing of dig h/v may not match that of analog h/v (or csync)
-  o_n_hsync <= ana_hsync;
-  o_n_vsync <= ana_vsync;
-  o_n_csync <= ana_csync;
-
-  -- TODO: Check what this represents and why +-18 in the setting?
-  --       Might correspond to the new "o_blank"?
-  o_de      <= ana_de;
-   
+  o_n_hsync <= not ana_hsync;
+  o_n_vsync <= not ana_vsync;
+  o_n_csync <= not ana_csync;  
 
   -- Mode reads required on phase 0 or 8 ready for following phase as follows:
   -- Mode | Res                  | Read Phase  | cnt
@@ -539,10 +496,8 @@ begin
 
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
-  vid_v_blank <= (unsigned(vpix) < c_voffset) or
-                 (unsigned(vpix) >= c_voffset+256) or
-                 (unsigned(vpix) >= c_voffset+250 and vid_text_mode);
-  vid_h_blank <= unsigned(hpix) < c_hoffset or unsigned(hpix) >= (c_hoffset+640);
+  vid_v_blank <= (vpix >= 256) or (vpix >= 250 and vid_text_mode);
+  vid_h_blank <= (hpix < c_hoffset) or (hpix >= (c_hoffset+640));
 
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pixel_data : word(7 downto 0);
@@ -712,22 +667,26 @@ begin
           --              and no more bytes follow it, just h_sync/border. render process needs 704 
           --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
           --              under contention than needed.
-          -- ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
-          --                    misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
+                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
           
           -- Ram contention does not need to start before active video as ULA always has
           -- at least slot 8 to prepare first byte of data. It may however be able to end
           -- before the end of the active period once last byte of data needed has been read.
           -- TODO: Change from pixels to vid_hactive +- border etc
-          ram_contention <= not vid_v_blank and (vid_row_count < 8) and                            
-                            (hpix >= c_hoffset) and
-                            ( (misc_control(MISC_DISPLAY_MODE) = "000" and (hpix < 728)) or -- 1bpp
-                              (misc_control(MISC_DISPLAY_MODE) = "001" and (hpix < 732)) or -- 2bpp
-                              (misc_control(MISC_DISPLAY_MODE) = "010" and (hpix < 734)) or -- 4bpp
-                              (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
+          -- ram_contention <= not vid_v_blank and (vid_row_count < 8) and                            
+          --                   (hpix >= c_hoffset) and
+          --                   ( (misc_control(MISC_DISPLAY_MODE) = "000" and (hpix < 728)) or -- 1bpp
+          --                     (misc_control(MISC_DISPLAY_MODE) = "001" and (hpix < 732)) or -- 2bpp
+          --                     (misc_control(MISC_DISPLAY_MODE) = "010" and (hpix < 734)) or -- 4bpp
+          --                     (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
         end if;
 
-        if (unsigned(vpix) = 0) then
+        -- TODO: VPIX 0 is now the FIRST active line of the 250-256 lines NOT
+        --       the first line of the 9 line border prior to active line.
+        -- TODO: When does the ULA really latch this?
+        --if (vpix = 0) then
+        if vid_v_blank then
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
           row_addr := '0' & mode_base_addr & "000000";
@@ -738,7 +697,7 @@ begin
       
         if (not vid_v_blank) then
           -- end of active line
-          if (unsigned(hpix) = (c_hoffset + 640)) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
+          if (hpix = (c_hoffset + 640)) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
             if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
               vid_row_count <= 0;
               if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
