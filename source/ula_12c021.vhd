@@ -143,6 +143,7 @@ architecture RTL of ULA_12C021 is
   signal vid_row_count : integer range 0 to 10;
 
   signal disp_rtc, disp_frame_end : boolean;
+  signal disp_rtc_l, disp_frame_end_l : boolean;
   signal ram_contention : boolean;
 
   -- Audio
@@ -252,10 +253,9 @@ begin
   -- o_debug(3) <= isr_status(ISR_RTC);
 
   o_debug(0) <= ana_csync;
-  -- o_debug(1) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
-  o_debug(1) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);   
-  o_debug(2) <= ana_vsync;
-  o_debug(3) <= ck_s16m32;
+  --o_debug(1) <= ck_s16m32;
+  o_debug(2) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);     
+  o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -371,7 +371,7 @@ begin
   --       horizontal line will end up rendering at the end of the previous line 
   --       and memory contention will be incorrectly timed
   --       causing first col to contain "snow" from a failed ram read.
-  --
+  --       
   -- Display logic clocks
   p_clk_display : process(i_clk_sys, rst, vid_rst)
     variable div32  : integer range 31 downto 0;
@@ -711,8 +711,12 @@ begin
         end if;
 
         -- TODO: When does ULA actually latch this? First active line or continually
-        --       during vblanking?
-        if (vpix = 281) then
+        --       during vblanking? Originally used vpix=0 which would be equiv to 281 in 
+        --       new version, except vpix is only accurate for first half of scanline and
+        --       really shouldn't be relied on...
+        if (vpix = 303) then
+        -- vpix = 0 on old version, occurred at end of line 22. EG line 23 was first active line
+        -- which equates to 281.5 + 22 = 303.5. Double check when Electron latched this.
         --if vid_v_blank then
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
@@ -1068,13 +1072,16 @@ begin
                  
         -- Interrupt Generation
         -- TODO: [Gary] These end up one ena_ula clock delayed due to display process
-        --       which amounts to 62.5ns.
-        -- TODO: [Gary] Add leading edge detection so RTC can be high multiple pulses
-        if disp_rtc then
+        --       which amounts to 62.5ns.        
+        -- Variable duration pulse depending on mode, trigger on rising edge only
+        disp_frame_end_l <= disp_frame_end;
+        disp_rtc_l <= disp_rtc;
+
+        if disp_rtc and not disp_rtc_l then
           isr_status(ISR_RTC) <= '1';
         end if;
 
-        if disp_frame_end then
+        if disp_frame_end and not disp_frame_end_l then
           isr_status(ISR_FRAME_END) <= '1';
         end if;
 

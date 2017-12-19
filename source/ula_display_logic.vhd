@@ -203,31 +203,31 @@ begin
       o_dispend <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
+
+
         if i_ck_s1m2 = '1' then       
+          -- LSFF2 ensures reset occurs on vcnt 0 only. LSN1 and LSN2 >= 20 hsync_cnt.
+          if vsync_cnt = 0 and hsync_cnt >= 20 then
+            o_dispend <= false;
+          end if;
 
           o_rtc <= false;
 
-          -- TODO: [Gary] Reset for this occurred on vcnt 0 with LSN1 & LSN2
-          --       as it's used for pausing cpu too. Handle that as separate signal instead?
-          o_dispend <= false;
-                  
-          -- DISPg0 range [500,503], DISPg1 range [512,625) isr clocked by falling edge.
+          -- TODO: Should this occur on 25-26 rather than just 25?
+          -- DISPg0 range [500,503], DISPg1 range [512,625) isr clocked by /DISPEND falling edge
           -- Aligned to hsync leading edge.
           if hsync_cnt = 25 then
             if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
               o_dispend <= true;
             end if;
 
-            -- TODO: [Gary] Check duration of dispend for graphics modes.
-            -- > 512 may be usable once ula switched to leading edge test.
-            if i_gmode and vsync_cnt >= 512 and vsync_cnt <= 515 then
+            if i_gmode and vsync_cnt >= 512 then
               o_dispend <= true;
             end if;
           end if;
 
           -- Real RTC is high for range [200,207], isr clocked by falling edge
-          -- TODO: [Gary] adjust to 200-207?
-          if vsync_cnt = 200 then
+          if vsync_cnt >= 200 and vsync_cnt <= 207 then
             o_rtc <= true;
           end if;
 
