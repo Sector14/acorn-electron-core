@@ -295,13 +295,9 @@ begin
 
       phi_out <= '0';
 
-      -- TODO: [Gary] Is this still required with switch to ula_display_logic?
-      --              if so will it be required once hpix/vpix replaced?
-      --              and if so, is the alignment still correct? rearranging code
-      --              may have shifted timing!      
       -- Bring video out of reset to align hpix 0 with phase 0
-      if (i_cph_sys(0) = '1' and vid_rst = '1' and clk_phase = "1111") then
-        vid_rst <= '0';
+      if (i_cph_sys(3) = '1' and vid_rst = '1' and clk_phase = "1110") then
+         vid_rst <= '0';
       end if;
       
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
@@ -395,17 +391,29 @@ begin
         ck_s16m32 <= '0';
         ck_s16m16 <= '0';
 
-        -- (M): 16MHz/16 = 1MHz for display logic
-        if (div32 = 15 or div32 = 31) then
-          ck_s16m16 <= '1';
-        end if;
+        -- TODO: [Gary] Old method of delaying vid_rst slightly to align hpix 0 with
+        --       clk_phase 0 no longer works with the new display logic. As hsync 25
+        --       resets the hpix count to 0 and this is time on 0.5MHz clock, no matter
+        --       what vid_rst is used the display logic auto corrects to pixel 0
+        --       occuring on phase 1. As a temporary workaround, display logic is
+        --       now clocked on phase 15 causing hpix 0 to now be set on phase 0.
+        --       If hpix 0 is not aligned to phase 0, depending on the amount of misalignment
+        --       the first few pixels of a new horizontal line will end up rendering at the
+        --       end of the previous line and memory contention will be incorrectly timed
+        --       causing first col to contain "snow" from a failed ram read.
+        if vid_rst = '0' then
+          -- (M): 16MHz/16 = 1MHz for display logic
+          if (div32 = 15 or div32 = 31) then
+            ck_s16m16 <= '1';
+          end if;
 
-        -- (M/2): 16MHz/32 = 0.5MHz for display logic
-        if div32 = 31 then
-          ck_s16m32 <= '1';
-          div32 := 0;
-        else
-          div32 := div32 + 1;
+          -- (M/2): 16MHz/32 = 0.5MHz for display logic
+          if div32 = 31 then
+            ck_s16m32 <= '1';
+            div32 := 0;
+          else
+            div32 := div32 + 1;
+          end if;
         end if;
 
         -- (M/8): 16MHz/128 = 0.125MHz for SOUND
@@ -496,6 +504,7 @@ begin
 
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
+  -- TODO: [Gary] Blanking signals should come from ula_display_logic and hpix/vpix usage removed.
   vid_v_blank <= (vpix >= 256) or (vpix >= 250 and vid_text_mode);
   vid_h_blank <= (hpix < c_hoffset) or (hpix >= (c_hoffset+640));
 
@@ -682,11 +691,10 @@ begin
           --                     (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
         end if;
 
-        -- TODO: VPIX 0 is now the FIRST active line of the 250-256 lines NOT
-        --       the first line of the 9 line border prior to active line.
-        -- TODO: When does the ULA really latch this?
-        --if (vpix = 0) then
-        if vid_v_blank then
+        -- TODO: When does ULA actually latch this? First active line or continually
+        --       during vblanking?
+        if (vpix = 281) then
+        --if vid_v_blank then
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
           row_addr := '0' & mode_base_addr & "000000";
@@ -696,8 +704,11 @@ begin
 
       
         if (not vid_v_blank) then
+          -- TODO: Here and usage in ram_contention, the read 1 byte before 96+640 will be the
+          --       last on this line. Could save 1 byte of contention by testing against 1 byte
+          --       earlier (accounting for 1/2/4bbp). Did Electron?
           -- end of active line
-          if (hpix = (c_hoffset + 640)) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
+          if (hpix = (c_hoffset + 640)) then
             if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
               vid_row_count <= 0;
               if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then

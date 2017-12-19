@@ -181,10 +181,6 @@ begin
           end if;
 
           -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
-          -- TODO: Should vsync line counts be done separate to this for display purposes
-          --       so the reset can be done in sync with hsync despite this being offset by
-          --       partials? ATM getting partial end line for one frame and partial start
-          --       line for next?
           -- TODO: Should be 31 and 15? but doing so aligns inc of vcnt to 224 instead of
           --       192 (ie 32fp, 64hs, 96bp = 192)
           if hsync_cnt = 31 or hsync_cnt = 15 then
@@ -241,7 +237,8 @@ begin
   end process;
 
   -- TEMPORARY: will be replaced once further ULA logic has been deciphered
-  --            from the schematics. This section bears little resemblance to the real ULA.
+  --            from the schematics. This section bears little resemblance to how the
+  --            real ULA tracks data for video addressing.
   p_active_pixels : process(i_clk, i_rst)
     variable hack_waithsync : boolean;
   begin
@@ -267,12 +264,11 @@ begin
           hack_waithsync := true;
         end if;
 
-        -- TODO: [Gary] numbers will be wrong with this with 0 being skipped every
-        --       other field as far as data output goes, but ula shouldn't really use
-        --       vpix directly although it is currently.
         if hack_waithsync then
           -- Delay switching to line 0 until next hsync to bring both fields into alignment
           -- for vsync->partial pulse->28 blank lines->line 0 of data.
+          -- vpix will only be "accurate" for the start of each scanline and ULA really
+          -- shouldn't be using this value directly, but using blanking signals.
           vpix <= to_unsigned(312, 14);
           if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
             hack_waithsync := false;
@@ -286,25 +282,21 @@ begin
         if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
           hpix_total <= (others => '0');
           hpix <= (others => '0');
-        elsif (hsync_cnt = 14 or hsync_cnt = 30) and vsync_cnt = 624 and i_ck_s1m2 = '1' then
-          -- Just done line 312.5 eg the 1/2 scanline. Adjust hpix counters for next field due to 1/2 offset
-          hpix_total <= to_unsigned(192,14);
         else
           hpix_total <= hpix_total + 1;
+        
+          -- hsync 4us (64px), 
+          -- bp 6us (96px), border 6us (96px)
+          -- active 40us (640px)
+          -- border 6us (96px), fp 2us (32px)
+          -- hpix_total with fp+hs+bp = 192.
+          if hpix_total >= 192 and hpix_total < 1023 then
+            hpix <= hpix + 1;
+          else
+            hpix <= (others => '0');
+          end if;
         end if;
 
-        -- hsync 4us (64px), 
-        -- bp 6us (96px), border 6us (96px)
-        -- active 40us (640px)
-        -- border 6us (96px), fp 2us (32px)
-        -- hpix_total with fp+hs+bp = 192.
-        if (hsync_cnt = 14 or hsync_cnt = 30) and vsync_cnt = 624 and i_ck_s1m2 = '1' then
-          hpix <= (others => '0');
-        elsif hpix_total >= 192 and hpix_total < 1023 then
-          hpix <= hpix + 1;
-        else
-          hpix <= (others => '0');
-        end if;
 
         -- Line 0 is first visible display line.
         if vsync_cnt < 576 and hpix_total >= 192 and hpix_total < 1023 then
