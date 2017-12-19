@@ -95,7 +95,7 @@ entity ULA_DISPLAY_LOGIC is
       
       -- o_bline  -- 2 lines of blanking every 8?
       -- o_blank  -- border blanking?
-      -- o_cntwh
+      -- o_cntwh  -- extension every other field for vpix 0 start?
 
       -- TODO: Electron display logic didn't output hpix/vpix, not sure where that
       --       was tracked. Handle with separate process that gens same as replay did
@@ -213,7 +213,7 @@ begin
                   
           -- DISPg0 range [500,503], DISPg1 range [512,625) isr clocked by falling edge.
           -- Aligned to hsync leading edge.
-          if hsync_cnt = 24 then
+          if hsync_cnt = 25 then
             if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
               o_dispend <= true;
             end if;
