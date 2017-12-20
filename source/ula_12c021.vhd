@@ -138,12 +138,15 @@ architecture RTL of ULA_12C021 is
   signal dig_hsync, dig_vsync, dig_de : bit1;
 
   signal vid_rst : bit1;
+
   signal vpix, hpix : unsigned(13 downto 0);
   signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
   signal vid_row_count : integer range 0 to 10;
 
-  signal disp_rtc, disp_frame_end : boolean;
+  signal disp_rtc, disp_frame_end     : boolean;
   signal disp_rtc_l, disp_frame_end_l : boolean;
+  signal disp_addint                  : boolean;
+
   signal ram_contention : boolean;
 
   -- Audio
@@ -492,6 +495,8 @@ begin
     o_rtc                   => disp_rtc,
     o_dispend               => disp_frame_end,
 
+    o_addint                => disp_addint,
+
     o_hpix                  => hpix,
     o_vpix                  => vpix,
     o_de                    => o_de
@@ -710,14 +715,7 @@ begin
           --                     (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
         end if;
 
-        -- TODO: When does ULA actually latch this? First active line or continually
-        --       during vblanking? Originally used vpix=0 which would be equiv to 281 in 
-        --       new version, except vpix is only accurate for first half of scanline and
-        --       really shouldn't be relied on...
-        if (vpix = 303) then
-        -- vpix = 0 on old version, occurred at end of line 22. EG line 23 was first active line
-        -- which equates to 281.5 + 22 = 303.5. Double check when Electron latched this.
-        --if vid_v_blank then
+        if disp_addint then
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
           row_addr := '0' & mode_base_addr & "000000";

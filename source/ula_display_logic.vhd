@@ -96,6 +96,7 @@ entity ULA_DISPLAY_LOGIC is
       -- o_bline  -- 2 lines of blanking every 8?
       -- o_blank  -- border blanking?
       -- o_cntwh  -- extension every other field for vpix 0 start?
+      o_addint              : out boolean;  
 
       -- TODO: Electron display logic didn't output hpix/vpix, not sure where that
       --       was tracked. Handle with separate process that gens same as replay did
@@ -137,7 +138,7 @@ begin
       hsync_cnt <= (others => '0');
     elsif rising_edge(i_clk) then
       if i_ena = '1' and i_ck_s1m2 = '1' then
-
+        
         hsync <= '0';
 
         -- 4us pulse (covers hsync active during 26 & 27)
@@ -159,6 +160,7 @@ begin
       vsync <= '0';
       vsync_l <= '0';
       vsync_cnt <= (others => '0');
+      
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -168,7 +170,7 @@ begin
         end if;
 
         if i_ck_s1m2 = '1' then       
-          vsync <= '0';         
+          vsync <= '0';
 
           -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
           -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
@@ -179,13 +181,11 @@ begin
           if vsync_cnt >= 563 and vsync_cnt <= 567 then
             vsync <= '1';
           end if;
-
+          
           -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
-          -- TODO: Should be 31 and 15? but doing so aligns inc of vcnt to 224 instead of
-          --       192 (ie 32fp, 64hs, 96bp = 192)
           if hsync_cnt = 31 or hsync_cnt = 15 then
             if vsync_cnt = 624 then
-              vsync_cnt <= (others => '0');              
+              vsync_cnt <= (others => '0');
             else
               vsync_cnt <= vsync_cnt + 1; 
             end if;
@@ -201,40 +201,50 @@ begin
     if i_rst = '1' then
       o_rtc <= false;
       o_dispend <= false;
+      o_addint <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
+        if i_ck_s1m2 = '1' then
+          o_addint <= false;
+          o_rtc <= false;
 
-        if i_ck_s1m2 = '1' then       
-          -- LSFF2 ensures reset occurs on vcnt 0 only. LSN1 and LSN2 >= 20 hsync_cnt.
-          if vsync_cnt = 0 and hsync_cnt >= 20 then
+          -- LSFF2 ensures reset occurs once after vcnt reset only. LSN1 and LSN2 >= 20 hsync_cnt.
+          if vsync_cnt <= 1 and hsync_cnt >= 19 and hsync_cnt < 26 then
             o_dispend <= false;
           end if;
 
-          o_rtc <= false;
-
-          -- TODO: Should this occur on 25-26 rather than just 25?
-          -- DISPg0 range [500,503], DISPg1 range [512,625) isr clocked by /DISPEND falling edge
-          -- Aligned to hsync leading edge.
+          -- Dispend aligned to hsync leading edge
           if hsync_cnt = 25 then
+            -- DISPg0 range [500,503]
             if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
               o_dispend <= true;
             end if;
 
+            -- DISPg1 range [512,625)
             if i_gmode and vsync_cnt >= 512 then
               o_dispend <= true;
             end if;
           end if;
 
-          -- Real RTC is high for range [200,207], isr clocked by falling edge
+          -- RTC
           if vsync_cnt >= 200 and vsync_cnt <= 207 then
             o_rtc <= true;
+          end if;
+
+          -- Start of new active display vcnt 0
+          if (hsync_cnt = 31 or hsync_cnt = 15) and vsync_cnt = 624 then
+            o_addint <= true;             
           end if;
 
         end if;
       end if;
     end if;
   end process;
+
+  -- vid row count
+  -- set o_bline during 2 lines after every 8 depending on gfx mode.
+
 
   -- TEMPORARY: will be replaced once further ULA logic has been deciphered
   --            from the schematics. This section bears little resemblance to how the
@@ -278,7 +288,7 @@ begin
           vpix <= "00000" & vsync_cnt(9 downto 1);
         end if;
         
-        -- reset on end of hsync
+        -- reset on front porch, one cnt pre hsync
         if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
           hpix_total <= (others => '0');
           hpix <= (others => '0');
