@@ -134,18 +134,19 @@ architecture RTL of ULA_12C021 is
   constant c_hoffset : integer := 96;
 
   -- Framework Video
-  signal ana_hsync, ana_vsync, ana_csync, ana_de : bit1;
-  signal dig_hsync, dig_vsync, dig_de : bit1;
+  signal ana_hsync, ana_hsync_l : bit1;
+  signal ana_vsync, ana_csync, ana_de : bit1;
 
   signal vid_rst : bit1;
 
-  signal vpix, hpix : unsigned(13 downto 0);
-  signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
-  signal vid_row_count : integer range 0 to 10;
+  signal vid_text_mode : boolean;
+  signal disp_blank, disp_bline : boolean;
+  signal disp_rowcount : integer range 0 to 10;
 
   signal disp_rtc, disp_frame_end     : boolean;
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
+
 
   signal ram_contention : boolean;
 
@@ -495,10 +496,12 @@ begin
     o_rtc                   => disp_rtc,
     o_dispend               => disp_frame_end,
 
+    o_bline                 => disp_bline,
     o_addint                => disp_addint,
+    o_blank                 => disp_blank,
 
-    o_hpix                  => hpix,
-    o_vpix                  => vpix,
+    o_rowcount              => disp_rowcount,
+
     o_de                    => o_de
   );
 
@@ -528,9 +531,6 @@ begin
 
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
-  -- TODO: [Gary] Blanking signals should come from ula_display_logic and hpix/vpix usage removed.
-  vid_v_blank <= (vpix >= 256) or (vpix >= 250 and vid_text_mode);
-  vid_h_blank <= (hpix < c_hoffset) or (hpix >= (c_hoffset+640));
 
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pixel_data : word(7 downto 0);
@@ -570,107 +570,104 @@ begin
           repeat_count := repeat_count_reg;
         end if;
 
-        if (not vid_v_blank and vid_row_count < 8) then
+        if not disp_blank then
+        
+          logical_colour := (others => '0');
+
+          -- Decode pixel to logical colour
+          case misc_control(MISC_DISPLAY_MODE) is
+            when "000" | "011" | "100" | "110" | "111" =>
+              -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
+              logical_colour := "000" & pixel_data(pix_idx);
+            when "001" | "101" =>
+              -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
+              logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
+            when "010" =>
+              -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
+                logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
+            when others =>
+          end case;
+
+          -- Palette Lookup (AUG p215)
+          -- TODO: [Gary] There has to be some logic to the palette register format that will
+          --              avoid this big case but I'm not seeing it.
+          case misc_control(MISC_DISPLAY_MODE) is
+            when "000" | "011" | "100" | "110" | "111" =>
+              -- 2 colour
+              case to_integer(logical_colour) is 
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when others => -- 1
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+              end case;
+              
+            when "001" | "101" =>
+              case to_integer(logical_colour) is 
+                -- 4 colour
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when 1 =>
+                  rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                when 2 => 
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                when others => -- 3
+                  rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+              end case;
+
+            when "010" =>
+              case to_integer(logical_colour) is 
+                -- 16 colour
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when 1 =>
+                  rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
+                when 2 => 
+                  rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                when 3 => 
+                  rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
+                when 4 =>
+                  rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
+                when 5 => 
+                  rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
+                when 6 => 
+                  rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
+                when 7 =>
+                  rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
+                when 8 => 
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                when 9 => 
+                  rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
+                when 10 =>
+                  rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+                when 11 => 
+                  rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
+                when 12 => 
+                  rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
+                when 13 =>
+                  rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
+                when 14 => 
+                  rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
+                when others => -- 15
+                  rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
+              end case;
+
+            when others => -- unused
+              rgb := "111";
+          end case;
+
+          -- Palette uses '1' to turn off that colour
+          o_red <= not rgb(2);
+          o_green <= not rgb(1);
+          o_blue <= not rgb(0);
           
-          if (not vid_h_blank) then            
-
-            logical_colour := (others => '0');
-
-            -- Decode pixel to logical colour
-            case misc_control(MISC_DISPLAY_MODE) is
-              when "000" | "011" | "100" | "110" | "111" =>
-                -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
-                logical_colour := "000" & pixel_data(pix_idx);
-              when "001" | "101" =>
-                -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
-                logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
-              when "010" =>
-                -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
-                 logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
-              when others =>
-            end case;
-
-            -- Palette Lookup (AUG p215)
-            -- TODO: [Gary] There has to be some logic to the palette register format that will
-            --              avoid this big case but I'm not seeing it.
-            case misc_control(MISC_DISPLAY_MODE) is
-              when "000" | "011" | "100" | "110" | "111" =>
-                -- 2 colour
-                case to_integer(logical_colour) is 
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when others => -- 1
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                end case;
-                
-              when "001" | "101" =>
-                case to_integer(logical_colour) is 
-                  -- 4 colour
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when 1 =>
-                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                  when 2 => 
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                  when others => -- 3
-                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
-                end case;
-
-              when "010" =>
-                case to_integer(logical_colour) is 
-                  -- 16 colour
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when 1 =>
-                    rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
-                  when 2 => 
-                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                  when 3 => 
-                    rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
-                  when 4 =>
-                    rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
-                  when 5 => 
-                    rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
-                  when 6 => 
-                    rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
-                  when 7 =>
-                    rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
-                  when 8 => 
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                  when 9 => 
-                    rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
-                  when 10 =>
-                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
-                  when 11 => 
-                    rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
-                  when 12 => 
-                    rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
-                  when 13 =>
-                    rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
-                  when 14 => 
-                    rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
-                  when others => -- 15
-                    rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
-                end case;
-
-              when others => -- unused
-                rgb := "111";
-            end case;
-
-            -- Palette uses '1' to turn off that colour
-            o_red <= not rgb(2);
-            o_green <= not rgb(1);
-            o_blue <= not rgb(0);
-            
-            -- Handle repeated pixel modes
-            if repeat_count = 0 then
-              pix_idx := pix_idx - 1;
-              repeat_count := repeat_count_reg;
-            else
-              repeat_count := repeat_count - 1;
-            end if;
-
+          -- Handle repeated pixel modes
+          if repeat_count = 0 then
+            pix_idx := pix_idx - 1;
+            repeat_count := repeat_count_reg;
+          else
+            repeat_count := repeat_count - 1;
           end if;
+
         end if;
 
       end if;
@@ -687,7 +684,7 @@ begin
     if (rst = '1' or vid_rst = '1') then
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
-      vid_row_count <= 0;
+      
       ram_contention <= false;
     elsif rising_edge(i_clk_sys) then      
       if (i_ena_ula = '1') then
@@ -700,8 +697,9 @@ begin
           --              and no more bytes follow it, just h_sync/border. render process needs 704 
           --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
           --              under contention than needed.
-          ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
-                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          -- TODO: [Gary] o_blank is process cpu aligned to 1MHz, check if this is already
+          --              aligned to phase 0000 and if not, can it be/should it be?
+          ram_contention <= not disp_blank;
           
           -- Ram contention does not need to start before active video as ULA always has
           -- at least slot 8 to prepare first byte of data. It may however be able to end
@@ -715,40 +713,39 @@ begin
           --                     (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
         end if;
 
+        -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
         if disp_addint then
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
           row_addr := '0' & mode_base_addr & "000000";
           read_addr := row_addr;
-          vid_row_count <= 0;
         end if;
 
-      
-        if (not vid_v_blank) then
+        ana_hsync_l <= ana_hsync;
+
+        --if (not vid_v_blank) then
           -- TODO: Here and usage in ram_contention, the read 1 byte before 96+640 will be the
           --       last on this line. Could save 1 byte of contention by testing against 1 byte
           --       earlier (accounting for 1/2/4bbp). Did Electron?
-          -- end of active line
-          if (hpix = (c_hoffset + 640)) then
-            if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
-              vid_row_count <= 0;
-              if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
-                row_addr := row_addr + 640;
-              else
-                row_addr := row_addr + 320;
-              end if;
-              read_addr := row_addr;
+          
+          -- end of line block (8 or 10)            
+          if (ana_hsync = '1' and ana_hsync_l = '0') and disp_bline then
+            if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
+              row_addr := row_addr + 640;
             else
-              vid_row_count <= vid_row_count + 1;
-              read_addr := row_addr + vid_row_count + 1;
+              row_addr := row_addr + 320;
             end if;
+            read_addr := row_addr;
+          else
+            read_addr := row_addr + disp_rowcount + 1;
           end if;
-        end if;
+        --end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          if (not (vid_v_blank or vid_h_blank) and vid_row_count < 8 ) then          
-              read_addr := read_addr + 8;
+          -- TODO: [Gary] Might be using not cntwh instead?
+          if not disp_blank then
+            read_addr := read_addr + 8;
           end if;
         end if;  
 

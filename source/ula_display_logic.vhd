@@ -89,24 +89,15 @@ entity ULA_DISPLAY_LOGIC is
       o_rtc                 : out boolean;
       o_dispend             : out boolean;
 
-      -- TODO: Generate following signals and adjust ULA to use these instead of the
-      --       existing timing which was based on hpix/vpix.
-      --o_pause_cpu           : out bit1;
       
-      -- o_bline  -- 2 lines of blanking every 8?
-      -- o_blank  -- border blanking?
-      -- o_cntwh  -- extension every other field for vpix 0 start?
-      o_addint              : out boolean;  
+      o_bline               : out boolean;  -- end of 8/10 line row based on gfx mode
+      o_addint              : out boolean;
+      -- o_pcpu             : out boolean;  -- process cpu, outside horiz and vert active display region
+      o_blank               : out boolean;  -- ( /pcpu sync'd to 1MHz. High outside active 640px)
+      -- o_cntwh            : out boolean;  -- low within horiz active display region
 
-      -- TODO: Electron display logic didn't output hpix/vpix, not sure where that
-      --       was tracked. Handle with separate process that gens same as replay did
-      --       with 0..1023 h range and 0..625 v? and temp export from here for now?
-      -- These are temporary.
-      -- hpix is range 0..831, allows 96px left border, 640px display and 96px right border.
-      -- vpix is range 0..312 where 312 will only be active for 1/2 a scanline. Two fields
-      -- of 312.5 lines.
-      o_hpix                : out unsigned(13 downto 0);
-      o_vpix                : out unsigned(13 downto 0);
+      o_rowcount            : out integer range 0 to 10;
+
       o_de                  : out bit1
   );
 end;
@@ -120,6 +111,14 @@ architecture RTL of ULA_DISPLAY_LOGIC is
   -- vsync [6-15] in half scanlines
   signal vsync_cnt : unsigned(9 downto 0);
 
+  signal vid_row_count : integer range 0 to 10;
+
+  signal lsff2 : boolean;
+
+  signal cntwh : boolean;
+  signal dispend : boolean;
+  signal pcpu : boolean;
+
   -- Temp counts
   signal hpix_total, vpix_total, hpix, vpix : unsigned(13 downto 0);
 begin
@@ -128,8 +127,11 @@ begin
   o_hsync <= hsync;
   o_vsync <= vsync_l;
 
-  o_hpix <= hpix;
-  o_vpix <= vpix;
+  o_dispend <= dispend;
+  --o_pcpu <= pcpu;
+  -- o_cntwh <= cntwh;
+
+  o_rowcount <= vid_row_count;
 
   p_hsync : process(i_clk, i_rst)
   begin
@@ -152,7 +154,6 @@ begin
     end if;
   end process;
 
-  -- TODO: Pipeline hsync so it can be used in other processes whilst retaining alignment?
 
   p_vsync : process(i_clk, i_rst)
   begin
@@ -186,9 +187,14 @@ begin
           if hsync_cnt = 31 or hsync_cnt = 15 then
             if vsync_cnt = 624 then
               vsync_cnt <= (others => '0');
+              lsff2 <= false;
             else
               vsync_cnt <= vsync_cnt + 1; 
             end if;
+          end if;
+
+          if hsync_cnt = 28 then
+            lsff2 <= true;
           end if;
         end if;
 
@@ -196,34 +202,90 @@ begin
     end if;
   end process;
 
+
+  -- vid row count
+  p_vid_row : process(i_clk, i_rst) 
+  begin
+    if i_rst = '1' then
+      vid_row_count <= 0;
+    elsif rising_edge(i_clk) then
+      if i_ena = '1' and i_ck_s1m2 = '1' then
+
+        -- forced reset on start of new field
+        if not lsff2 then
+          vid_row_count <= 0;
+        end if;
+
+        -- row count "clocked" by LS falling edge i.e end of hsync
+        if hsync_cnt = 26 then
+          if (vid_row_count = 9) or (vid_row_count = 7 and i_gmode) then
+            vid_row_count <= 0;
+          else
+            vid_row_count <= vid_row_count + 1;
+          end if;
+        end if;
+
+      end if;
+    end if;
+  end process;
+
+
+  o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
+  pcpu <= vid_row_count >= 8 or cntwh or dispend or not i_gmode;
+  
+
+  p_inactive_video : process(i_clk, i_rst) 
+  begin
+    if i_rst = '1' then
+      cntwh <= false;
+    elsif rising_edge(i_clk) then
+      if i_ena = '1' then
+        if i_ck_s1m = '1' then
+          
+          cntwh <= false;
+          
+          -- LSN2 >= 20 i.e 12 cycles (24us) sync+border duration of a single scanline
+          if hsync_cnt >= 20 then
+            cntwh <= true;
+          end if;
+
+          -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
+
+          -- pcpu syncrhonised to 1MHz
+          o_blank <= pcpu;
+        end if;
+      end if;
+    end if;
+  end process;
+
+
   p_display_interrupts : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       o_rtc <= false;
-      o_dispend <= false;
+      dispend <= false;
       o_addint <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
-        if i_ck_s1m2 = '1' then
-          o_addint <= false;
+        if i_ck_s1m2 = '1' then          
           o_rtc <= false;
 
-          -- LSFF2 ensures reset occurs once after vcnt reset only. LSN1 and LSN2 >= 20 hsync_cnt.
-          if vsync_cnt <= 1 and hsync_cnt >= 19 and hsync_cnt < 26 then
-            o_dispend <= false;
+          -- LSFF2 ensures reset occurs once after vcnt reset only during none active video LSN2
+          if not lsff2 and hsync_cnt >= 20 then
+            dispend <= false;
           end if;
 
           -- Dispend aligned to hsync leading edge
-          if hsync_cnt = 25 then
+          if hsync_cnt = 25 or hsync_cnt = 26 then
             -- DISPg0 range [500,503]
             if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
-              o_dispend <= true;
+              dispend <= true;
             end if;
 
             -- DISPg1 range [512,625)
             if i_gmode and vsync_cnt >= 512 then
-              o_dispend <= true;
+              dispend <= true;
             end if;
           end if;
 
@@ -233,6 +295,7 @@ begin
           end if;
 
           -- Start of new active display vcnt 0
+          o_addint <= false;
           if (hsync_cnt = 31 or hsync_cnt = 15) and vsync_cnt = 624 then
             o_addint <= true;             
           end if;
@@ -242,8 +305,6 @@ begin
     end if;
   end process;
 
-  -- vid row count
-  -- set o_bline during 2 lines after every 8 depending on gfx mode.
 
 
   -- TEMPORARY: will be replaced once further ULA logic has been deciphered
@@ -295,6 +356,10 @@ begin
         else
           hpix_total <= hpix_total + 1;
         
+        -- TODO: [Gary] is hpix 0 needs to be first active pixel. 
+        -- So 640 then border then sync then border, only really needs to count
+        -- 0..639 then? and tbh hpix may not be required at all anymore.
+
           -- hsync 4us (64px), 
           -- bp 6us (96px), border 6us (96px)
           -- active 40us (640px)
