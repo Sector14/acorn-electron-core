@@ -140,12 +140,12 @@ architecture RTL of ULA_12C021 is
   signal vid_rst : bit1;
 
   signal vid_text_mode : boolean;
-  signal disp_blank, disp_bline : boolean;
   signal disp_rowcount : integer range 0 to 10;
-
   signal disp_rtc, disp_frame_end     : boolean;
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
+  signal disp_blank, disp_bline       : boolean;
+  signal disp_cntwh                   : boolean;
 
 
   signal ram_contention : boolean;
@@ -499,6 +499,7 @@ begin
     o_bline                 => disp_bline,
     o_addint                => disp_addint,
     o_blank                 => disp_blank,
+    o_cntwh                 => disp_cntwh,
 
     o_rowcount              => disp_rowcount,
 
@@ -570,7 +571,7 @@ begin
           repeat_count := repeat_count_reg;
         end if;
 
-        if not disp_blank then
+        if not disp_cntwh and not disp_frame_end and disp_rowcount < 8 then
         
           logical_colour := (others => '0');
 
@@ -744,7 +745,7 @@ begin
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
           -- TODO: [Gary] Might be using not cntwh instead?
-          if not disp_blank then
+          if not disp_cntwh then
             read_addr := read_addr + 8;
           end if;
         end if;  

@@ -94,8 +94,9 @@ entity ULA_DISPLAY_LOGIC is
       o_addint              : out boolean;
       -- o_pcpu             : out boolean;  -- process cpu, outside horiz and vert active display region
       o_blank               : out boolean;  -- ( /pcpu sync'd to 1MHz. High outside active 640px)
-      -- o_cntwh            : out boolean;  -- low within horiz active display region
+      o_cntwh               : out boolean;  -- low within horiz active display region
 
+      -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
 
       o_de                  : out bit1
@@ -129,7 +130,7 @@ begin
 
   o_dispend <= dispend;
   --o_pcpu <= pcpu;
-  -- o_cntwh <= cntwh;
+  o_cntwh <= cntwh;
 
   o_rowcount <= vid_row_count;
 
@@ -179,7 +180,7 @@ begin
           -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
           -- [562,566] gives a 31+p, vs, p+28 lines after/before active video for each field.
           -- Expected to use 563 with changing occuring following tick?
-          if vsync_cnt >= 563 and vsync_cnt <= 567 then
+          if vsync_cnt >= 564 and vsync_cnt <= 568 then
             vsync <= '1';
           end if;
           
@@ -193,7 +194,7 @@ begin
             end if;
           end if;
 
-          if hsync_cnt = 28 then
+          if hsync_cnt = 27 then
             lsff2 <= true;
           end if;
         end if;
@@ -218,6 +219,7 @@ begin
 
         -- row count "clocked" by LS falling edge i.e end of hsync
         if hsync_cnt = 26 then
+          -- if bline...
           if (vid_row_count = 9) or (vid_row_count = 7 and i_gmode) then
             vid_row_count <= 0;
           else
@@ -231,6 +233,8 @@ begin
 
 
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
+
+  -- TODO: [Gary] Something wrong with this? 
   pcpu <= vid_row_count >= 8 or cntwh or dispend or not i_gmode;
   
 
@@ -252,7 +256,7 @@ begin
           -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
 
           -- pcpu syncrhonised to 1MHz
-          o_blank <= pcpu;
+          o_blank <= not pcpu;
         end if;
       end if;
     end if;
@@ -317,13 +321,11 @@ begin
       vpix <= (others => '0');
       hpix <= (others => '0');
       hpix_total <= (others => '0');      
-      o_de <= '0';
 
       hack_waithsync := false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
-        o_de <= '0';
 
         -- vpix 0 is first _active_ line of 288. 
         -- 250 (500) to 256 (512) lines (1/2 lines) active.
@@ -349,16 +351,17 @@ begin
           vpix <= "00000" & vsync_cnt(9 downto 1);
         end if;
         
-        -- reset on front porch, one cnt pre hsync
-        if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
+        -- reset after back porch and border, just as active video begins
+        --if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
+        if (hsync_cnt = 0 and i_ck_s1m = '1') and cntwh then
           hpix_total <= (others => '0');
           hpix <= (others => '0');
         else
           hpix_total <= hpix_total + 1;
         
-        -- TODO: [Gary] is hpix 0 needs to be first active pixel. 
-        -- So 640 then border then sync then border, only really needs to count
-        -- 0..639 then? and tbh hpix may not be required at all anymore.
+          -- TODO: [Gary] is hpix 0 needs to be first active pixel. 
+          -- So 640 then border then sync then border, only really needs to count
+          -- 0..639 then? and tbh hpix may not be required at all anymore.
 
           -- hsync 4us (64px), 
           -- bp 6us (96px), border 6us (96px)
@@ -372,14 +375,23 @@ begin
           end if;
         end if;
 
-
-        -- Line 0 is first visible display line.
-        if vsync_cnt < 576 and hpix_total >= 192 and hpix_total < 1023 then
-          o_de <= '1';
-        end if;
-
       end if;
     end if;
   end process;
 
+  -- TODO: [Gary] May want this to use hsync_cnt earlier than 20 so that de also
+  --       is high during 96 left/right border?
+  o_de <= '1' when vsync_cnt < 576 and not cntwh else '0';
 end;
+
+
+-- TODO: [Gary] getting incorrect pulses either side of vsync, 26 and 30 (inc partials)
+--              Should be 29 and 32 incl partials.
+-- TODO: Getting no display output in text modes. 
+-- TODO: Graphics modes show ">" repeated for entire line. There's no row increment occuring?
+-- TODO: Left hpix border of 96 is now missing!
+-- TODO: In some modes cpu processing might be totally stopping? like mode 4 & 5?
+-- TODO: is disp_bline and hsync edge detection correct for ula line 733?
+--       could address never get incremented? or is it the read_addr + 8 part?
+--       check if disp_addint is firing for too long?
+-- TODO: This is going to need isim checking to be sure edges are all correct.
