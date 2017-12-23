@@ -123,10 +123,11 @@ architecture RTL of ULA_DISPLAY_LOGIC is
   -- Temp counts
   signal hpix_total, vpix_total, hpix, vpix : unsigned(13 downto 0);
 begin
-
-  o_csync <= hsync or vsync_l;
+  -- TODO: [Gary] Will need to latch vsync to delay by 1us to better match Electron's
+  --       partial pulses either side of vsync. 
+  o_csync <= hsync or vsync;
   o_hsync <= hsync;
-  o_vsync <= vsync_l;
+  o_vsync <= vsync;
 
   o_dispend <= dispend;
   --o_pcpu <= pcpu;
@@ -143,9 +144,15 @@ begin
       if i_ena = '1' and i_ck_s1m2 = '1' then
         
         hsync <= '0';
+        -- Hsync appears to need to occur during 24 and 25 rather than 26-27 as schematics
+        -- appear to suggest? If interpret schematics to use 25, it doesn't look like 
+        -- hsync could be 4us, instead it's one clock cycle or 2us which is certainly wrong.
+        -- There doesn't look to be a way for 24-25 to be used via current schematics unlike
+        -- 26-27. But that would throw otu rest of sync pulses if active 640 pixels are meant
+        -- to be from hcnt 0??
 
-        -- 4us pulse (covers hsync active during 26 & 27)
-        if hsync_cnt = 25 or hsync_cnt = 26 then
+        -- 4us pulse (covers hsync active during 25 & 26)
+        if hsync_cnt = 23 or hsync_cnt = 24 then
           hsync <= '1';
         end if;
 
@@ -155,11 +162,17 @@ begin
     end if;
   end process;
 
+  -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
+  -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
+  -- the state 00 lasts 2 lines. Although seems to amount to 3.5 rather than 2.5
+  -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
+  -- [562,566] gives a 31+p, vs, p+28 lines after/before active video for each field.
+  -- Expected to use 563 with changing occuring following tick?
+  vsync <= '1' when vsync_cnt >= 564 and vsync_cnt <= 568 else '0';
 
   p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
-      vsync <= '0';
       vsync_l <= '0';
       vsync_cnt <= (others => '0');
       
@@ -172,17 +185,6 @@ begin
         end if;
 
         if i_ck_s1m2 = '1' then       
-          vsync <= '0';
-
-          -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
-          -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
-          -- the state 00 lasts 2 lines. Although seems to amount to 3.5 rather than 2.5
-          -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
-          -- [562,566] gives a 31+p, vs, p+28 lines after/before active video for each field.
-          -- Expected to use 563 with changing occuring following tick?
-          if vsync_cnt >= 564 and vsync_cnt <= 568 then
-            vsync <= '1';
-          end if;
           
           -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
           if hsync_cnt = 31 or hsync_cnt = 15 then
@@ -194,7 +196,7 @@ begin
             end if;
           end if;
 
-          if hsync_cnt = 27 then
+          if hsync_cnt = 25 then
             lsff2 <= true;
           end if;
         end if;
@@ -212,19 +214,19 @@ begin
     elsif rising_edge(i_clk) then
       if i_ena = '1' and i_ck_s1m2 = '1' then
 
-        -- forced reset on start of new field
-        if not lsff2 then
-          vid_row_count <= 0;
-        end if;
-
         -- row count "clocked" by LS falling edge i.e end of hsync
-        if hsync_cnt = 26 then
+        if hsync_cnt = 25 then
           -- if bline...
           if (vid_row_count = 9) or (vid_row_count = 7 and i_gmode) then
             vid_row_count <= 0;
           else
             vid_row_count <= vid_row_count + 1;
           end if;
+        end if;
+
+        -- forced reset on start of new field
+        if not lsff2 then
+          vid_row_count <= 0;
         end if;
 
       end if;
@@ -235,28 +237,35 @@ begin
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
   -- TODO: [Gary] Something wrong with this? 
-  pcpu <= vid_row_count >= 8 or cntwh or dispend or not i_gmode;
+  pcpu <= vid_row_count >= 8 or cntwh or dispend or i_gmode;
   
+  -- TODO: Schematics show this as been sync'd to 1MHz clock but that
+  --       offsets rgb by 1us later than it should be?
+  cntwh <= hsync_cnt >= 20;
 
   p_inactive_video : process(i_clk, i_rst) 
   begin
     if i_rst = '1' then
-      cntwh <= false;
+      --cntwh <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
         if i_ck_s1m = '1' then
           
-          cntwh <= false;
+          -- cntwh <= false;
           
-          -- LSN2 >= 20 i.e 12 cycles (24us) sync+border duration of a single scanline
-          if hsync_cnt >= 20 then
-            cntwh <= true;
-          end if;
+          -- -- 20-22 = border, 23 = front porch, 24-25 = hsync, 26-28 = bp, 29-31 = border
+          -- -- LSN2 >= 20 i.e 12 cycles (24us) sync+border duration of a single scanline
+          -- if hsync_cnt >= 20 then
+          --   cntwh <= true;
+          -- end if;
 
           -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
+          --              looks to be on the master timing sheet, for allowing processing when true??
+          --              schematic had pcpub (active low)
+          --              where does blank then fit in? Doesn't seem to be used anywhere?
 
           -- pcpu syncrhonised to 1MHz
-          o_blank <= not pcpu;
+          o_blank <= pcpu;
         end if;
       end if;
     end if;
@@ -281,20 +290,20 @@ begin
           end if;
 
           -- Dispend aligned to hsync leading edge
-          if hsync_cnt = 25 or hsync_cnt = 26 then
+          if hsync_cnt = 23 or hsync_cnt = 24 then
             -- DISPg0 range [500,503]
-            if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
+            if not i_gmode and (vsync_cnt >= 499 and vsync_cnt <= 502) then
               dispend <= true;
             end if;
 
             -- DISPg1 range [512,625)
-            if i_gmode and vsync_cnt >= 512 then
+            if i_gmode and vsync_cnt >= 511 then
               dispend <= true;
             end if;
           end if;
 
           -- RTC
-          if vsync_cnt >= 200 and vsync_cnt <= 207 then
+          if vsync_cnt >= 199 and vsync_cnt <= 206 then
             o_rtc <= true;
           end if;
 
@@ -326,7 +335,6 @@ begin
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
-
         -- vpix 0 is first _active_ line of 288. 
         -- 250 (500) to 256 (512) lines (1/2 lines) active.
         -- Due to 312.5 lines, the reset at the end of each field from 624->0
@@ -343,7 +351,7 @@ begin
           -- vpix will only be "accurate" for the start of each scanline and ULA really
           -- shouldn't be using this value directly, but using blanking signals.
           vpix <= to_unsigned(312, 14);
-          if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
+          if (hsync_cnt = 23 and i_ck_s1m2 = '1') then
             hack_waithsync := false;
             vpix <= (others => '0');
           end if;
@@ -394,4 +402,5 @@ end;
 -- TODO: is disp_bline and hsync edge detection correct for ula line 733?
 --       could address never get incremented? or is it the read_addr + 8 part?
 --       check if disp_addint is firing for too long?
--- TODO: This is going to need isim checking to be sure edges are all correct.
+-- Back to one extra line at bottom of display every other field. Same as the issue
+-- that needed hackwhsync
