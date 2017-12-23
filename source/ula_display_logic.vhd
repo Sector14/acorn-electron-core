@@ -90,11 +90,12 @@ entity ULA_DISPLAY_LOGIC is
       o_dispend             : out boolean;
 
       
-      o_bline               : out boolean;  -- end of 8/10 line row based on gfx mode
-      o_addint              : out boolean;
-      -- o_pcpu             : out boolean;  -- process cpu, outside horiz and vert active display region
-      o_blank               : out boolean;  -- ( /pcpu sync'd to 1MHz. High outside active 640px)
-      o_cntwh               : out boolean;  -- low within horiz active display region
+      o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
+      o_addint              : out boolean;  -- start of new fields active data
+      
+      -- o_pcpu             : out boolean;
+      o_blank               : out boolean;
+      o_cntwh               : out boolean;  -- high during sync or border regions of scanline
 
       -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
@@ -216,7 +217,9 @@ begin
 
         -- row count "clocked" by LS falling edge i.e end of hsync
         if hsync_cnt = 25 then
-          -- if bline...
+          -- Real ULA
+          --   resets to 0 on vid cnt = 9 if not i_gmode
+          --   resets to 8 on vid cnt = 15
           if (vid_row_count = 9) or (vid_row_count = 7 and i_gmode) then
             vid_row_count <= 0;
           else
@@ -236,9 +239,15 @@ begin
 
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
-  -- TODO: [Gary] Something wrong with this? 
-  pcpu <= vid_row_count >= 8 or cntwh or dispend or i_gmode;
-  
+  -- TODO: [Gary] What does this actually represent. Originally thought it would be used
+  --       as part of the contention logic to pause the cpu, however 
+  --       due to inclusion of gmode (0,1,2,4,5) when contention is only considered in modes
+  --       0-3, this can't be the case. blankb and pcpub would be always '0' during
+  --       graphics modes whilst in modes 3 & 6 they'd go high during the 2 blanking lines?
+  --       unless it's used as an extra signal to re-enable processing when contention was
+  --       otherwise considered to be active?
+  pcpu <= vid_row_count >= 8 or cntwh or dispend or (not i_gmode);
+
   -- TODO: Schematics show this as been sync'd to 1MHz clock but that
   --       offsets rgb by 1us later than it should be?
   cntwh <= hsync_cnt >= 20;
@@ -392,12 +401,8 @@ begin
   o_de <= '1' when vsync_cnt < 576 and not cntwh else '0';
 end;
 
-
--- TODO: [Gary] getting incorrect pulses either side of vsync, 26 and 30 (inc partials)
---              Should be 29 and 32 incl partials.
 -- TODO: Getting no display output in text modes. 
 -- TODO: Graphics modes show ">" repeated for entire line. There's no row increment occuring?
--- TODO: Left hpix border of 96 is now missing!
 -- TODO: In some modes cpu processing might be totally stopping? like mode 4 & 5?
 -- TODO: is disp_bline and hsync edge detection correct for ula line 733?
 --       could address never get incremented? or is it the read_addr + 8 part?

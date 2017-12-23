@@ -571,6 +571,7 @@ begin
           repeat_count := repeat_count_reg;
         end if;
 
+        -- TODO: [Gary] Could swap this out with not disp_blank except for its use of i_gmode?        
         if not disp_cntwh and not disp_frame_end and disp_rowcount < 8 then
         
           logical_colour := (others => '0');
@@ -693,25 +694,8 @@ begin
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
           -- TODO: [Gary] 2 blanking lines in mode 3 are contention free or not?
-          -- TODO: [Gary] if using 704 for contention, may end up doing  byte more than
-          --              needed? On pixel 696 data for that pixel should already be available
-          --              and no more bytes follow it, just h_sync/border. render process needs 704 
-          --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
-          --              under contention than needed.
-          -- TODO: [Gary] o_blank is process cpu aligned to 1MHz, check if this is already
-          --              aligned to phase 0000 and if not, can it be/should it be?
-          ram_contention <= not disp_blank;
-          
-          -- Ram contention does not need to start before active video as ULA always has
-          -- at least slot 8 to prepare first byte of data. It may however be able to end
-          -- before the end of the active period once last byte of data needed has been read.
-          -- TODO: Change from pixels to vid_hactive +- border etc
-          -- ram_contention <= not vid_v_blank and (vid_row_count < 8) and                            
-          --                   (hpix >= c_hoffset) and
-          --                   ( (misc_control(MISC_DISPLAY_MODE) = "000" and (hpix < 728)) or -- 1bpp
-          --                     (misc_control(MISC_DISPLAY_MODE) = "001" and (hpix < 732)) or -- 2bpp
-          --                     (misc_control(MISC_DISPLAY_MODE) = "010" and (hpix < 734)) or -- 4bpp
-          --                     (misc_control(MISC_DISPLAY_MODE) = "011" and (hpix < 728)) ); -- 1bpp
+          ram_contention <= not disp_cntwh and not disp_frame_end and disp_rowcount < 8 and
+                            misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
         -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
@@ -723,28 +707,24 @@ begin
         end if;
 
         ana_hsync_l <= ana_hsync;
-
-        --if (not vid_v_blank) then
-          -- TODO: Here and usage in ram_contention, the read 1 byte before 96+640 will be the
-          --       last on this line. Could save 1 byte of contention by testing against 1 byte
-          --       earlier (accounting for 1/2/4bbp). Did Electron?
-          
-          -- end of line block (8 or 10)            
-          if (ana_hsync = '1' and ana_hsync_l = '0') and disp_bline then
+ 
+        -- end of line block (8 or 10)
+        if (ana_hsync = '1' and ana_hsync_l = '0') then
+          -- end of line block?
+          if disp_bline then
             if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
               row_addr := row_addr + 640;
             else
               row_addr := row_addr + 320;
             end if;
-            read_addr := row_addr;
+            read_addr := row_addr;       
           else
             read_addr := row_addr + disp_rowcount + 1;
           end if;
-        --end if;
+        end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          -- TODO: [Gary] Might be using not cntwh instead?
           if not disp_cntwh then
             read_addr := read_addr + 8;
           end if;
