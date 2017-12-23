@@ -698,14 +698,6 @@ begin
                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
-        -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
-        if disp_addint then
-          -- Latch mode adjusted screen start. Wrap is not latched and may
-          -- change mid frame depending on mode.
-          row_addr := '0' & mode_base_addr & "000000";
-          read_addr := row_addr;
-        end if;
-
         ana_hsync_l <= ana_hsync;
  
         -- end of line block (8 or 10)
@@ -729,6 +721,14 @@ begin
             read_addr := read_addr + 8;
           end if;
         end if;  
+
+        -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
+        if disp_addint then
+          -- Latch mode adjusted screen start. Wrap is not latched and may
+          -- change mid frame depending on mode.
+          row_addr := '0' & mode_base_addr & "000000";
+          read_addr := row_addr;
+        end if;
 
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
