@@ -398,7 +398,7 @@ begin
 
   -- TODO: [Gary] May want this to use hsync_cnt earlier than 20 so that de also
   --       is high during 96 left/right border?
-  o_de <= '1' when vsync_cnt < 576 and not cntwh else '0';
+  o_de <= '1' when vsync_cnt < 576 and not cntwh and not dispend else '0';
 end;
 
 -- TODO: Getting no display output in text modes. 
