@@ -120,9 +120,6 @@ architecture RTL of ULA_DISPLAY_LOGIC is
   signal cntwh : boolean;
   signal dispend : boolean;
   signal pcpu : boolean;
-
-  -- Temp counts
-  signal hpix_total, vpix_total, hpix, vpix : unsigned(13 downto 0);
 begin
   -- TODO: [Gary] Will need to latch vsync to delay by 1us to better match Electron's
   --       partial pulses either side of vsync. 
@@ -327,85 +324,5 @@ begin
     end if;
   end process;
 
-
-
-  -- TEMPORARY: will be replaced once further ULA logic has been deciphered
-  --            from the schematics. This section bears little resemblance to how the
-  --            real ULA tracks data for video addressing.
-  p_active_pixels : process(i_clk, i_rst)
-    variable hack_waithsync : boolean;
-  begin
-    if i_rst = '1' then
-      vpix <= (others => '0');
-      hpix <= (others => '0');
-      hpix_total <= (others => '0');      
-
-      hack_waithsync := false;
-    elsif rising_edge(i_clk) then
-      if i_ena = '1' then
-
-        -- vpix 0 is first _active_ line of 288. 
-        -- 250 (500) to 256 (512) lines (1/2 lines) active.
-        -- Due to 312.5 lines, the reset at the end of each field from 624->0
-        -- will mean video can render on 0-1 on one field but needs delaying to be
-        -- 1-2 on the next, otherwise a partial line of data will be output then
-        -- interrupted by hsync.
-        if i_ck_s1m2 = '1' and vsync_cnt = 624 and hsync_cnt = 15 then
-          hack_waithsync := true;
-        end if;
-
-        if hack_waithsync then
-          -- Delay switching to line 0 until next hsync to bring both fields into alignment
-          -- for vsync->partial pulse->28 blank lines->line 0 of data.
-          -- vpix will only be "accurate" for the start of each scanline and ULA really
-          -- shouldn't be using this value directly, but using blanking signals.
-          vpix <= to_unsigned(312, 14);
-          if (hsync_cnt = 23 and i_ck_s1m2 = '1') then
-            hack_waithsync := false;
-            vpix <= (others => '0');
-          end if;
-        else
-          vpix <= "00000" & vsync_cnt(9 downto 1);
-        end if;
-        
-        -- reset after back porch and border, just as active video begins
-        --if (hsync_cnt = 24 and i_ck_s1m2 = '1') then
-        if (hsync_cnt = 0 and i_ck_s1m = '1') and cntwh then
-          hpix_total <= (others => '0');
-          hpix <= (others => '0');
-        else
-          hpix_total <= hpix_total + 1;
-        
-          -- TODO: [Gary] is hpix 0 needs to be first active pixel. 
-          -- So 640 then border then sync then border, only really needs to count
-          -- 0..639 then? and tbh hpix may not be required at all anymore.
-
-          -- hsync 4us (64px), 
-          -- bp 6us (96px), border 6us (96px)
-          -- active 40us (640px)
-          -- border 6us (96px), fp 2us (32px)
-          -- hpix_total with fp+hs+bp = 192.
-          if hpix_total >= 192 and hpix_total < 1023 then
-            hpix <= hpix + 1;
-          else
-            hpix <= (others => '0');
-          end if;
-        end if;
-
-      end if;
-    end if;
-  end process;
-
-  -- TODO: [Gary] May want this to use hsync_cnt earlier than 20 so that de also
-  --       is high during 96 left/right border?
   o_de <= '1' when vsync_cnt < 576 and not cntwh and not dispend else '0';
 end;
-
--- TODO: Getting no display output in text modes. 
--- TODO: Graphics modes show ">" repeated for entire line. There's no row increment occuring?
--- TODO: In some modes cpu processing might be totally stopping? like mode 4 & 5?
--- TODO: is disp_bline and hsync edge detection correct for ula line 733?
---       could address never get incremented? or is it the read_addr + 8 part?
---       check if disp_addint is firing for too long?
--- Back to one extra line at bottom of display every other field. Same as the issue
--- that needed hackwhsync
