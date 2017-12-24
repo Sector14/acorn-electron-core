@@ -95,7 +95,7 @@ entity ULA_DISPLAY_LOGIC is
       
       -- o_pcpu             : out boolean;
       o_blank               : out boolean;
-      o_cntwh               : out boolean;  -- high during sync or border regions of scanline
+      o_cntinh               : out boolean;  -- high during sync or border regions of scanline
 
       -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
@@ -117,7 +117,7 @@ architecture RTL of ULA_DISPLAY_LOGIC is
 
   signal lsff2 : boolean;
 
-  signal cntwh : boolean;
+  signal cntinh : boolean;
   signal dispend : boolean;
   signal pcpu : boolean;
 begin
@@ -127,11 +127,11 @@ begin
   o_hsync <= hsync;
   o_vsync <= vsync;
 
-  o_de <= '1' when vsync_cnt < 576 and not cntwh and not dispend else '0';
+  o_de <= '1' when vsync_cnt < 576 and not cntinh and not dispend else '0';
 
   o_dispend <= dispend;
   --o_pcpu <= pcpu;
-  o_cntwh <= cntwh;
+  o_cntinh <= cntinh;
 
   o_rowcount <= vid_row_count;
 
@@ -165,7 +165,8 @@ begin
   begin
     if i_rst = '1' then
       vsync_l <= '0';
-      vsync_cnt <= (others => '0');      
+      vsync_cnt <= (others => '0');
+      
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -186,6 +187,7 @@ begin
             end if;
           end if;
 
+          -- Falling edge of hsync
           if hsync_cnt = 25 then
             lsff2 <= true;
           end if;
@@ -235,11 +237,11 @@ begin
   --       graphics modes whilst in modes 3 & 6 they'd go high during the 2 blanking lines?
   --       unless it's used as an extra signal to re-enable processing when contention was
   --       otherwise considered to be active?
-  pcpu <= vid_row_count >= 8 or cntwh or dispend or (not i_gmode);
+  pcpu <= vid_row_count >= 8 or cntinh or dispend or (not i_gmode);
 
-  -- TODO: Schematics show this as been sync'd to 1MHz clock but that
+  -- TODO: Schematics show this as sync'd to 1MHz clock but that
   --       offsets rgb by 1us later than it should be?
-  cntwh <= hsync_cnt >= 20;
+  cntinh <= hsync_cnt >= 20;
 
   p_inactive_video : process(i_clk, i_rst) 
   begin

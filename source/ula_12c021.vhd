@@ -145,7 +145,7 @@ architecture RTL of ULA_12C021 is
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
   signal disp_blank, disp_bline       : boolean;
-  signal disp_cntwh                   : boolean;
+  signal disp_cntinh                   : boolean;
 
 
   signal ram_contention : boolean;
@@ -499,7 +499,7 @@ begin
     o_bline                 => disp_bline,
     o_addint                => disp_addint,
     o_blank                 => disp_blank,
-    o_cntwh                 => disp_cntwh,
+    o_cntinh                 => disp_cntinh,
 
     o_rowcount              => disp_rowcount,
 
@@ -572,7 +572,7 @@ begin
         end if;
 
         -- TODO: [Gary] Could swap this out with not disp_blank except for its use of i_gmode?        
-        if not disp_cntwh and not disp_frame_end and disp_rowcount < 8 then
+        if not disp_cntinh and not disp_frame_end and disp_rowcount < 8 then
         
           logical_colour := (others => '0');
 
@@ -694,13 +694,13 @@ begin
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
           -- TODO: [Gary] 2 blanking lines in mode 3 are contention free or not?
-          ram_contention <= not disp_cntwh and not disp_frame_end and disp_rowcount < 8 and
+          ram_contention <= not disp_cntinh and not disp_frame_end and disp_rowcount < 8 and
                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
         ana_hsync_l <= ana_hsync;
  
-        -- end of line block (8 or 10)
+        -- end of line  block (8 or 10)
         if (ana_hsync = '1' and ana_hsync_l = '0') then
           -- end of line block?
           if disp_bline then
@@ -717,11 +717,12 @@ begin
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          if not disp_cntwh then
+          if not disp_cntinh then
             read_addr := read_addr + 8;
           end if;
         end if;  
 
+        -- TODO: ULA handles this a little differently. Using 3 sets of address registers.
         -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
         if disp_addint then
           -- Latch mode adjusted screen start. Wrap is not latched and may
