@@ -127,6 +127,8 @@ begin
   o_hsync <= hsync;
   o_vsync <= vsync;
 
+  o_de <= '1' when vsync_cnt < 576 and not cntwh and not dispend else '0';
+
   o_dispend <= dispend;
   --o_pcpu <= pcpu;
   o_cntwh <= cntwh;
@@ -136,44 +138,34 @@ begin
   p_hsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
-      hsync <= '0';
       hsync_cnt <= (others => '0');
     elsif rising_edge(i_clk) then
-      if i_ena = '1' and i_ck_s1m2 = '1' then
-        
-        hsync <= '0';
-        -- Hsync appears to need to occur during 24 and 25 rather than 26-27 as schematics
-        -- appear to suggest? If interpret schematics to use 25, it doesn't look like 
-        -- hsync could be 4us, instead it's one clock cycle or 2us which is certainly wrong.
-        -- There doesn't look to be a way for 24-25 to be used via current schematics unlike
-        -- 26-27. But that would throw otu rest of sync pulses if active 640 pixels are meant
-        -- to be from hcnt 0??
-
-        -- 4us pulse (covers hsync active during 25 & 26)
-        if hsync_cnt = 23 or hsync_cnt = 24 then
-          hsync <= '1';
-        end if;
-
+      if i_ena = '1' and i_ck_s1m2 = '1' then        
         hsync_cnt <= hsync_cnt + 1;
-
       end if;
     end if;
   end process;
+
+  -- TODO: [Gary] Hsync appears to need to occur during 24 and 25 rather than 26-27 as 
+  -- schematics appear to suggest? If interpret schematics to use 25, it doesn't look like 
+  -- hsync could be 4us, instead it's one clock cycle or 2us which is certainly wrong.
+  -- There doesn't look to be a way for 24-25 to be used via current schematics unlike
+  -- 26-27. But that would throw out rest of sync pulses if active 640 pixels are meant
+  -- to be from hcnt 0??
+  hsync <= '1' when hsync_cnt = 24 or hsync_cnt = 25 else '0';
 
   -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
   -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
   -- the state 00 lasts 2 lines. Although seems to amount to 3.5 rather than 2.5
   -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
   -- [562,566] gives a 31+p, vs, p+28 lines after/before active video for each field.
-  -- Expected to use 563 with changing occuring following tick?
   vsync <= '1' when vsync_cnt >= 564 and vsync_cnt <= 568 else '0';
 
   p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       vsync_l <= '0';
-      vsync_cnt <= (others => '0');
-      
+      vsync_cnt <= (others => '0');      
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -252,19 +244,10 @@ begin
   p_inactive_video : process(i_clk, i_rst) 
   begin
     if i_rst = '1' then
-      --cntwh <= false;
+      o_blank <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
         if i_ck_s1m = '1' then
-          
-          -- cntwh <= false;
-          
-          -- -- 20-22 = border, 23 = front porch, 24-25 = hsync, 26-28 = bp, 29-31 = border
-          -- -- LSN2 >= 20 i.e 12 cycles (24us) sync+border duration of a single scanline
-          -- if hsync_cnt >= 20 then
-          --   cntwh <= true;
-          -- end if;
-
           -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
           --              looks to be on the master timing sheet, for allowing processing when true??
           --              schematic had pcpub (active low)
@@ -324,5 +307,4 @@ begin
     end if;
   end process;
 
-  o_de <= '1' when vsync_cnt < 576 and not cntwh and not dispend else '0';
 end;
