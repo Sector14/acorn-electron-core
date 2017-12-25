@@ -144,8 +144,9 @@ architecture RTL of ULA_12C021 is
   signal disp_rtc, disp_frame_end     : boolean;
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
-  signal disp_blank, disp_bline       : boolean;
-  signal disp_cntinh                   : boolean;
+  signal disp_blank                   : boolean;
+  signal disp_bline, disp_bline_l     : boolean;
+  signal disp_cntinh                  : boolean;
 
 
   signal ram_contention : boolean;
@@ -699,11 +700,15 @@ begin
         end if;
 
         ana_hsync_l <= ana_hsync;
- 
+        disp_bline_l <= disp_bline;
+
         -- end of line  block (8 or 10)
-        if (ana_hsync = '1' and ana_hsync_l = '0') then
+        if (ana_hsync = '0' and ana_hsync_l = '1') then
+          -- TODO: [Gary] This triggers on falling edge of either signal as long as
+          --       both are 0. Where are current setup requires both falling edges
+          --       to be aligned. Is that always the case?
           -- end of line block?
-          if disp_bline then
+          if (not disp_bline and disp_bline_l) then
             if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
               row_addr := row_addr + 640;
             else
@@ -711,7 +716,11 @@ begin
             end if;
             read_addr := row_addr;       
           else
-            read_addr := row_addr + disp_rowcount + 1;
+          -- TODO: Some issue with mode 0.
+          -- with falling edge hs, disp and 8,15,24 (or -1), mode 6 ok, mode 0 has top line cut off
+          -- and showing at bottom of screen. Or at least, one field of the top line. Plus
+          -- top line of each block is rendered twice with bottom line of block missing.
+            read_addr := row_addr + disp_rowcount; --  +1?
           end if;
         end if;
 
@@ -722,7 +731,6 @@ begin
           end if;
         end if;  
 
-        -- TODO: ULA handles this a little differently. Using 3 sets of address registers.
         -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
         if disp_addint then
           -- Latch mode adjusted screen start. Wrap is not latched and may

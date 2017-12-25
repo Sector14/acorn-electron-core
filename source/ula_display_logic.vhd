@@ -227,7 +227,10 @@ begin
     end if;
   end process;
 
-
+  -- TODO: [Gary] When not igmode is used, this obviously breaks causing first line in mem
+  -- to be drawn for every block. However, the blocks DO render correctly in this case
+  -- in mode 0. Mode 3&6 obviously then break. 
+  -- Last line of mode 0 might still be missing on one of the two fields?
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
   -- TODO: [Gary] What does this actually represent. Originally thought it would be used
@@ -254,6 +257,10 @@ begin
           --              looks to be on the master timing sheet, for allowing processing when true??
           --              schematic had pcpub (active low)
           --              where does blank then fit in? Doesn't seem to be used anywhere?
+
+          -- TODO: [Gary] blank is clocked in using inverted 1MHz. Whilst
+          --       cntinh is clocked in using 1MHz itself. why? 
+          -- TODO: [Gary] Not yet using blank or pcpu anywhere...
 
           -- pcpu syncrhonised to 1MHz
           o_blank <= pcpu;
@@ -287,8 +294,14 @@ begin
               dispend <= true;
             end if;
 
+            -- TODO: Using 512-1 causes this to go high before the very last
+            --       line has output in mode 0. Really need to check which values
+            --       should be using one minus to go high on correct clock and which
+            --       need to use actual value tested against. dispg0 is using one before still?
+            --       may be "clock" based value eg hsync_cnt needs to be -1 whilst the rest
+            --       are not, as long as they don't change inline with clock?
             -- DISPg1 range [512,625)
-            if i_gmode and vsync_cnt >= 511 then
+            if i_gmode and vsync_cnt >= 512 then
               dispend <= true;
             end if;
           end if;
@@ -298,8 +311,14 @@ begin
             o_rtc <= true;
           end if;
 
+          -- TODO: [Gary] ULA had addintb low for multiple clocks with falling
+          -- edge used to clock in register start add to QStart and high value to allow
+          -- clocking in row addr?
           -- Start of new active display vcnt 0
-          o_addint <= false;
+          --if (hsync_cnt >= 7 and hsync_cnt <= 14) or (hsync_cnt >= 23) then
+            o_addint <= false;
+          --end if;
+
           if (hsync_cnt = 31 or hsync_cnt = 15) and vsync_cnt = 624 then
             o_addint <= true;             
           end if;
