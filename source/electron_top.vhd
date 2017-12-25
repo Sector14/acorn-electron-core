@@ -611,10 +611,10 @@ begin
     i_bypass              => '0',
     i_dblscan             => cfg_dblscan,
     --
-    i_hsync_l             => ula_n_hsync,
-    i_vsync_l             => ula_n_vsync,
-    i_csync_l             => ula_n_csync,  -- passed through
-    i_blank               => not ula_de,   -- passed through
+    i_hsync_l             => not ula_n_hsync,
+    i_vsync_l             => not ula_n_vsync,
+    i_csync_l             => not ula_n_csync,  -- passed through
+    i_blank               => not ula_de,       -- passed through
     i_vid_rgb             => ula_rgb,
     --
     o_hsync_l             => dbl_hsync_l,
