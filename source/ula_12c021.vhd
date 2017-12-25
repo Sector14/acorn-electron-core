@@ -704,8 +704,8 @@ begin
 
         -- end of line  block (8 or 10)
         if (ana_hsync = '0' and ana_hsync_l = '1') then
-          -- TODO: [Gary] This triggers on falling edge of either signal as long as
-          --       both are 0. Where are current setup requires both falling edges
+          -- TODO: [Gary] This should trigger on falling edge of either signal as long as
+          --       both are 0. Where as current setup requires both falling edges
           --       to be aligned. Is that always the case?
           -- end of line block?
           if (not disp_bline and disp_bline_l) then
@@ -716,10 +716,6 @@ begin
             end if;
             read_addr := row_addr;       
           else
-          -- TODO: Some issue with mode 0.
-          -- with falling edge hs, disp and 8,15,24 (or -1), mode 6 ok, mode 0 has top line cut off
-          -- and showing at bottom of screen. Or at least, one field of the top line. Plus
-          -- top line of each block is rendered twice with bottom line of block missing.
             read_addr := row_addr + disp_rowcount; --  +1?
           end if;
         end if;

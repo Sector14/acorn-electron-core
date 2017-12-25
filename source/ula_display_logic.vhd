@@ -290,24 +290,18 @@ begin
           -- Dispend aligned to hsync leading edge
           if hsync_cnt = 23 or hsync_cnt = 24 then
             -- DISPg0 range [500,503]
-            if not i_gmode and (vsync_cnt >= 499 and vsync_cnt <= 502) then
+            if not i_gmode and (vsync_cnt >= 500 and vsync_cnt <= 503) then
               dispend <= true;
             end if;
 
-            -- TODO: Using 512-1 causes this to go high before the very last
-            --       line has output in mode 0. Really need to check which values
-            --       should be using one minus to go high on correct clock and which
-            --       need to use actual value tested against. dispg0 is using one before still?
-            --       may be "clock" based value eg hsync_cnt needs to be -1 whilst the rest
-            --       are not, as long as they don't change inline with clock?
             -- DISPg1 range [512,625)
             if i_gmode and vsync_cnt >= 512 then
               dispend <= true;
             end if;
           end if;
 
-          -- RTC
-          if vsync_cnt >= 199 and vsync_cnt <= 206 then
+          -- RTC [200,207]          
+          if vsync_cnt >= 200 and vsync_cnt <= 207 then
             o_rtc <= true;
           end if;
 
