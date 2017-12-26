@@ -232,11 +232,6 @@
       <obj_property name="ElementShortName">ram_contention</obj_property>
       <obj_property name="ObjectShortName">ram_contention</obj_property>
    </wvobject>
-   <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_phase" type="array" db_ref_id="1">
-      <obj_property name="ElementShortName">clk_phase[3:0]</obj_property>
-      <obj_property name="ObjectShortName">clk_phase[3:0]</obj_property>
-      <obj_property name="Radix">HEXRADIX</obj_property>
-   </wvobject>
    <wvobject fp_name="group328" type="group">
       <obj_property name="label">ULA</obj_property>
       <obj_property name="DisplayName">label</obj_property>
@@ -291,11 +286,6 @@
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/ram_cpu_slot" type="logic" db_ref_id="1">
          <obj_property name="ElementShortName">ram_cpu_slot</obj_property>
          <obj_property name="ObjectShortName">ram_cpu_slot</obj_property>
-      </wvobject>
-      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/ula_ram_addr" type="array" db_ref_id="1">
-         <obj_property name="ElementShortName">ula_ram_addr[14:0]</obj_property>
-         <obj_property name="ObjectShortName">ula_ram_addr[14:0]</obj_property>
-         <obj_property name="Radix">UNSIGNEDDECRADIX</obj_property>
       </wvobject>
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/cpu_ram_data" type="array" db_ref_id="1">
          <obj_property name="ElementShortName">cpu_ram_data[7:0]</obj_property>
@@ -362,6 +352,16 @@
          <obj_property name="ElementShortName">o_red</obj_property>
          <obj_property name="ObjectShortName">o_red</obj_property>
       </wvobject>
+      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/ula_ram_addr" type="array" db_ref_id="1">
+         <obj_property name="ElementShortName">ula_ram_addr[14:0]</obj_property>
+         <obj_property name="ObjectShortName">ula_ram_addr[14:0]</obj_property>
+         <obj_property name="Radix">UNSIGNEDDECRADIX</obj_property>
+      </wvobject>
+   </wvobject>
+   <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/clk_phase" type="array" db_ref_id="1">
+      <obj_property name="ElementShortName">clk_phase[3:0]</obj_property>
+      <obj_property name="ObjectShortName">clk_phase[3:0]</obj_property>
+      <obj_property name="Radix">HEXRADIX</obj_property>
    </wvobject>
    <wvobject fp_name="group205" type="group">
       <obj_property name="label">ULA_DisplayLogic</obj_property>
@@ -374,11 +374,6 @@
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/u_DisplayLogic/vsync_cnt" type="array" db_ref_id="1">
          <obj_property name="ElementShortName">vsync_cnt[9:0]</obj_property>
          <obj_property name="ObjectShortName">vsync_cnt[9:0]</obj_property>
-         <obj_property name="Radix">UNSIGNEDDECRADIX</obj_property>
-      </wvobject>
-      <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/u_DisplayLogic/hpix_total" type="array" db_ref_id="1">
-         <obj_property name="ElementShortName">hpix_total[13:0]</obj_property>
-         <obj_property name="ObjectShortName">hpix_total[13:0]</obj_property>
          <obj_property name="Radix">UNSIGNEDDECRADIX</obj_property>
       </wvobject>
       <wvobject fp_name="/a_replay_tb/u_Replay_Tb_Wrap/u_Replay/u_core/u_Core/ula_ic1/u_DisplayLogic/hsync" type="logic" db_ref_id="1">
