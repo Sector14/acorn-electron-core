@@ -35,15 +35,9 @@
 -- You are responsible for any legal issues arising from your use of this code.
 --
 
--- TODO: Electron uses interlaced 312.5 fields but there may be a quirk
---       due to the appearance of four partial pulses that add up to two
---       full scanlines and are split either side of vsync. This _might_
---       be another way to do a pseudo progressive display whilst retaining
---       all 625 lines.
-
 -- Horizontal:
 --   Standard is hs=4.7us, fp=1.65us, bp=5.7us
---   Measurements indicate border+fp = 8us, hs=4us and bp+border=12us
+--   Electron measurements indicate border+fp = 8us, hs=4us and bp+border=12us
 --   Assuming a border of 6us gives the following:
 --     hs=4us (64px), fp=2us (32px), bp=6us (96px)
 --     borders=6us (96px), active=40us (640px)
@@ -106,7 +100,7 @@ end;
 
 architecture RTL of ULA_DISPLAY_LOGIC is
   signal hsync : bit1;
-  signal vsync, vsync_l : bit1;
+  signal vsync : bit1;
 
   -- hsync [2-6]
   signal hsync_cnt : unsigned(4 downto 0);
@@ -121,8 +115,6 @@ architecture RTL of ULA_DISPLAY_LOGIC is
   signal dispend : boolean;
   signal pcpu : boolean;
 begin
-  -- TODO: [Gary] Will need to latch vsync to delay by 1us to better match Electron's
-  --       partial pulses either side of vsync. 
   o_csync <= hsync or vsync;
   o_hsync <= hsync;
   o_vsync <= vsync;
@@ -164,16 +156,10 @@ begin
   p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
-      vsync_l <= '0';
       vsync_cnt <= (others => '0');
       
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
-
-        if i_ck_s1m = '1' then
-          -- delay by 1us to match Electron's partial scanlines either side of vsync
-          vsync_l <= vsync;
-        end if;
 
         if i_ck_s1m2 = '1' then       
           
@@ -309,9 +295,9 @@ begin
           -- edge used to clock in register start add to QStart and high value to allow
           -- clocking in row addr?
           -- Start of new active display vcnt 0
-          --if (hsync_cnt >= 7 and hsync_cnt <= 14) or (hsync_cnt >= 23) then
+          if (hsync_cnt >= 7 and hsync_cnt <= 14) or (hsync_cnt >= 23) then
             o_addint <= false;
-          --end if;
+          end if;
 
           if (hsync_cnt = 31 or hsync_cnt = 15) and vsync_cnt = 624 then
             o_addint <= true;             
