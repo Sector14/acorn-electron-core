@@ -135,7 +135,9 @@ architecture RTL of Electron_Top is
   
   -- Config
   signal cfg_dblscan : bit1;
+  signal cfg_vid_compatible : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
+
 
   -- LED Blink
   signal led         : bit1;
@@ -217,6 +219,8 @@ begin
 
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
+  cfg_vid_compatible    <= i_cfg_dynamic(5) = '1';
+
   cfg_cas_play          <= i_cfg_dynamic(1);
   cfg_cas_rec           <= i_cfg_dynamic(2);
   cfg_cas_ffwd          <= i_cfg_dynamic(3);
@@ -316,6 +320,8 @@ begin
     o_n_vsync     => ula_n_vsync,
     o_de          => ula_de,               
     
+    i_compatible  => cfg_vid_compatible,
+
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,

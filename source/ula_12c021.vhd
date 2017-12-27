@@ -63,6 +63,10 @@ entity ULA_12C021 is
     o_n_vsync     : out bit1;
     o_de          : out bit1;
 
+    -- More compatible video signal when used with scan doubler and hdmi/vga
+    -- vs authentic signal for TV Scart usage.
+    i_compatible  : in boolean;
+
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);
@@ -487,6 +491,8 @@ begin
 
     i_ck_s1m                => ck_s16m16,
     i_ck_s1m2               => ck_s16m32,
+
+    i_compatible            => i_compatible,
 
     i_gmode                 => not vid_text_mode,
 

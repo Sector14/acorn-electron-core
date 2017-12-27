@@ -37,8 +37,7 @@
 
 -- Horizontal:
 --   Standard is hs=4.7us, fp=1.65us, bp=5.7us
---   Electron measurements indicate border+fp = 8us, hs=4us and bp+border=12us
---   Assuming a border of 6us gives the following:
+--   Electron uses:
 --     hs=4us (64px), fp=2us (32px), bp=6us (96px)
 --     borders=6us (96px), active=40us (640px)
 --   Note: hs+fp+bs must be >= 12us
@@ -46,11 +45,31 @@
 -- Vertical: 
 --   Standard is 625 lines, two fields 312.5 lines each with 2nd field 1/2 scanline offset.  
 --   Measurements indicate 1/2 scanline offset is not used. Vsync instead occurs within
---   hsync pulses with a partial offset per field.
+--   regular timed hsync pulses causing a partial offset per field.
 --   Example mode 6 (sl = 64us scanlines)
 --     Fn   = vysnc 2.5sl, partial 11us, 28sl, 250sl active, 31sl, partial 17us
 --     Fn+1 = vsync 2.5sl, partial 43us, 28sl, 250sl active, 31sl, partial 49us 
 --   Partials either side of vsync when added = 60us making a full scanline once 4us hs accounted for.
+
+
+-- Compatible Mode
+--
+-- As the "authentic" PAL signal used by the Electron is:
+--   H 15.625kHz, 50 Hz, 832x576 as two 312.5 line fields.
+-- Monitors with a HDMI connection will detect this and try to display it as
+--   720x576 @25Hz with a 13.4MHz pixel clock
+-- which results in a flickering mess of a display. With scan doubler, no signal is
+-- detected at all.
+--
+-- Compatible mode drops 1/2 a scanline from the end of each field resulting in a
+-- pseudo progressive display when coupled with scan doubler of:
+--   H 31.25kHz, V 50Hz, 720x576 with two 312 line fields.
+-- HDMI/VGA will display this as a flicker free
+--   720x576 @ 50Hz with a 26.9MHz pixel clock.
+-- Downside of this is the core operates every so slightly faster as RTC/DispEnd
+-- interrupt timing is based on scanlines and 1 line is now lost per frame. This 
+-- results in the core running about 1 second faster per 5 minutes run time.
+-- Timing difference: 100.197Hz compatible vs 100.038Hz in authentic mode.
 
 library ieee;
   use ieee.std_logic_1164.all;
@@ -71,8 +90,10 @@ entity ULA_DISPLAY_LOGIC is
       i_ck_s1m                : in bit1; -- 1MHz enable
       i_ck_s1m2               : in bit1; -- 0.5MHz enable
 
+      i_compatible            : in boolean;
+
       -- Graphics mode 0,1,2,4,5
-      i_gmode                 : boolean;
+      i_gmode                 : in boolean;
 
       -- Sync
       o_hsync                 : out bit1;
@@ -157,7 +178,6 @@ begin
   begin
     if i_rst = '1' then
       vsync_cnt <= (others => '0');
-      
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -165,7 +185,7 @@ begin
           
           -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
           if hsync_cnt = 31 or hsync_cnt = 15 then
-            if vsync_cnt = 624 then
+            if (i_compatible and vsync_cnt = 623) or (vsync_cnt = 624) then
               vsync_cnt <= (others => '0');
               lsff2 <= false;
             else
@@ -194,9 +214,6 @@ begin
 
         -- row count "clocked" by LS falling edge i.e end of hsync
         if hsync_cnt = 25 then
-          -- Real ULA
-          --   resets to 0 on vid cnt = 9 if not i_gmode
-          --   resets to 8 on vid cnt = 15
           if (vid_row_count = 9) or (vid_row_count = 7 and i_gmode) then
             vid_row_count <= 0;
           else
@@ -213,19 +230,15 @@ begin
     end if;
   end process;
 
-  -- TODO: [Gary] When not igmode is used, this obviously breaks causing first line in mem
-  -- to be drawn for every block. However, the blocks DO render correctly in this case
-  -- in mode 0. Mode 3&6 obviously then break. 
-  -- Last line of mode 0 might still be missing on one of the two fields?
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
   -- TODO: [Gary] What does this actually represent. Originally thought it would be used
   --       as part of the contention logic to pause the cpu, however 
-  --       due to inclusion of gmode (0,1,2,4,5) when contention is only considered in modes
-  --       0-3, this can't be the case. blankb and pcpub would be always '0' during
+  --       due to inclusion of gmode (0,1,2,4,5) this seems less likely as contention 
+  --       is only considered in modes 0-3. blankb and pcpub would be always '0' during
   --       graphics modes whilst in modes 3 & 6 they'd go high during the 2 blanking lines?
-  --       unless it's used as an extra signal to re-enable processing when contention was
-  --       otherwise considered to be active?
+  --       unless it's used as an extra signal to re-enable processing when contention would
+  --       otherwise considered to be active during two blanking lines?
   pcpu <= vid_row_count >= 8 or cntinh or dispend or (not i_gmode);
 
   -- TODO: Schematics show this as sync'd to 1MHz clock but that
@@ -291,16 +304,15 @@ begin
             o_rtc <= true;
           end if;
 
-          -- TODO: [Gary] ULA had addintb low for multiple clocks with falling
-          -- edge used to clock in register start add to QStart and high value to allow
-          -- clocking in row addr?
           -- Start of new active display vcnt 0
           if (hsync_cnt >= 7 and hsync_cnt <= 14) or (hsync_cnt >= 23) then
             o_addint <= false;
           end if;
 
-          if (hsync_cnt = 31 or hsync_cnt = 15) and vsync_cnt = 624 then
-            o_addint <= true;             
+          if (hsync_cnt = 31 or hsync_cnt = 15) then
+            if (i_compatible and vsync_cnt = 623) or (vsync_cnt = 624) then
+              o_addint <= true;
+            end if;
           end if;
 
         end if;
