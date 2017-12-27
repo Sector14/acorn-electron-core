@@ -159,19 +159,7 @@ begin
     end if;
   end process;
 
-  -- TODO: [Gary] Hsync appears to need to occur during 24 and 25 rather than 26-27 as 
-  -- schematics appear to suggest? If interpret schematics to use 25, it doesn't look like 
-  -- hsync could be 4us, instead it's one clock cycle or 2us which is certainly wrong.
-  -- There doesn't look to be a way for 24-25 to be used via current schematics unlike
-  -- 26-27. But that would throw out rest of sync pulses if active 640 pixels are meant
-  -- to be from hcnt 0??
   hsync <= '1' when hsync_cnt = 24 or hsync_cnt = 25 else '0';
-
-  -- TODO: VReset occurs during 564-567 which holds a 2 bit counter in reset.
-  -- This causes vsync to occuring during 2bit counts "00", "10" and "01" where
-  -- the state 00 lasts 2 lines. Although seems to amount to 3.5 rather than 2.5
-  -- scanlines? due to [564,567] range? Using 564-568 = 5 count = 2.5 lines instead.
-  -- [562,566] gives a 31+p, vs, p+28 lines after/before active video for each field.
   vsync <= '1' when vsync_cnt >= 564 and vsync_cnt <= 568 else '0';
 
   p_vsync : process(i_clk, i_rst)
@@ -241,7 +229,7 @@ begin
   --       otherwise considered to be active during two blanking lines?
   pcpu <= vid_row_count >= 8 or cntinh or dispend or (not i_gmode);
 
-  -- TODO: Schematics show this as sync'd to 1MHz clock but that
+  -- TODO: [Gary] Schematics show this as sync'd to 1MHz clock but that
   --       offsets rgb by 1us later than it should be?
   cntinh <= hsync_cnt >= 20;
 
@@ -256,10 +244,6 @@ begin
           --              looks to be on the master timing sheet, for allowing processing when true??
           --              schematic had pcpub (active low)
           --              where does blank then fit in? Doesn't seem to be used anywhere?
-
-          -- TODO: [Gary] blank is clocked in using inverted 1MHz. Whilst
-          --       cntinh is clocked in using 1MHz itself. why? 
-          -- TODO: [Gary] Not yet using blank or pcpu anywhere...
 
           -- pcpu syncrhonised to 1MHz
           o_blank <= pcpu;

@@ -630,8 +630,7 @@ begin
     o_vid_rgb             => dbl_rgb
   );
 
-  -- TODO: [Gary] Are the analog PAL timings going to cause problems here?
-  -- Digital (uses analog timings but with separate syncs)
+  -- Digital (using analog timings but with separate syncs)
   o_vid_sync.dig_de <= not dbl_blank;
   o_vid_sync.dig_hs <= dbl_hsync_l;
   o_vid_sync.dig_vs <= dbl_vsync_l;

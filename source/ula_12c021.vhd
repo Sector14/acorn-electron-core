@@ -304,7 +304,8 @@ begin
 
       phi_out <= '0';
 
-      -- Bring video out of reset to align hpix 0 with phase 0
+      -- Bring video out of reset to align hsync_cnt 0 with phase 0 by clocking
+      -- display logic one clk_phase earlier.
       if (i_cph_sys(3) = '1' and vid_rst = '1' and clk_phase = "1110") then
          vid_rst <= '0';
       end if;
@@ -368,19 +369,6 @@ begin
   o_ena_phi_out <= phi_out and i_cph_sys(3);
   
 
-  -- TODO: [Gary] Old method of delaying vid_rst slightly to align hpix 0 with
-  --       clk_phase 0 no longer works with the new display logic. As hsync 25
-  --       resets the hpix count to 0 using the 0.5MHz clock, no matter
-  --       how vid_rst is used to delay, the display logic auto corrects to pixel 0
-  --       occuring on phase 1 as soon as the first hsync occurs.
-  --       As a temporary workaround, the timing of the clock enable itself is adjusted
-  --       and now clocked on phase 15 (was phase 0) causing hpix reset to 0 to
-  --       occur on phase 0.
-  --       If hpix 0 is not aligned to phase 0, the first few pixels of a new
-  --       horizontal line will end up rendering at the end of the previous line 
-  --       and memory contention will be incorrectly timed
-  --       causing first col to contain "snow" from a failed ram read.
-  --       
   -- Display logic clocks
   p_clk_display : process(i_clk_sys, rst, vid_rst)
     variable div32  : integer range 31 downto 0;
@@ -480,9 +468,6 @@ begin
   -- Video
   -- ====================================================================
 
-  -- TODO: Instantiate ula_display_logic and output to debug pins to
-  --       check if signal looks correct before replacing replay_videotiming.
-
   u_DisplayLogic : entity work.ula_display_logic
   port map (
     i_clk                   => i_clk_sys,
@@ -578,7 +563,6 @@ begin
           repeat_count := repeat_count_reg;
         end if;
 
-        -- TODO: [Gary] Could swap this out with not disp_blank except for its use of i_gmode?        
         if not disp_cntinh and not disp_frame_end and disp_rowcount < 8 then
         
           logical_colour := (others => '0');
@@ -997,7 +981,6 @@ begin
               -- CPU needs to be able to see the POR flag was active at the start
               -- of the next clock edge when it reads this register. Without the
               -- delay the next ULA clock will clear it long before CPU read occurs.
-              -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
               delayed_por_reset := '1';
             elsif (i_addr(3 downto 0) = x"4") then
               isr_status(ISR_RX_FULL) <= '0';
@@ -1058,8 +1041,6 @@ begin
         end if;
                  
         -- Interrupt Generation
-        -- TODO: [Gary] These end up one ena_ula clock delayed due to display process
-        --       which amounts to 62.5ns.        
         -- Variable duration pulse depending on mode, trigger on rising edge only
         disp_frame_end_l <= disp_frame_end;
         disp_rtc_l <= disp_rtc;
@@ -1075,7 +1056,7 @@ begin
         --
         -- Cassette Registers
         --
-        -- TODO: Read and write can be split out to separate processes with
+        -- TODO: [Gary] Read and write can be split out to separate processes with
         --       ISR for RX and TX based on external signals just as hightone
         --       set and clear is.
         if ck_freqx = '1' then
@@ -1166,7 +1147,7 @@ begin
           cas_o_data_shift(0) <= '1';
         end if;
         
-        -- TODO: This is a square wave based o_cas for use with virtual cassette interface
+        -- TODO: [Gary] This is a square wave based o_cas for use with virtual cassette interface
         --       need to also generate a pseudo sine wave to output to aux pins for real cassette.
         --       It bears little resemblence to the ULA CASA0..2 interface
         o_cas <= '0';
@@ -1295,12 +1276,12 @@ begin
         end if;
 
         if ck_s4m13 = '1' then
-          -- TODO: Counter reset appears to assume it only occurs when all bits are 1
+          -- TODO: [Gary] Counter reset appears to assume it only occurs when all bits are 1
           --       due to nor gate for reset signal. In input mode this is unlikely
           --       to ever be the case, as the reg should be all 0's for correct
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
-          -- TODO: Reset on pulse edges in input mode also depend upon DATACNT?
+          -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
@@ -1362,7 +1343,7 @@ begin
             cas_i_bit <= candidate;
           end if;
 
-          -- TODO: This is inaccurate. Electron after loading a program
+          -- TODO: [Gary] This is inaccurate. Electron after loading a program
           -- can still generate RD Full interrupts without needing a soft reset.
           -- Not sure why as CDATA (cas_i_bit) cannot change without a CAS IN
           -- edge being detected and would remain at a '1' due to last receiving
