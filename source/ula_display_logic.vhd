@@ -65,7 +65,7 @@
 -- pseudo progressive display when coupled with scan doubler of:
 --   H 31.25kHz, V 50Hz, 720x576 with two 312 line fields.
 -- HDMI/VGA will display this as a flicker free
---   720x576 @ 50Hz with a 26.9MHz pixel clock.
+--   720x576 @ 50.2Hz with a 27MHz pixel clock.
 -- Downside of this is the core operates every so slightly faster as RTC/DispEnd
 -- interrupt timing is based on scanlines and 1 line is now lost per frame. This 
 -- results in the core running about 1 second faster per 5 minutes run time.
