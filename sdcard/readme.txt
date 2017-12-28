@@ -10,6 +10,23 @@ Rom sha1sum
   os_basic.rom bad51a4666ff9e9eed19811a1eb9d4cda10e69a3
 
 
+# Core Status
+
+The core boots to the Basic prompt in mode 6 with keyboard support.
+
+Entering of Basic programs should work. If you find any exceptions to
+that, please send me a minimal program example that illustrates the issue.
+
+Loading of games and saving programs is also supported. See the Virtual 
+Cassette section for file format/usage.
+
+The notable missing features are:
+  
+  - Fast Forward / Rewind
+  - Tape position counter
+  - Any kind of expansions (plus 1 etc)
+
+
 # Key Binds
 
 Most non-shifted keys on the Electron have been mapped to the same non-shifted 
@@ -26,8 +43,8 @@ Exceptions to this are:
 For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown
 instead on the "shift+:" key. However, as noted above, the core uses the
-"shift+'" key for a "*" due to the ":" key conflicting with the ";" key
-and its shifted key "+".
+"shift+'" key for a "*" as the ":" key was mapped to "'" due to conflicting with
+the ";" key and its shifted key "+" (clear as mud?)
   
 As with the original electron, caps-lock is toggled via shift+capslock, whilst 
 holding capslock will result in the function key, i.e capslock+e will output
@@ -58,9 +75,9 @@ more accurate.
 TVs will accept this signal via scart sockets. (see below for cabling
 information).
 
-Note: Due to the use of CSync, even if your monitor will support a
-15.625kHz line frequency over VGA, it is likely to expect separate
-H & V Sync signals rather than CSync which are not currently supported.
+Note: Due to the use of CSync, even if your monitor supports a
+15.625kHz line frequency over VGA, it is still unlikely to work as many
+expect separate H & V Sync signals rather than CSync.
 
 Also be aware that some monitors when connected via HDMI will mis-identify
 authentic mode as a 720x576 @25Hz signal. This can cause excess flickering.
@@ -68,44 +85,27 @@ authentic mode as a 720x576 @25Hz signal. This can cause excess flickering.
 ## Compatible Mode
 
 Compatible mode uses a tweaked PAL signal (two fields of 312 lines rather than
-312.5 lines) and scan line doubler to increase the chance of working with
-VGA/DVI/HDMI connected monitors.
+312.5 lines) and scan line doubler to increase the chance of the Electron's
+non-standard signal working with VGA/DVI/HDMI connected monitors.
 
 Whilst supporting a wider range of displays, the dropping of one line per
 frame means the core will run slightly faster than normal. Roughly 1 second
 faster per 5 minutes of runtime or 99.9844Hz vs 100.128Hz
 
-I recommend using compatible mode unless you have a Scart connected TV.
 
 ## Cables
 
 For Scart connections a DVI/VGA adapter plus VGA to Scart cable will be needed.
-Be aware that most VGA/Scart cables will not have a compatible pin-out but scart
-cables can easily have the pins switched.
+Be aware that most VGA/Scart cables will not have a compatible pin-out but most 
+scart cables can easily have the pins switched around.
 
 See http://www.fpgaarcade.com/punbb/viewtopic.php?id=1211 for instructions
 on how to modify a regular VGA/Scart cable to work with the replay.
 
-Alternatively, compatible cables can be bought, they'll be sold as "minimig" such as:
+Alternatively, compatible cables can be bought, they'll be sold as suitable for
+the "minimig" such as:
+
 http://amigakit.leamancomputing.com/catalog/product_info.php?products_id=919
-
-
-
-# Core Status
-
-The core boots to the Basic prompt in mode 6 with keyboard support.
-
-Entering of Basic programs should work. If you find any exceptions to
-that, please send me a minimal program example that illustrates the issue.
-
-Loading of games and saving programs is also supported. See the Virtual 
-Cassette section for file format/usage.
-
-The notable missing features are:
-  
-  - Fast Forward / Rewind
-  - Tape position counter
-  - Any kind of expansions (plus 1 etc)
 
 
 # Virtual Cassette Interface
@@ -175,7 +175,8 @@ A physical cassette recorder cannot yet be attached to the Replay Board.
 However the core should support loading once suitable pins are routed to it.
 
 You will need to replicate the original Acorn cassette hardware interface
-for CAS IN, CAS OUT and CAS MO. CAS RC is not used currently. 
+for CAS IN, CAS OUT and optionally CAS MO. CAS RC is not used currently. 
+In addition be careful to adjust voltage levels to be within spec for the FPGA. 
 
 
 # Resources
