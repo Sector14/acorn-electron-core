@@ -1,5 +1,6 @@
 vhdl    work    replay_pack.vhd
 vhdl    work    replay_ddrctrl_pack.vhd
+vhdl    work    replay_videotiming_pack.vhd 
 vhdl    work    replay_scancode_ps2_pack.vhd
 
 vhdl    work    fifo_async_d16.vhd
