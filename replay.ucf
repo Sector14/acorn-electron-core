@@ -8,9 +8,9 @@ NET i_clk_a     TNM_NET = clk_a_grp;
 NET i_clk_b     TNM_NET = clk_b_grp;
 NET i_clk_c     TNM_NET = clk_c_grp;
 
-TIMESPEC TS03 = PERIOD : clk_a_grp :  7.85 ;  # 114,545MHz + 10%
+TIMESPEC TS03 = PERIOD : clk_a_grp :  7.1 ;    #  128MHz + 10%
 #TIMESPEC TS02 = PERIOD : clk_b_grp : 18.30 ;  #  49,152MHz + 10%
-TIMESPEC TS01 = PERIOD : clk_c_grp : 31.40 ;  #  ~27 MHzz + 10%
+TIMESPEC TS01 = PERIOD : clk_c_grp : 33.0 ;    #  ~27 MHz + 10%
 
 INST "u_Lib/u_ClockGen/u_a_dcm" LOC = "DCM_X2Y0";
 INST "u_Lib/u_ClockGen/phase_ctrl.u_a2_dcm" LOC = "DCM_X1Y0";
