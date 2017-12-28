@@ -50,7 +50,9 @@
 --     Fn   = vysnc 2.5sl, partial 11us, 28sl, 250sl active, 31sl, partial 17us
 --     Fn+1 = vsync 2.5sl, partial 43us, 28sl, 250sl active, 31sl, partial 49us 
 --   Partials either side of vsync when added = 60us making a full scanline once 4us hs accounted for.
-
+--
+-- Width of partials in this implementation differs slightly from the Electron.
+-- 12us & 16us for one field and 44us & 48us for the next.
 
 -- Compatible Mode
 --

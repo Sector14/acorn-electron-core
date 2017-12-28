@@ -131,7 +131,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   
   -- Config
   signal cfg_dblscan : bit1;
