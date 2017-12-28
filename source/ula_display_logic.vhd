@@ -78,7 +78,6 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
-  use work.Replay_VideoTiming_Pack.all;
 
 library UNISIM;
   use UNISIM.Vcomponents.all;

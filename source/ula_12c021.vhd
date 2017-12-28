@@ -50,7 +50,6 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
-  use work.Replay_VideoTiming_Pack.all;
 
 library UNISIM;
   use UNISIM.Vcomponents.all;
@@ -132,7 +131,6 @@ entity ULA_12C021 is
 end;
 
 architecture RTL of ULA_12C021 is
-  constant c_vidparam : r_Vidparam_int := c_Vidparam_832x287p_50_16MHz;
 
   -- Blank border
   constant c_hoffset : integer := 96;
