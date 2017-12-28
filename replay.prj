@@ -1,5 +1,4 @@
 vhdl    work    replay_pack.vhd
-vhdl    work    replay_videotiming_pack.vhd
 vhdl    work    replay_ddrctrl_pack.vhd
 vhdl    work    replay_scancode_ps2_pack.vhd
 
@@ -36,7 +35,6 @@ vhdl    work    replay_clockgen_sync.vhd
 vhdl    work    replay_joy_quad.vhd
 vhdl    work    replay_joy_ps2.vhd
 vhdl    work    replay_audio.vhd
-vhdl    work    replay_videotiming.vhd
 
 vhdl    work    replay_lib_wrap_pack.vhd
 

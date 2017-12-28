@@ -692,12 +692,11 @@ begin
         ana_hsync_l <= ana_hsync;
         disp_bline_l <= disp_bline;
 
-        -- end of line  block (8 or 10)
+        -- end of line block (8 or 10)
         if (ana_hsync = '0' and ana_hsync_l = '1') then
           -- TODO: [Gary] This should trigger on falling edge of either signal as long as
           --       both are 0. Where as current setup requires both falling edges
           --       to be aligned. Is that always the case?
-          -- end of line block?
           if (not disp_bline and disp_bline_l) then
             if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
               row_addr := row_addr + 640;
