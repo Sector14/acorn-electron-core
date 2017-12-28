@@ -10,6 +10,23 @@ Rom sha1sum
   os_basic.rom bad51a4666ff9e9eed19811a1eb9d4cda10e69a3
 
 
+# Core Status
+
+The core boots to the Basic prompt in mode 6 with keyboard support.
+
+Entering of Basic programs should work. If you find any exceptions to
+that, please send me a minimal program example that illustrates the issue.
+
+Loading of games and saving programs is also supported. See the Virtual 
+Cassette section for file format/usage.
+
+The notable missing features are:
+  
+  - Fast Forward / Rewind
+  - Tape position counter
+  - Any kind of expansions (plus 1 etc)
+
+
 # Key Binds
 
 Most non-shifted keys on the Electron have been mapped to the same non-shifted 
@@ -26,8 +43,8 @@ Exceptions to this are:
 For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown
 instead on the "shift+:" key. However, as noted above, the core uses the
-"shift+'" key for a "*" due to the ":" key conflicting with the ";" key
-and its shifted key "+".
+"shift+'" key for a "*" as the ":" key was mapped to "'" due to conflicting with
+the ";" key and its shifted key "+" (clear as mud?)
   
 As with the original electron, caps-lock is toggled via shift+capslock, whilst 
 holding capslock will result in the function key, i.e capslock+e will output
@@ -36,44 +53,59 @@ holding capslock will result in the function key, i.e capslock+e will output
 
 # Video Output
 
-By default the core outputs a PAL analog signal with CSync @ 15.652kHz. 
+Two video modes are available. "Authentic" and "Compatible". By default the
+core operates in "compatible" mode. Monitors should be set to a 4:3 aspect
+ratio if available.
 
-TVs will accept this signal via scart sockets. A DVI/VGA adapter plus
-VGA to Scart cable will be needed. Note most VGA/Scart cables will not
-have a compatible pin-out but scart cables can easily have the pins 
-switched.
+To change the default mode, edit the replay.ini file and move the ",default"
+from the compatible option to authentic (or vice-versa). E.G to default to
+"Authentic" mode
+
+  item = "Accuracy", 0x00000021,dynamic
+  option = "Authentic",  0x00000000,default
+  option = "Compatible", 0x00000021
+
+## Authentic Mode
+
+Authentic mode is a more faithful recreation of the Electron's PAL signal
+running at 15.625kHz line frequency and 50Hz vertical refresh using
+CSync. The timing derived from the RTC and Display interrupts is also
+more accurate.
+
+TVs will accept this signal via scart sockets. (see below for cabling
+information).
+
+Note: Due to the use of CSync, even if your monitor supports a
+15.625kHz line frequency over VGA, it is still unlikely to work as many
+expect separate H & V Sync signals rather than CSync.
+
+Also be aware that some monitors when connected via HDMI will mis-identify
+authentic mode as a 720x576 @25Hz signal. This can cause excess flickering.
+
+## Compatible Mode
+
+Compatible mode uses a tweaked PAL signal (two fields of 312 lines rather than
+312.5 lines) and scan line doubler to increase the chance of the Electron's
+non-standard signal working with VGA/DVI/HDMI connected monitors.
+
+Whilst supporting a wider range of displays, the dropping of one line per
+frame means the core will run slightly faster than normal. Roughly 1 second
+faster per 5 minutes of runtime or 99.9844Hz vs 100.128Hz
+
+
+## Cables
+
+For Scart connections a DVI/VGA adapter plus VGA to Scart cable will be needed.
+Be aware that most VGA/Scart cables will not have a compatible pin-out but most 
+scart cables can easily have the pins switched around.
 
 See http://www.fpgaarcade.com/punbb/viewtopic.php?id=1211 for instructions
 on how to modify a regular VGA/Scart cable to work with the replay.
 
-Compatible cables can be bought, they'll be sold as "minimig" such as:
+Alternatively, compatible cables can be bought, they'll be sold as suitable for
+the "minimig" such as:
+
 http://amigakit.leamancomputing.com/catalog/product_info.php?products_id=919
-
-Digital outputs (DVI or HDMI) may also be used however most monitors will
-require a 31kHZ signal. Enable the "Double scan" option in the replay.ini
-
-Note: Whilst a DVI/VGA adapter can be used to connect to monitors/TVs 
-that provide a VGA connection, even if they support 15.652kHz VGA it
-is likely to expect separate H & V Sync signals rather than CSync.
-The only way to achieve that currently is to enable "Double scan"
-and operate at 32kHz.
-
-
-# Core Status
-
-The core boots to the Basic prompt in mode 6 with keyboard support.
-
-Entering of Basic programs should work. If you find any exceptions to
-that, please send me a minimal program example that illustrates the issue.
-
-Loading of games and saving programs is also supported. See the Virtual 
-Cassette section for file format/usage.
-
-The notable missing features are:
-  
-  - Fast Forward / Rewind
-  - Tape position counter
-  - Any kind of expansions (plus 1 etc)
 
 
 # Virtual Cassette Interface
@@ -143,7 +175,8 @@ A physical cassette recorder cannot yet be attached to the Replay Board.
 However the core should support loading once suitable pins are routed to it.
 
 You will need to replicate the original Acorn cassette hardware interface
-for CAS IN, CAS OUT and CAS MO. CAS RC is not used currently. 
+for CAS IN, CAS OUT and optionally CAS MO. CAS RC is not used currently. 
+In addition be careful to adjust voltage levels to be within spec for the FPGA. 
 
 
 # Resources
@@ -170,7 +203,12 @@ forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 
 # Change Log
 
-* 28/Nov/2017
+* 28/Dec/2017 - V1.1
+  - Generate a more accurate Electron PAL signal
+  - Improve timing of RTC/DispEnd interrupts based on new PAL signal
+  - Add authentic/compatibility video mode OSD option
+
+* 28/Nov/2017 - V1.0
   - Improve accuracy of audio waveform with low+high pass filter
   - Active video region offset to match Electron.
 

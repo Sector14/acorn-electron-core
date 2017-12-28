@@ -63,6 +63,10 @@ entity ULA_12C021 is
     o_n_vsync     : out bit1;
     o_de          : out bit1;
 
+    -- More compatible video signal when used with scan doubler and hdmi/vga
+    -- vs authentic signal for TV Scart usage.
+    i_compatible  : in boolean;
+
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);
@@ -131,18 +135,22 @@ architecture RTL of ULA_12C021 is
   constant c_vidparam : r_Vidparam_int := c_Vidparam_832x287p_50_16MHz;
 
   -- Blank border
-  constant c_voffset : integer := 9;
   constant c_hoffset : integer := 96;
 
   -- Framework Video
-  signal ana_hsync, ana_vsync, ana_de : bit1;
-  signal dig_hsync, dig_vsync, dig_de : bit1;
+  signal ana_hsync, ana_hsync_l : bit1;
+  signal ana_vsync, ana_csync, ana_de : bit1;
 
   signal vid_rst : bit1;
-  signal vpix, hpix, vtotal : word(13 downto 0);
-  signal vid_sol : bit1;  
-  signal vid_text_mode, vid_v_blank, vid_h_blank : boolean;
-  signal vid_row_count : integer range 0 to 10;
+
+  signal vid_text_mode : boolean;
+  signal disp_rowcount : integer range 0 to 10;
+  signal disp_rtc, disp_frame_end     : boolean;
+  signal disp_rtc_l, disp_frame_end_l : boolean;
+  signal disp_addint                  : boolean;
+  signal disp_bline, disp_bline_l     : boolean;
+  signal disp_cntinh                  : boolean;
+
 
   signal ram_contention : boolean;
 
@@ -181,14 +189,17 @@ architecture RTL of ULA_12C021 is
   signal phi_out   : bit1;
   signal clk_phase : unsigned(3 downto 0);
 
-  signal rtc_count : unsigned(18 downto 0);
+  -- Clock Enables
+  -- ck_* are internally generated and thus stretched across multiple sys clocks.
+  -- Ensure usage is guarded by ena_ula. Assumes ena_div13 is aligned to ena_ula!
+  -- Otherwise adjust existing usage of ena_div13 and treat as a separate clock domain.
+  signal ck_s16m16  : bit1; -- 1MHz
+  signal ck_s16m32  : bit1; -- 0.5MHz
+  signal ck_s16m128 : bit1; -- 0.125MHz
+  signal ck_s8m13   : bit1; -- 615kHz
+  signal ck_s4m13   : bit1; -- 307kHz     
 
-  -- Cassette Timing enables
-  -- These are internally generated and thus stretched across multiple sys clocks
-  -- ensure they're only ever used within ena_ula.
-  signal ck_div128 : bit1;
-  signal ck_div26  : bit1;
-  signal ck_div52  : bit1;
+  -- Multiplexed clock enables
   signal ck_cas    : bit1;
   signal ck_freqx  : bit1;
 
@@ -242,12 +253,17 @@ architecture RTL of ULA_12C021 is
   subtype t_colour_palette is word( 7 downto 0);
   type t_colour_palettes is array(15 downto 8) of t_colour_palette;
   signal colour_palettes : t_colour_palettes;
-   
+  
 begin
-  o_debug(0) <= isr_status(ISR_RX_FULL);
-  o_debug(1) <= isr_status(ISR_TX_EMPTY);
-  o_debug(2) <= '1' when cas_hightone else '0';
-  o_debug(3) <= cas_i_bit;
+  -- o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
+  -- o_debug(1) <= ana_hsync;
+  -- o_debug(2) <= isr_status(ISR_FRAME_END);
+  -- o_debug(3) <= isr_status(ISR_RTC);
+
+  o_debug(0) <= ana_csync;
+  --o_debug(1) <= ck_s16m32;
+  o_debug(2) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);     
+  o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -287,9 +303,10 @@ begin
 
       phi_out <= '0';
 
-      -- Bring video out of reset to align hpix 0 with phase 0
-      if (i_cph_sys(0) = '1' and vid_rst = '1' and clk_phase = "1111") then
-        vid_rst <= '0';
+      -- Bring video out of reset to align hsync_cnt 0 with phase 0 by clocking
+      -- display logic one clk_phase earlier.
+      if (i_cph_sys(3) = '1' and vid_rst = '1' and clk_phase = "1110") then
+         vid_rst <= '0';
       end if;
       
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
@@ -350,41 +367,81 @@ begin
 
   o_ena_phi_out <= phi_out and i_cph_sys(3);
   
+
+  -- Display logic clocks
+  p_clk_display : process(i_clk_sys, rst, vid_rst)
+    variable div32  : integer range 31 downto 0;
+  begin
+    if rst = '1' or vid_rst = '1' then
+      ck_s16m32 <= '0';
+      ck_s16m16 <= '0';
+
+      div32 := 0;
+    elsif rising_edge(i_clk_sys) then
+
+      -- NOTE: ck_* must be used within i_ena_ula as they stretch multiple sys clocks
+      --       and occur on falling edge of i_ena_ula/i_ena_div13
+      -- NOTE: Assumes div13 is aligned with ula_ena and use is guarded by ena_ula.
+      --       Without this assumption FREQX/multi counter will need reviewing as
+      --       it uses enables derived from both.
+      if i_ena_ula = '1' then
+        ck_s16m32 <= '0';
+        ck_s16m16 <= '0';
+
+        -- (M): 16MHz/16 = 1MHz for display logic
+        if (div32 = 15 or div32 = 31) then
+          ck_s16m16 <= '1';
+        end if;
+
+        -- (M/2): 16MHz/32 = 0.5MHz for display logic
+        if div32 = 31 then
+          ck_s16m32 <= '1';
+          div32 := 0;
+        else
+          div32 := div32 + 1;
+        end if;    
+
+      end if;
+    end if;
+  end process;
+
   --
   -- Additional Timing Frequencies
   -- Used by Cassette I/O and Sound.
   p_clk_divider : process(i_clk_sys, rst)
-    variable div128 : integer range 127 downto 0;
+    variable div128 : integer range 127 downto 0; 
     variable div26  : bit1;
     variable div52  : bit1;
   begin
     if (rst = '1') then
-      ck_div128 <= '0';
-      ck_div26 <= '0';
-      ck_div52 <= '0';
+      ck_s16m128 <= '0';
+      ck_s8m13 <= '0';
+      ck_s4m13 <= '0';
+
       div128 := 0;
-      div26 := '0';
+
       div52 := '0';
+      div26 := '0';
     elsif rising_edge(i_clk_sys) then
-      -- NOTE: These must be used within i_ena_ula as they stretch multiple sys clocks.
-      -- NOTE: div13 is must be aligned with ula_ena and used within ena_ula.
+      -- NOTE: ck_* must be used within i_ena_ula as they stretch multiple sys clocks
+      --       and occur on falling edge of i_ena_ula/i_ena_div13
+      -- NOTE: Assumes div13 is aligned with ula_ena and use is guarded by ena_ula.
       --       Without this assumption FREQX/multi counter will need reviewing as
       --       it uses enables derived from both.
-      
       if i_ena_ula = '1' then
-        ck_div128 <= '0';
+        ck_s16m128 <= '0';
 
         -- (M/8): 16MHz/128 = 0.125MHz for SOUND
         if (div128 = 127) then
           div128 := 0;
-          ck_div128 <= '1';
+          ck_s16m128 <= '1';
         else
           div128 := div128 + 1;
         end if;
 
-        -- (S8M13 and S8M13/2): ~615kHz and ~307kHz for cassette I/O
-        ck_div26 <= '0';
-        ck_div52 <= '0';
+        -- (S8M13 and S4M13): ~615kHz and ~307kHz for cassette I/O
+        ck_s8m13 <= '0';
+        ck_s4m13 <= '0';
         if i_ena_div13 = '1' then
           div26 := not div26;
 
@@ -392,8 +449,8 @@ begin
             div52 := not div52;
           end if;
 
-          ck_div26 <= div26;
-          ck_div52 <= div26 and div52;
+          ck_s8m13 <= div26;
+          ck_s4m13 <= div26 and div52;
         end if;
 
       end if;
@@ -401,14 +458,49 @@ begin
   end process;
 
   -- Mode based frequency selection
-  ck_freqx <= ck_div128 when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND else
+  ck_freqx <= ck_s16m128 when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND else
               ck_cas    when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT else
-              ck_div26  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
+              ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
   -- ====================================================================
   -- Video
   -- ====================================================================
+
+  u_DisplayLogic : entity work.ula_display_logic
+  port map (
+    i_clk                   => i_clk_sys,
+    i_ena                   => i_ena_ula,
+    i_rst                   => vid_rst,
+
+    i_ck_s1m                => ck_s16m16,
+    i_ck_s1m2               => ck_s16m32,
+
+    i_compatible            => i_compatible,
+
+    i_gmode                 => not vid_text_mode,
+
+    o_hsync                 => ana_hsync,
+    o_vsync                 => ana_vsync,
+    o_csync                 => ana_csync,
+
+    o_rtc                   => disp_rtc,
+    o_dispend               => disp_frame_end,
+
+    o_bline                 => disp_bline,
+    o_addint                => disp_addint,
+    o_blank                 => open,
+    o_pcpu                  => open,
+    o_cntinh                => disp_cntinh,
+
+    o_rowcount              => disp_rowcount,
+
+    o_de                    => o_de
+  );
+
+  o_n_hsync <= not ana_hsync;
+  o_n_vsync <= not ana_vsync;
+  o_n_csync <= not ana_csync;  
 
   -- Mode reads required on phase 0 or 8 ready for following phase as follows:
   -- Mode | Res                  | Read Phase  | cnt
@@ -430,60 +522,9 @@ begin
   --   p234 Graphics Modes (Appendix C)
   --   
 
-  -- TODO: [Gary] Did Electron generate offset/interlaced display or use matching fields for 256p?
-  u_VideoTiming : entity work.Replay_VideoTiming
-    generic map (
-      g_enabledynamic       => '0',
-      g_param               => c_vidparam
-      )
-    port map (
-      i_clk                 => i_clk_sys,
-      i_ena                 => i_ena_ula,
-      i_rst                 => vid_rst,
-      --
-      i_param               => c_vidparam,
-      i_sof                 => '0',
-      i_f2_flip             => '0',
-      --
-      o_hactive             => open,
-      o_hrep                => open,
-      o_vactive             => vtotal,
-      --
-      o_dig_hs              => dig_hsync,
-      o_dig_vs              => dig_vsync,
-      o_dig_de              => dig_de,
-      o_dig_ha              => open,
-      o_dig_va              => open,
-      o_dig_sof             => open,
-      o_dig_sol             => vid_sol,
-      o_ana_hs              => ana_hsync,
-      o_ana_vs              => ana_vsync,
-      o_ana_de              => ana_de,
-      --
-      o_hpix                => hpix,
-      o_vpix                => vpix,
-      --
-      o_f2                  => open,
-      o_voddline            => open,
-      o_stdprog             => open
-      );
-
-  -- TODO: [Gary] Mixing of dig/ana here :( Analog in PAL 576i returns csync as
-  -- hsync and '1' for vsync. However, OSD in Syscon uses vsync to determine display
-  -- location so digital h/v passed out for now. This is a bit of a kludge as the
-  -- timing of dig h/v may not match that of analog h/v (or csync)
-  o_n_hsync <= dig_hsync;
-  o_n_vsync <= dig_vsync;
-  o_n_csync <= ana_hsync;
-  o_de      <= ana_de;
-  
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
-  vid_v_blank <= (unsigned(vpix) < c_voffset) or
-                 (unsigned(vpix) >= c_voffset+256) or
-                 (unsigned(vpix) >= c_voffset+250 and vid_text_mode);
-  vid_h_blank <= unsigned(hpix) < c_hoffset or unsigned(hpix) >= (c_hoffset+640);
-  
+
   p_vid_out : process(rst, vid_rst, i_clk_sys)
     variable pixel_data : word(7 downto 0);
     variable pix_idx : integer range 0 to 7;
@@ -522,107 +563,104 @@ begin
           repeat_count := repeat_count_reg;
         end if;
 
-        if (not vid_v_blank and vid_row_count < 8) then
+        if not disp_cntinh and not disp_frame_end and disp_rowcount < 8 then
+        
+          logical_colour := (others => '0');
+
+          -- Decode pixel to logical colour
+          case misc_control(MISC_DISPLAY_MODE) is
+            when "000" | "011" | "100" | "110" | "111" =>
+              -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
+              logical_colour := "000" & pixel_data(pix_idx);
+            when "001" | "101" =>
+              -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
+              logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
+            when "010" =>
+              -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
+                logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
+            when others =>
+          end case;
+
+          -- Palette Lookup (AUG p215)
+          -- TODO: [Gary] There has to be some logic to the palette register format that will
+          --              avoid this big case but I'm not seeing it.
+          case misc_control(MISC_DISPLAY_MODE) is
+            when "000" | "011" | "100" | "110" | "111" =>
+              -- 2 colour
+              case to_integer(logical_colour) is 
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when others => -- 1
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+              end case;
+              
+            when "001" | "101" =>
+              case to_integer(logical_colour) is 
+                -- 4 colour
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when 1 =>
+                  rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                when 2 => 
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                when others => -- 3
+                  rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+              end case;
+
+            when "010" =>
+              case to_integer(logical_colour) is 
+                -- 16 colour
+                when 0 => 
+                  rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
+                when 1 =>
+                  rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
+                when 2 => 
+                  rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
+                when 3 => 
+                  rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
+                when 4 =>
+                  rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
+                when 5 => 
+                  rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
+                when 6 => 
+                  rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
+                when 7 =>
+                  rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
+                when 8 => 
+                  rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
+                when 9 => 
+                  rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
+                when 10 =>
+                  rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
+                when 11 => 
+                  rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
+                when 12 => 
+                  rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
+                when 13 =>
+                  rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
+                when 14 => 
+                  rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
+                when others => -- 15
+                  rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
+              end case;
+
+            when others => -- unused
+              rgb := "111";
+          end case;
+
+          -- Palette uses '1' to turn off that colour
+          o_red <= not rgb(2);
+          o_green <= not rgb(1);
+          o_blue <= not rgb(0);
           
-          if (not vid_h_blank) then            
-
-            logical_colour := (others => '0');
-
-            -- Decode pixel to logical colour
-            case misc_control(MISC_DISPLAY_MODE) is
-              when "000" | "011" | "100" | "110" | "111" =>
-                -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
-                logical_colour := "000" & pixel_data(pix_idx);
-              when "001" | "101" =>
-                -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
-                logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
-              when "010" =>
-                -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
-                 logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
-              when others =>
-            end case;
-
-            -- Palette Lookup (AUG p215)
-            -- TODO: [Gary] There has to be some logic to the palette register format that will
-            --              avoid this big case but I'm not seeing it.
-            case misc_control(MISC_DISPLAY_MODE) is
-              when "000" | "011" | "100" | "110" | "111" =>
-                -- 2 colour
-                case to_integer(logical_colour) is 
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when others => -- 1
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                end case;
-                
-              when "001" | "101" =>
-                case to_integer(logical_colour) is 
-                  -- 4 colour
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when 1 =>
-                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                  when 2 => 
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                  when others => -- 3
-                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
-                end case;
-
-              when "010" =>
-                case to_integer(logical_colour) is 
-                  -- 16 colour
-                  when 0 => 
-                    rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
-                  when 1 =>
-                    rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
-                  when 2 => 
-                    rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                  when 3 => 
-                    rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
-                  when 4 =>
-                    rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
-                  when 5 => 
-                    rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
-                  when 6 => 
-                    rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
-                  when 7 =>
-                    rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
-                  when 8 => 
-                    rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                  when 9 => 
-                    rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
-                  when 10 =>
-                    rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
-                  when 11 => 
-                    rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
-                  when 12 => 
-                    rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
-                  when 13 =>
-                    rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
-                  when 14 => 
-                    rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
-                  when others => -- 15
-                    rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
-                end case;
-
-              when others => -- unused
-                rgb := "111";
-            end case;
-
-            -- Palette uses '1' to turn off that colour
-            o_red <= not rgb(2);
-            o_green <= not rgb(1);
-            o_blue <= not rgb(0);
-            
-            -- Handle repeated pixel modes
-            if repeat_count = 0 then
-              pix_idx := pix_idx - 1;
-              repeat_count := repeat_count_reg;
-            else
-              repeat_count := repeat_count - 1;
-            end if;
-
+          -- Handle repeated pixel modes
+          if repeat_count = 0 then
+            pix_idx := pix_idx - 1;
+            repeat_count := repeat_count_reg;
+          else
+            repeat_count := repeat_count - 1;
           end if;
+
         end if;
 
       end if;
@@ -639,7 +677,7 @@ begin
     if (rst = '1' or vid_rst = '1') then
       row_addr := '0' & mode_base_addr & "000000";
       read_addr := row_addr;
-      vid_row_count <= 0;
+      
       ram_contention <= false;
     elsif rising_edge(i_clk_sys) then      
       if (i_ena_ula = '1') then
@@ -647,48 +685,44 @@ begin
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
           -- TODO: [Gary] 2 blanking lines in mode 3 are contention free or not?
-          -- TODO: [Gary] if using 704 for contention, may end up doing  byte more than
-          --              needed? On pixel 696 data for that pixel should already be available
-          --              and no more bytes follow it, just h_sync/border. render process needs 704 
-          --              check though. switch to hpix here instead? Otherwise 1 more RAM cycle
-          --              under contention than needed.
-          ram_contention <= (not (vid_v_blank or vid_h_blank)) and vid_row_count < 8 and
-                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          ram_contention <= not disp_cntinh and not disp_frame_end and disp_rowcount < 8 and
+                            misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
-        if (unsigned(vpix) = 0) then
-          -- Latch mode adjusted screen start. Wrap is not latched and may
-          -- change mid frame depending on mode.
-          row_addr := '0' & mode_base_addr & "000000";
-          read_addr := row_addr;
-          vid_row_count <= 0;
-        end if;
+        ana_hsync_l <= ana_hsync;
+        disp_bline_l <= disp_bline;
 
-      
-        if (not vid_v_blank) then
-          -- end of active line
-          if (unsigned(hpix) = (c_hoffset + 640)) then  -- switch to 696? ie last block of pixels? to save 1 redundant read/contention cycle
-            if ( (vid_row_count = 9) or (vid_row_count = 7 and not vid_text_mode) ) then
-              vid_row_count <= 0;
-              if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
-                row_addr := row_addr + 640;
-              else
-                row_addr := row_addr + 320;
-              end if;
-              read_addr := row_addr;
+        -- end of line block (8 or 10)
+        if (ana_hsync = '0' and ana_hsync_l = '1') then
+          -- TODO: [Gary] This should trigger on falling edge of either signal as long as
+          --       both are 0. Where as current setup requires both falling edges
+          --       to be aligned. Is that always the case?
+          if (not disp_bline and disp_bline_l) then
+            if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
+              row_addr := row_addr + 640;
             else
-              vid_row_count <= vid_row_count + 1;
-              read_addr := row_addr + vid_row_count + 1;
+              row_addr := row_addr + 320;
             end if;
+            read_addr := row_addr;       
+          else
+            read_addr := row_addr + disp_rowcount; --  +1?
           end if;
         end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          if (not (vid_v_blank or vid_h_blank) and vid_row_count < 8 ) then          
-              read_addr := read_addr + 8;
+          if not disp_cntinh then
+            read_addr := read_addr + 8;
           end if;
         end if;  
+
+        -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
+        if disp_addint then
+          -- Latch mode adjusted screen start. Wrap is not latched and may
+          -- change mid frame depending on mode.
+          row_addr := '0' & mode_base_addr & "000000";
+          read_addr := row_addr;
+        end if;
 
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
@@ -904,7 +938,6 @@ begin
       misc_control(MISC_DISPLAY_MODE) <= "110";
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
       colour_palettes <= (others => (others => '0'));
-      rtc_count <= (others => '0');
       
       cas_o_data_shift <= (others => '0');
 
@@ -947,7 +980,6 @@ begin
               -- CPU needs to be able to see the POR flag was active at the start
               -- of the next clock edge when it reads this register. Without the
               -- delay the next ULA clock will clear it long before CPU read occurs.
-              -- TODO: [Gary] Could this process be clocked off current CPU clock instead?
               delayed_por_reset := '1';
             elsif (i_addr(3 downto 0) = x"4") then
               isr_status(ISR_RX_FULL) <= '0';
@@ -1008,24 +1040,22 @@ begin
         end if;
                  
         -- Interrupt Generation
-        -- Aligned to end of hsync
-        if unsigned(hpix) = c_vidparam.syncp_h + c_vidparam.syncw_h - 1 then
-          -- Display, generate on the line after last active display line
-          if (unsigned(vpix) = c_voffset+256 and not vid_text_mode) or
-             (unsigned(vpix) = c_voffset+250 and vid_text_mode) then
-              isr_status(ISR_FRAME_END) <= '1';
-          end if;
+        -- Variable duration pulse depending on mode, trigger on rising edge only
+        disp_frame_end_l <= disp_frame_end;
+        disp_rtc_l <= disp_rtc;
 
-          -- RTC 10ms before FRAME END interrupt, roughly display line 100
-          if unsigned(vpix) = c_voffset+100 then
-            isr_status(ISR_RTC) <= '1';
-          end if;
+        if disp_rtc and not disp_rtc_l then
+          isr_status(ISR_RTC) <= '1';
         end if;
-     
+
+        if disp_frame_end and not disp_frame_end_l then
+          isr_status(ISR_FRAME_END) <= '1';
+        end if;
+
         --
         -- Cassette Registers
         --
-        -- TODO: Read and write can be split out to separate processes with
+        -- TODO: [Gary] Read and write can be split out to separate processes with
         --       ISR for RX and TX based on external signals just as hightone
         --       set and clear is.
         if ck_freqx = '1' then
@@ -1116,7 +1146,7 @@ begin
           cas_o_data_shift(0) <= '1';
         end if;
         
-        -- TODO: This is a square wave based o_cas for use with virtual cassette interface
+        -- TODO: [Gary] This is a square wave based o_cas for use with virtual cassette interface
         --       need to also generate a pseudo sine wave to output to aux pins for real cassette.
         --       It bears little resemblence to the ULA CASA0..2 interface
         o_cas <= '0';
@@ -1244,13 +1274,13 @@ begin
           end if;
         end if;
 
-        if ck_div52 = '1' then
-          -- TODO: Counter reset appears to assume it only occurs when all bits are 1
+        if ck_s4m13 = '1' then
+          -- TODO: [Gary] Counter reset appears to assume it only occurs when all bits are 1
           --       due to nor gate for reset signal. In input mode this is unlikely
           --       to ever be the case, as the reg should be all 0's for correct
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
-          -- TODO: Reset on pulse edges in input mode also depend upon DATACNT?
+          -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
@@ -1276,7 +1306,7 @@ begin
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
         
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
           cas_i_delay1 <= i_cas;    
           cas_i_delay2 <= cas_i_delay1;
         end if;
@@ -1288,7 +1318,7 @@ begin
   cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
   -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
-  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_div52;
+  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_s4m13;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1299,7 +1329,7 @@ begin
       candidate := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
           
           -- candidate 1/0 decode
           if multi_cnt(6 downto 0) = 114 then    -- S2, 242 or 114
@@ -1312,7 +1342,7 @@ begin
             cas_i_bit <= candidate;
           end if;
 
-          -- TODO: This is inaccurate. Electron after loading a program
+          -- TODO: [Gary] This is inaccurate. Electron after loading a program
           -- can still generate RD Full interrupts without needing a soft reset.
           -- Not sure why as CDATA (cas_i_bit) cannot change without a CAS IN
           -- edge being detected and would remain at a '1' due to last receiving
@@ -1337,7 +1367,7 @@ begin
       hightone_cnt := 0;
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then          
-        if ck_div52 = '1' then
+        if ck_s4m13 = '1' then
 
           if multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;

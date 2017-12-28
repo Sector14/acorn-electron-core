@@ -63,6 +63,7 @@ cp $REPLAY_LIB_COMMON_PATH/replay_common.ucf ./
 
 # cpu
 cp $LIB_PATH/cpu/t65/T65*.vhd ./
+# rc filter
 cp $LIB_PATH/generic/filters/rc_butter_1O/*.vhd ./
 
 # chip scope
@@ -71,7 +72,7 @@ cp ./../cs/*.ngc ./
 
 # project files
 cp ./../source/*.vhd ./
-cp ./../source/override_lib/*.vhd ./
+# cp ./../source/override_lib/*.vhd ./
 cp ./../$NAME.ucf ./
 cp ./../$NAME.scr ./
 cp ./../$NAME.prj ./
