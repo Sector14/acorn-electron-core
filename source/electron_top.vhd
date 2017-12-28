@@ -131,11 +131,13 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   
   -- Config
   signal cfg_dblscan : bit1;
+  signal cfg_vid_compatible : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
+
 
   -- LED Blink
   signal led         : bit1;
@@ -217,6 +219,8 @@ begin
 
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
+  cfg_vid_compatible    <= i_cfg_dynamic(5) = '1';
+
   cfg_cas_play          <= i_cfg_dynamic(1);
   cfg_cas_rec           <= i_cfg_dynamic(2);
   cfg_cas_ffwd          <= i_cfg_dynamic(3);
@@ -316,6 +320,8 @@ begin
     o_n_vsync     => ula_n_vsync,
     o_de          => ula_de,               
     
+    i_compatible  => cfg_vid_compatible,
+
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
@@ -611,10 +617,10 @@ begin
     i_bypass              => '0',
     i_dblscan             => cfg_dblscan,
     --
-    i_hsync_l             => ula_n_hsync,
-    i_vsync_l             => ula_n_vsync,
-    i_csync_l             => ula_n_csync,  -- passed through
-    i_blank               => not ula_de,   -- passed through
+    i_hsync_l             => not ula_n_hsync,
+    i_vsync_l             => not ula_n_vsync,
+    i_csync_l             => not ula_n_csync,  -- passed through
+    i_blank               => not ula_de,       -- passed through
     i_vid_rgb             => ula_rgb,
     --
     o_hsync_l             => dbl_hsync_l,
@@ -624,7 +630,7 @@ begin
     o_vid_rgb             => dbl_rgb
   );
 
-  -- Digital
+  -- Digital (using analog timings but with separate syncs)
   o_vid_sync.dig_de <= not dbl_blank;
   o_vid_sync.dig_hs <= dbl_hsync_l;
   o_vid_sync.dig_vs <= dbl_vsync_l;
@@ -699,6 +705,8 @@ begin
 
   debug(12) <= ula_cas_o;
   debug(13) <= ula_cas_i;
+  debug(14) <= ula_r or ula_g or ula_b;  
+  debug(15) <= i_clk_sys;
 
   o_debug <= debug;
 

@@ -58,6 +58,8 @@ cp ${REPLAY_LIB_BASE_PATH}/tb/*.vhd ./sim
 
 # cpu
 cp ${LIB_PATH}/cpu/t65/T65*.vhd ./sim
+# rc filter
+cp ${LIB_PATH}/generic/filters/rc_butter_1O/*.vhd ./sim
 
 cp ./source/*.vhd ./sim
 cp ./source/override_lib/*.vhd ./sim
