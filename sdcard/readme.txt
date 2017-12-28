@@ -203,7 +203,12 @@ forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 
 # Change Log
 
-* 28/Nov/2017
+* 28/Dec/2017 - V1.1
+  - Generate a more accurate Electron PAL signal
+  - Improve timing of RTC/DispEnd interrupts based on new PAL signal
+  - Add authentic/compatibility video mode OSD option
+
+* 28/Nov/2017 - V1.0
   - Improve accuracy of audio waveform with low+high pass filter
   - Active video region offset to match Electron.
 
