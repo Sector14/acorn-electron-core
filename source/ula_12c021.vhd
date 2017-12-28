@@ -148,7 +148,6 @@ architecture RTL of ULA_12C021 is
   signal disp_rtc, disp_frame_end     : boolean;
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
-  signal disp_blank                   : boolean;
   signal disp_bline, disp_bline_l     : boolean;
   signal disp_cntinh                  : boolean;
 
@@ -490,8 +489,9 @@ begin
 
     o_bline                 => disp_bline,
     o_addint                => disp_addint,
-    o_blank                 => disp_blank,
-    o_cntinh                 => disp_cntinh,
+    o_blank                 => open,
+    o_pcpu                  => open,
+    o_cntinh                => disp_cntinh,
 
     o_rowcount              => disp_rowcount,
 

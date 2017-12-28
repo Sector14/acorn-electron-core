@@ -108,9 +108,9 @@ entity ULA_DISPLAY_LOGIC is
       o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
       o_addint              : out boolean;  -- start of new fields active data
       
-      -- o_pcpu             : out boolean;
+      o_pcpu                : out boolean;
       o_blank               : out boolean;
-      o_cntinh               : out boolean;  -- high during sync or border regions of scanline
+      o_cntinh              : out boolean;  -- high during sync or border regions of scanline
 
       -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
@@ -143,7 +143,7 @@ begin
   o_de <= '1' when vsync_cnt < 576 and not cntinh and not dispend else '0';
 
   o_dispend <= dispend;
-  --o_pcpu <= pcpu;
+  o_pcpu <= pcpu;
   o_cntinh <= cntinh;
 
   o_rowcount <= vid_row_count;
