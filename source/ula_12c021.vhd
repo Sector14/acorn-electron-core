@@ -690,25 +690,12 @@ begin
         ana_hsync_l <= ana_hsync;
         disp_bline_l <= disp_bline;
 
-        -- end of line block (8 or 10)
-        if (ana_hsync = '0' and ana_hsync_l = '1') then
-          -- TODO: [Gary] This should trigger on falling edge of either signal as long as
-          --       both are 0. Where as current setup requires both falling edges
-          --       to be aligned. Is that always the case?
-          if (not disp_bline and disp_bline_l) then
-            row_addr := unsigned(byte_addr);
-          else
-            -- disp_rowcount = VA0-2
-            byte_addr := word('0' & row_addr(14 downto 6) & "000" & to_unsigned(disp_rowcount, 3));
-          end if;
+        -- start of hs and on last line of block (8 or 10)
+        if (ana_hsync = '1' and ana_hsync_l = '0') then
+          if disp_bline then
+            row_addr := unsigned(byte_addr);            
+          end if;         
         end if;
-
-        -- Every 8 or 16 pixels depending on mode/repeats
-        if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-          if not disp_cntinh then
-            byte_addr := word(unsigned(byte_addr) + 8);
-          end if;
-        end if;  
 
         -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
         if disp_addint then
@@ -717,13 +704,26 @@ begin
           row_addr := '0' & mode_base_addr & "000000";
         end if;
 
+        if ana_hsync = '1' and not disp_bline then
+          -- disp_rowcount = VA0-2
+          byte_addr := word('0' & row_addr(14 downto 6) & "000" & to_unsigned(disp_rowcount, 3));
+        end if;
+
+        -- Every 8 or 16 pixels depending on mode/repeats (clk_phase 0 or 8 represents byterate)
+        if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
+
+          if not disp_cntinh then
+            byte_addr := word(unsigned(byte_addr) + 8);
+          end if;
+        end if;
+
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         if (byte_addr(15) = '1') then
           -- wrapping only impacts upper 14 bits
-          --ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
           byte_addr := '0' & word(mode_wrap_addr(14 downto 11)) & byte_addr(10 downto 0);
         end if;
-        ula_ram_addr <= byte_addr(14 downto 0);
+        
+        ula_ram_addr <= byte_addr(14 downto 3) & word(to_unsigned(disp_rowcount, 3));
 
       end if;
     end if;
