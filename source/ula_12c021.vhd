@@ -668,21 +668,21 @@ begin
   p_vid_addr : process(i_clk_sys, rst, vid_rst, mode_base_addr)
     -- start address of current row
     variable row_addr  : unsigned(15 downto 0);
-    -- address of byte to fetch from RAM
-    variable read_addr : unsigned(15 downto 0);
 
+    variable byte_addr : word(15 downto 0);
   begin
     if (rst = '1' or vid_rst = '1') then
       row_addr := '0' & mode_base_addr & "000000";
-      read_addr := row_addr;
-      
+
+      byte_addr := (others => '0');
+
       ram_contention <= false;
     elsif rising_edge(i_clk_sys) then      
       if (i_ena_ula = '1') then
 
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
-          -- TODO: [Gary] 2 blanking lines in mode 3 are contention free or not?
+          -- TODO: [Gary] 2 blanking lines in mode 3/6 are contention free or not?
           ram_contention <= not disp_cntinh and not disp_frame_end and disp_rowcount < 8 and
                             misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
@@ -696,21 +696,17 @@ begin
           --       both are 0. Where as current setup requires both falling edges
           --       to be aligned. Is that always the case?
           if (not disp_bline and disp_bline_l) then
-            if (misc_control(MISC_DISPLAY_MODE'LEFT) = '0') then
-              row_addr := row_addr + 640;
-            else
-              row_addr := row_addr + 320;
-            end if;
-            read_addr := row_addr;       
+            row_addr := unsigned(byte_addr);
           else
-            read_addr := row_addr + disp_rowcount; --  +1?
+            -- disp_rowcount = VA0-2
+            byte_addr := word('0' & row_addr(14 downto 6) & "000" & to_unsigned(disp_rowcount, 3));
           end if;
         end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
           if not disp_cntinh then
-            read_addr := read_addr + 8;
+            byte_addr := word(unsigned(byte_addr) + 8);
           end if;
         end if;  
 
@@ -719,14 +715,15 @@ begin
           -- Latch mode adjusted screen start. Wrap is not latched and may
           -- change mid frame depending on mode.
           row_addr := '0' & mode_base_addr & "000000";
-          read_addr := row_addr;
         end if;
 
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
-        ula_ram_addr <= std_logic_vector(read_addr(14 downto 0));
-        if (read_addr(15) = '1') then
-          ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
+        if (byte_addr(15) = '1') then
+          -- wrapping only impacts upper 14 bits
+          --ula_ram_addr <= std_logic_vector(read_addr(14 downto 0) + (mode_wrap_addr & "000000"));
+          byte_addr := '0' & word(mode_wrap_addr(14 downto 11)) & byte_addr(10 downto 0);
         end if;
+        ula_ram_addr <= byte_addr(14 downto 0);
 
       end if;
     end if;
