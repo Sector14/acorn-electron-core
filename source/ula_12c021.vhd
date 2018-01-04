@@ -666,14 +666,13 @@ begin
   end process;
 
   p_vid_addr : process(i_clk_sys, rst, vid_rst, mode_base_addr)
-    -- start address of current row
-    variable row_addr  : unsigned(15 downto 0);
+    -- start address of current row block (8-10 lines)
+    variable row_addr  : unsigned(14 downto 6);
 
-    variable byte_addr : word(15 downto 0);
+    variable byte_addr : unsigned(15 downto 3);
   begin
     if (rst = '1' or vid_rst = '1') then
-      row_addr := '0' & mode_base_addr & "000000";
-
+      row_addr := (others => '0');
       byte_addr := (others => '0');
 
       ram_contention <= false;
@@ -690,41 +689,39 @@ begin
         ana_hsync_l <= ana_hsync;
         disp_bline_l <= disp_bline;
 
-        -- start of hs and on last line of block (8 or 10)
+        -- start of hs and on last line of block (8 or 10) latch address as start of next block
         if (ana_hsync = '1' and ana_hsync_l = '0') then
           if disp_bline then
-            row_addr := unsigned(byte_addr);            
-          end if;         
+            row_addr := byte_addr(14 downto 6);
+          end if;
         end if;
 
-        -- Screen addr latched during reset to vcnt line 0 (addint) at start of hsync
+        -- Screen addr latched during reset to vcnt line 0 (addint)
+        -- Wrap is not latched and may change mid frame depending on mode.
         if disp_addint then
-          -- Latch mode adjusted screen start. Wrap is not latched and may
-          -- change mid frame depending on mode.
-          row_addr := '0' & mode_base_addr & "000000";
+          row_addr := mode_base_addr;
         end if;
 
+        -- byte reset back to start of line
         if ana_hsync = '1' and not disp_bline then
-          -- disp_rowcount = VA0-2
-          byte_addr := word('0' & row_addr(14 downto 6) & "000" & to_unsigned(disp_rowcount, 3));
+          byte_addr := '0' & row_addr & "000";
         end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats (clk_phase 0 or 8 represents byterate)
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
-
           if not disp_cntinh then
-            byte_addr := word(unsigned(byte_addr) + 8);
+            byte_addr := byte_addr + 1;
           end if;
         end if;
 
+        -- TODO: [Gary] This might not reset on full overflow, but when 14-11 are all high?
         -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
         if (byte_addr(15) = '1') then
-          -- wrapping only impacts upper 14 bits
-          byte_addr := '0' & word(mode_wrap_addr(14 downto 11)) & byte_addr(10 downto 0);
+          byte_addr := '0' & mode_wrap_addr(14 downto 11) & byte_addr(10 downto 3); 
         end if;
         
-        ula_ram_addr <= byte_addr(14 downto 3) & word(to_unsigned(disp_rowcount, 3));
-
+        -- rowcount holds VA0-2, byte_addr VA3-14
+        ula_ram_addr <= word(byte_addr(14 downto 3) & to_unsigned(disp_rowcount, 3));
       end if;
     end if;
   end process;
