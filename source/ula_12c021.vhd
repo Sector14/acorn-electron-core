@@ -155,8 +155,7 @@ architecture RTL of ULA_12C021 is
   -- Audio
   signal snd_data       : bit1;
 
-  -- Adjusted screen base and wrap addr for current mode
-  signal mode_base_addr : unsigned(14 downto 6);
+  -- Screen wrap addr for current mode
   signal mode_wrap_addr : unsigned(14 downto 6);
 
   signal rst : bit1;
@@ -665,11 +664,12 @@ begin
     end if;
   end process;
 
-  p_vid_addr : process(i_clk_sys, rst, vid_rst, mode_base_addr)
+
+  p_vid_addr : process(i_clk_sys, rst, vid_rst)
     -- start address of current row block (8-10 lines)
     variable row_addr  : unsigned(14 downto 6);
-
-    variable byte_addr : unsigned(15 downto 3);
+    -- address within current line
+    variable byte_addr : unsigned(14 downto 3);
   begin
     if (rst = '1' or vid_rst = '1') then
       row_addr := (others => '0');
@@ -689,7 +689,7 @@ begin
         ana_hsync_l <= ana_hsync;
         disp_bline_l <= disp_bline;
 
-        -- start of hs and on last line of block (8 or 10) latch address as start of next block
+        -- start of hs and on last line of block (8 or 10) latch address as start of next row block
         if (ana_hsync = '1' and ana_hsync_l = '0') then
           if disp_bline then
             row_addr := byte_addr(14 downto 6);
@@ -697,31 +697,30 @@ begin
         end if;
 
         -- Screen addr latched during reset to vcnt line 0 (addint)
-        -- Wrap is not latched and may change mid frame depending on mode.
         if disp_addint then
-          row_addr := mode_base_addr;
+          row_addr := unsigned(screen_start_addr);
         end if;
 
         -- byte reset back to start of line
         if ana_hsync = '1' and not disp_bline then
-          byte_addr := '0' & row_addr & "000";
+          byte_addr := row_addr & "000";
         end if;
 
-        -- Every 8 or 16 pixels depending on mode/repeats (clk_phase 0 or 8 represents byterate)
+        -- Every 8 or 16 pixels depending on mode/repeats
         if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
           if not disp_cntinh then
             byte_addr := byte_addr + 1;
           end if;
         end if;
-
-        -- TODO: [Gary] This might not reset on full overflow, but when 14-11 are all high?
-        -- Frame read_addr overflowed into ROM? Wrap around until reset next frame
-        if (byte_addr(15) = '1') then
-          byte_addr := '0' & mode_wrap_addr(14 downto 11) & byte_addr(10 downto 3); 
+        
+        -- Frame read_addr overflowed? Wrap around until reset next frame
+        -- This also handles using wrap address when screen_start_addr is zero
+        if (byte_addr(14 downto 11) = "0000") then
+          byte_addr := mode_wrap_addr(14 downto 11) & byte_addr(10 downto 3); 
         end if;
         
         -- rowcount holds VA0-2, byte_addr VA3-14
-        ula_ram_addr <= word(byte_addr(14 downto 3) & to_unsigned(disp_rowcount, 3));
+        ula_ram_addr <= word(byte_addr & to_unsigned(disp_rowcount, 3));
       end if;
     end if;
   end process;
@@ -1190,7 +1189,7 @@ begin
   -- Video Address
   -- 
 
-  p_screen_addr : process(screen_start_addr, misc_control)
+  p_wrap_addr : process(misc_control)
     variable base_addr : word(15 downto 6);
   begin    
     -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
@@ -1205,18 +1204,7 @@ begin
       when others =>
     end case;
     
-    -- TODO: [Gary] May be more to it than this, pastraiser suggests anything
-    --       below 800H caused base_addr to be used (firmware skips clearing this region
-    --       of ram too on startup) as well as other variations/skips. This needs further
-    --       research.
-    if screen_start_addr = x"00" & '0' then
-      mode_base_addr <= unsigned(base_addr(14 downto 6));
-    else
-      mode_base_addr <= unsigned(screen_start_addr);
-    end if;
-
-    -- Wrapping always starts from the hardcoded address regardless
-    -- of screen_start_addr.
+    -- Wrapping always starts from the hardcoded address regardless of screen_start_addr.
     mode_wrap_addr <= unsigned(base_addr(14 downto 6));
   end process;
 
