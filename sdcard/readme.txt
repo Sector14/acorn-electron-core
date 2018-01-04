@@ -203,6 +203,10 @@ forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 
 # Change Log
 
+* 4/Jan/2017 - V1.2
+  - More accurate video address logic
+  - Fixes issue with occasional glitch in top quarter of Firetrack
+    
 * 28/Dec/2017 - V1.1
   - Generate a more accurate Electron PAL signal
   - Improve timing of RTC/DispEnd interrupts based on new PAL signal
