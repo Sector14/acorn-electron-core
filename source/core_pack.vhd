@@ -52,7 +52,7 @@ Package Core_Pack is
   constant c_use_fileio           : boolean := true; -- enabled FILEIO block
 
   constant c_cfg_fileio_cha_ena   : word( 3 downto 0) := "0001"; -- FD
-  constant c_cfg_fileio_cha_drv   : word( 3 downto 0) := "0000"; -- driver x
+  constant c_cfg_fileio_cha_drv   : word( 3 downto 0) := "0010"; -- driver x
   constant c_cfg_fileio_chb_ena   : word( 3 downto 0) := "0000"; -- HD
   constant c_cfg_fileio_chb_drv   : word( 3 downto 0) := "0000"; -- driver x
 
