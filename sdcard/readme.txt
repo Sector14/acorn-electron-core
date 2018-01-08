@@ -9,6 +9,8 @@ Rom sha1sum
   basic.rom    4a7393f3a45ea309f744441c16723e2ef447a281
   os_basic.rom bad51a4666ff9e9eed19811a1eb9d4cda10e69a3
 
+Replay firmware newer than 8th Jan 2018 also required.
+
 
 # Core Status
 
@@ -110,33 +112,36 @@ http://amigakit.leamancomputing.com/catalog/product_info.php?products_id=919
 
 # Virtual Cassette Interface
 
-## File format
+## UEF Format
 
-The current cassette interface is a temporary method to allow loading
-of a raw file off of an SD card. There is no support for ffwd/rwnd or
-feedback on the current tape position. You can "reset" the tape to
-the beginning by ejecting the tape and inserting again via the menu.
-Further improvements are planned once the core is fully functional.
+The UEF file format is the most common means of archiving Electron (and BBC)
+tapes and is directly supported by the Replay in uncompressed form. 
 
-The only supported tape file format at this time is "raw". Such a file
-can be created by extracting the tape data from a UEF file including 
-start/stop bits. A python uef2raw.py script will do this for you and
-can be found in the SVN sw/tools/acorn folder.
+Whilst a program may have the .uef extension, it may be gzip compressed
+and should be renamed to .uef.gz and decompressed by gunzip (Linux) or
+7-zip on Windows before the resulting .uef file is transfered to your SD card.
+
+## RAW Format
+
+In addition to UEF, the core continues to support the older raw format with the 
+file extension ".raw". Such a file can be created by extracting the tape data 
+from a UEF file including start/stop bits. A python uef2raw.py script will 
+do this for you and can be found in the SVN sw/tools/acorn folder.
 
 Usage:
 
   python uef2raw.py <input_file.uef> <output_file.raw>
 
-Note: It's advisable to mark these raw files as READ ONLY once transferred
-to the SD card.
+"raw" was used prior to the Firmware support for uef and should no longer
+be needed.
 
 
 ## Loading
 
-From the "Virtual Tape" OSD menu, select tape "1 (raw)" and choose a 
-raw file (prepared as above). Switch to the "Cassette Player" menu
+From the "Virtual Tape" OSD menu, select tape "1" and choose a 
+uef or raw file (prepared as above). Switch to the "Cassette Player" menu
 and switch "Play" to ON. The core implements motor control so the
-tape will not being playing until a the Electron enables the motor.
+tape will not begin playing until the Electron enables the motor.
 
 Load the program/app/game as normal by issuing
 
@@ -145,10 +150,9 @@ Load the program/app/game as normal by issuing
 There is no need to toggle play to OFF, the Electron will pause playback
 as and when needed.
 
-Rewind/Fast forward is not yet supported. You can work around this by
+Rewind/Fast forward is not currently supported. You can work around this by
 ejecting and re-inserting the tape which will reset the position to
-the beginning of the tape. Position will be preserved in a future update
-once FFwd/Rwnd are supported.
+the beginning of the tape.
 
 
 ## Saving 
@@ -167,6 +171,9 @@ switch REC to ON and then PLAY to ON. Save as normal e.g
   SAVE "TESTING"
 
 and press return. 
+
+Support for saving to the UEF format and creating "blank" tapes is planned 
+for a future firmware version.
 
 
 ## Physical Cassette Interface
@@ -193,15 +200,19 @@ with the User Guide and when you're bored of that, hop over to
 http://www.elitehomepage.org/c64/index.htm and download the Electron
 version of Elite. Perhaps the only game you'll ever need ;)
 
-So far only a handful of games have been tested with this core and not
-extensively. They include, Elite, Hopper, Sphinx Adventures, Jet Set Willy,
-Monsters, Repton and the Introductory Cassette.
+Numerous games have been tested with this core including, Elite, Hopper,
+Sphinx Adventures, Jet Set Willy, Monsters, Repton, Exile and the Introductory
+Cassette.
 
 Please report any issues with the core and any games on the fpgaarcade
 forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 
 
 # Change Log
+
+* Development
+  - Driver changed to type 2 to use firmware support for loading from UEF.
+    Requires firmware version newer than 8th Jan 2018.
 
 * 4/Jan/2018 - V1.2
   - More accurate video address logic
