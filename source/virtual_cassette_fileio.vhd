@@ -408,11 +408,11 @@ begin
                   fileio_req_state <= S_IDLE;
                 end if;
               end if;
-        
-              -- buffer >= half full (512 words), start transfer
-              if (fileio_tx_level(9) = '1') then
+
+              -- Start transmit as soon as 64 (0x40) bytes available (buffer >= 32 words)
+              if (fileio_tx_level(5) = '1') then
                 fileio_req  <= '1';
-                fileio_size <= x"0400";
+                fileio_size <= x"0040";
               end if;
 
               if (fileio_ack_req = '1') then
@@ -435,14 +435,15 @@ begin
             --
             when S_R_IDLE =>
               fileio_dir <= '0';
-              fileio_size <= x"0400";
+              fileio_size <= x"0040";
 
               -- Stopping playback or switching to record?
               if (i_play = '0' or i_rec = '1') then
                 fileio_rx_flush <= '1';
                 fileio_req_state <= S_IDLE;
               else            
-                -- buffer < half full pre-fetch more data
+                -- bit 9 = buffer < half full (512 words)
+                -- Results in at most one request over half full (1024 + 64 bytes) buffered
                 if fileio_rx_level(9) = '0' then
                   fileio_req  <= '1'; -- note, request only sent when ack received
                 end if;
