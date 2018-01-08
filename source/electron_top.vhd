@@ -138,7 +138,6 @@ architecture RTL of Electron_Top is
   signal cfg_vid_compatible : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
 
-
   -- LED Blink
   signal led         : bit1;
   signal tick_pre1   : bit1;
@@ -164,7 +163,7 @@ architecture RTL of Electron_Top is
   signal ram_n_cas   : bit1;
 
   -- CPU
-  signal cpu_n_w     : bit1;
+  signal cpu_n_w      : bit1;
   signal cpu_data_in  : word(7 downto 0);
   signal cpu_data_out : word(7 downto 0);
   signal cpu_addr     : word(23 downto 0);
@@ -195,7 +194,7 @@ architecture RTL of Electron_Top is
   signal div13       : bit1;
   signal n_por       : bit1;
   signal audio_filter_in_s  : signed(15 downto 0);
-  signal audio_filter_lpf_s  : signed(15 downto 0);
+  signal audio_filter_lpf_s : signed(15 downto 0);
   signal audio_filter_out_s : signed(15 downto 0);
 
   -- CPU/ULA Glue
@@ -204,6 +203,14 @@ architecture RTL of Electron_Top is
   -- Keyboard
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
+
+  --
+  -- Expansion HW
+  -- 
+
+  -- Plus1
+  signal plus1_oe2, plus1_oe3, plus1_oe4 : bit1;
+  signal plus1_rom_qa : bit1;
 
   -- Debug
   signal debug        : word(15 downto 0);
@@ -413,8 +420,36 @@ begin
   -- 16MHz from sys_clk / 2
   ena_ula <= i_cph_sys(1) or i_cph_sys(3);
 
+
   -- ====================================================================
-  -- Framwork Interfacing
+  -- Plus 1 Expansion
+  -- ====================================================================
+
+  expansion_plus1 : entity work.expansion_plus1
+  port map (
+    -- Framework interfacing
+    i_clk_sys      => i_clk_sys,
+
+    -- Expansion port I/O
+    i_addr         => addr_bus,
+    b_data         => data_bus,
+
+    i_n_rst        => ula_n_reset_out,
+    i_n_w          => cpu_n_w,
+    i_phiout       => ula_ena_phi_out,
+
+    i_16m_ena      => ena_ula,
+
+    -- ROM Enables
+    o_n_oe4       => plus1_oe4,     -- SK 1 (far) page 0 or 1
+    o_n_oe2       => plus1_oe2,     -- SK 2 (near, higher priority) page 2 or 3
+    o_n_oe3       => plus1_oe3,     -- SK1&2 page 13
+
+    o_rom_qa      => plus1_rom_qa   -- LSB of xFE05
+  );
+  
+  -- ====================================================================
+  -- Framework Interfacing
   -- ====================================================================
   
   --
@@ -444,10 +479,53 @@ begin
   --
   -- DDR 
   --
-  -- IC2 ROM 32kB (addressable via ARM bus)
-  -- Original ROM, Hitatchi HN613256 with tri-state output buffer
-  -- DDR ROM addressable 0x8000 - 0xFFFF
+
+  -- Electron Memory Map:
+  --   0x0000 - 0x7FFF  RAM
+  --   0x8000 - 0xBFFF  BASIC/Paged ROM
+  --   0xC000 - 0xFFFF  OS ROM (some mem mapped i/o interleaved too, see ULA notes)
+  --
+  -- IC2 ROM 32kB 0x8000 - 0xFFFF, original ROM, Hitatchi HN613256 with tri-state output buffer
+  --
+  -- Page register (FE05) supports switching between up to 16x16KB ROMs.
+  -- Slots 8-11 are occupied by Keyboard/BASIC. Remaining slots may be claimed by
+  -- add-on hardware such as carts in the Plus1 using chip enables based on
+  -- decoding FE05 address writes.
+  --
+  -- Chip select is simulated by addressing higher areas of DDR based on current
+  -- ROM number paged in. Note, original hw could possibly glitch and multiple
+  -- ROMs use the data bus at the same time. With this DDR setup only ONE ROM can
+  -- ever be active at a time.
   -- 
+  -- DDR Usage for 0x0000-0xFFFF matches the Electron's 0-15 bit address layout
+  -- although ironically, RAM is not currently stored in DDR.
+  --
+  -- Additional paged ROMs
+  -- 0x40000 - 0x7C000   Up to 12 x 16KB (12 x 0x4000) Paged ROMs 
+  -- slots 8-11 unused although DDR allocated for simplicity of accessing 12-15.
+  --
+  -- E.G
+  --   0x40000 - 0x43FFF  Page 0
+  --   0x44000 - 0x47FFF  Page 1
+  --   ...
+  --   0x7C000 - 0x7FFFF  Page 15
+  --
+  -- bit 18 = 1, bits 17-14 = paged ROM number, bits 13-0 = addr bus
+  --
+  -- Rest of DDR space unused
+  --
+  -- NOTE: Paging bits are ignored when ula_rom is active. This is the case for
+  -- OS ROM access and anytime BASIC ROM is paged in and accessed. A15-0 can be
+  -- used directly as 0x0000-0xFFFF DDR mirrors Electron's 32K RAM + 32K ROM base setup.
+
+  
+  -- TODO: Currently only the Plus1 is supported as a means of HW expansion
+  -- and this provides a page 12 ROM and options for carts to be in two slots
+  -- for ROM pages 0-3 or ROM page 13. How to make this user friendly? does UEF
+  -- provide a way to say which ROM page should be used? Does it matter?
+  -- TODO: If more HW is added to cover other slots, is there any chance of page
+  -- conflicts?
+
   -- NOTE: DDR samples address after sys_ena and will present result in time
   -- for following sys_ena 4 sys_clk ticks later. 
   -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
@@ -599,10 +677,6 @@ begin
   
   -- Unfiltered audio available on external aux i/o pin
   o_sound_op <= ula_sound_o;
-
-  --
-  -- Expansion roms
-  --
 
   --
   -- Scanline Doubling
