@@ -1,11 +1,9 @@
 # ROMS
-sdcard/os_basic.rom
-sdcard/basic.rom
-sdcard/os.rom
+sdcard/*.rom
+sdcard/roms/
 
 # Test Bench ROMS
-tb/os_basic_fff0_ffff.rom
-tb/os_basic_d800_da00.rom
+tb/*.rom
 
 # Build files
 sdcard/acorn_electron.bin

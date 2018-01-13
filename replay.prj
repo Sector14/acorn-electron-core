@@ -54,6 +54,7 @@ vhdl    work    ula_12c021.vhd
 vhdl    work    ps2_translate.vhd
 vhdl    work    replay_fileio_fch_generic.vhd
 vhdl    work    virtual_cassette_fileio.vhd
+vhdl    work    plus1.vhd
 vhdl    work    electron_top.vhd
 vhdl    work    core_top.vhd
 

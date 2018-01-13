@@ -14,19 +14,16 @@ Replay firmware newer than 8th Jan 2018 also required.
 
 # Core Status
 
-The core boots to the Basic prompt in mode 6 with keyboard support.
+The core is feature complete as far as the base Electron hardware goes.
 
-Entering of Basic programs should work. If you find any exceptions to
-that, please send me a minimal program example that illustrates the issue.
-
-Loading of games and saving programs is also supported. See the Virtual 
-Cassette section for file format/usage.
+Games and programs may be loaded from tape (uef/raw) and saved back out
+to tape (raw). Refer to the Virtual Cassette section for file format/usage.
 
 The notable missing features are:
   
   - Fast Forward / Rewind
   - Tape position counter
-  - Any kind of expansions (plus 1 etc)
+  - Various hardware add-ons
 
 
 # Key Binds
@@ -186,6 +183,132 @@ for CAS IN, CAS OUT and optionally CAS MO. CAS RC is not used currently.
 In addition be careful to adjust voltage levels to be within spec for the FPGA. 
 
 
+# Plus1 Hardware Expansion
+
+The Plus1 add-on brought 2 cart slots for ROMs and additional hardware as
+well as an analogue port for joysticks/paddles/other hw and a printer port.
+
+This core only supports the usage of ROMs via the Plus 1 interface and
+requires the plus1.rom (sha1sum below)
+
+  plus1.rom 04bec46e1bb2259e5444cc7b8017221414165ed7
+
+To use the plus1 and ROMs ensure the plus1.rom line is uncommented in the ini
+and the above plus1.rom (or compatible slogger ROM) is located in the same 
+directory as the basic/os roms.
+
+Transfer to a roms/ folder any games, program or language roms you wish to use.
+
+Via the OSD or editing the ini defaults, toggle the "Plus1 Attached" menu
+item to yes. The Electron will need at least a hard reset at this time
+CTRL+BREAK.
+
+You can verify the Plus1 is working after loading the core by typing *HELP
+and seeing the response:
+
+```
+>*HELP
+Expansion 1.00
+  ADC/Printer/RS423
+
+OS 1.00
+>
+```
+
+The Plus1 has two cartridge slots each of which supports two 16KB ROMs.
+Socket 1 is for rom pages 0 and 1, Socket 2 for pages 2 and 3. ROMs
+in socket 1 will take priority. 
+
+Currently you need to edit the replay.ini file and set which .rom files
+should be loaded into each of the four pages. Some games/programs were
+a single 16KB ROM in which case you can place it into any page. Others
+came as 2x16KB ROMs, for these you should place the two files in either
+page 0 and 1, or in page 2 and 3. Any ROM page you do not wish to use
+should have the "empty.rom" loaded into it unless you disable the Plus1
+entirely.
+
+For example to simulate a LISP ROM cartridge in socket 1 uncomment the page 0
+and 1 lines in the ini and edit to match
+
+```
+ROM = roms/lisp_1.rom, 0x4000, 0x40000     # page 0
+ROM = roms/lisp_2.rom, 0x4000, 0x44000     # page 1
+ROM = empty.rom, 0x4000, 0x48000           # page 2
+ROM = empty.rom, 0x4000, 0x4C000           # page 3
+```
+
+Alternatively if you wanted two different game ROMs, such as
+Starship Command in socket 1 and Countdown to Doom in socket 2 
+
+```
+ROM = roms/starship_command_1.rom,  0x4000, 0x40000    # page 0
+ROM = roms/starship_command_2.rom,  0x4000, 0x44000    # page 1
+ROM = roms/countdown_to_doom_1.rom, 0x4000, 0x48000    # page 2
+ROM = roms/countdown_to_doom_2.rom, 0x4000, 0x4C000    # page 3
+```
+
+Keep in mind some ROMs (such as games) will auto load when the machine
+is switched on preventing you from making use of BASIC (or another
+language ROM) and loading the game in the other ROM socket. ROMs
+in the page 0/1 socket will take priority.
+
+To prevent this from occurring, press CTRL+BREAK, wait about one second 
+and then press ESCAPE. This should drop you to the prompt for the active
+language.
+
+From here you can select the ROM filing system and list/load a ROM, for
+example to load countdown to doom which is in the second socket and not
+auto loaded on machine reset:
+
+```
+*ROM
+*CAT
+CHAIN "DOOM"
+```
+
+or switch back to the TAPE filing system and load a tape.
+
+```
+*TAPE
+CHAIN""
+```
+
+For more information on ROM usage, please refer to the Acorn Plus1 user manual.
+
+Editing the ini to select ROMs is a temporary requirement. Switching via
+the OSD as you can with tapes, will likely be supported by a future firmware
+update.
+
+Note: Page 13 is also available as a ROM slot but should not be used
+unless you know a ROM cartridge requires it, leave the empty.rom in this slot.
+
+NOTE2: Be aware the Electron will run slower when the Plus1 is active, for example
+the following program (idea stolen from the stardot forums :) in MODE 0 takes about
+1426ms to run without the Plus1, just over 1600ms with the Plus1 enabled and around
+1726ms with ROMs in both cart sockets.
+
+```
+10 TIME=0
+20 FOR I=0 to 10000:NEXT
+30 PRINT TIME
+```
+
+You can disable the Plus1 on the fly using:
+
+```
+*FX163,128,1
+```
+
+and re-enable with
+
+```
+*FX163,128,0
+```
+
+Alternatively you can physical detached the Plus1 via the OSD "Plus1 Attached"
+menu item (followed by CTRL+BREAK).
+
+
 # Resources
 
 The "Acorn Electron User Guide" is a good starting point. An on-line version
@@ -213,6 +336,7 @@ forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 * Development
   - Driver changed to type 2 to use firmware support for loading from UEF.
     Requires firmware version newer than 8th Jan 2018.
+  - Initial Plus 1 expansion support for ROM carts.
 
 * 4/Jan/2018 - V1.2
   - More accurate video address logic
