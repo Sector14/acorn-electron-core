@@ -127,6 +127,7 @@ architecture RTL of Electron_Top is
   -- Config
   signal cfg_dblscan : bit1;
   signal cfg_vid_compatible : boolean;
+  signal cfg_plus1_attached : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
 
   -- LED Blink
@@ -219,6 +220,7 @@ begin
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
   cfg_vid_compatible    <= i_cfg_dynamic(5) = '1';
+  cfg_plus1_attached    <= i_cfg_dynamic(6) = '1';
 
   cfg_cas_play          <= i_cfg_dynamic(1);
   cfg_cas_rec           <= i_cfg_dynamic(2);
@@ -417,11 +419,6 @@ begin
   -- Plus 1 Expansion
   -- ====================================================================
 
-  -- TODO: [Gary] This needs to be an optional add-on that is not enabled
-  --       by default. Add a static config item to enable it and don't
-  --       use in DDR test if disabled?
-  --       what happens if rom isn't present will OS try to poll DDR and
-  --       end up looking at garbage?
   expansion_plus1 : entity work.expansion_plus1
   port map (
     -- Framework interfacing
@@ -443,7 +440,7 @@ begin
     o_n_oe2       => plus1_n_oe2,     -- SK 2 (near, higher priority) page 2 or 3
     o_n_oe3       => plus1_n_oe3,     -- SK1&2 page 13
 
-    o_rom_qa      => plus1_rom_qa   -- LSB of xFE05
+    o_rom_qa      => plus1_rom_qa     -- LSB of xFE05
   );
   
   -- ====================================================================
@@ -569,13 +566,14 @@ begin
   end process;
 
   -- 4 DDR reads possible when running @2MHz. 3 of which are redundant reads atm
-  ddr_valid <= ula_rom_ena or not (plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4);
+  ddr_valid <= '1' when ula_rom_ena = '1' else
+               '1' when cfg_plus1_attached and ((plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4) = '0') else
+               '0';
 
-  -- TODO: [Gary] plus1 enables only count when plus1 hw is enabled.
-  -- TODO: [Gary] Check DDR is blank on start up otherwise unmounted roms would return
-  --              DDR RAM data which may be garbage.
-  -- rom data tri-state when any rom is enabled
-  data_bus <= rom_data when ula_rom_ena = '1' or (plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4) = '0' else (others => 'Z');
+  -- rom data tri-state when any enabled rom is read
+  data_bus <= rom_data when ula_rom_ena = '1' else
+              rom_data when cfg_plus1_attached and ((plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4) = '0') else
+              (others => 'Z');
 
   --
   -- Cassette
