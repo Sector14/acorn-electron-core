@@ -55,16 +55,18 @@ entity Expansion_Plus1 is
   port (
     -- Framework interfacing
     i_clk_sys       : in bit1;
+    o_n_oe          : out bit1;  -- onboard plus 1 ROM
 
     -- Expansion port I/O
+    i_16m_ena       : in bit1;
+
     i_n_rst         : in bit1;
     i_n_w           : in bit1;
-    i_phiout        : in bit1;
+    -- i_phiout        : in bit1;
 
     i_addr          : in word( 15 downto 0 );
     b_data          : inout word( 7 downto 0 );
 
-    i_16m_ena       : in bit1;
     
     -- Unused expansion signals
     -- o_rdy          => cpu_rdy,
@@ -75,10 +77,10 @@ entity Expansion_Plus1 is
     -- Cart Slots (not supported beyond chip enables for ROM paging)
     -- Two sockets available with signals other than oe2/oe4 shared between.
     o_n_oe4         : out bit1;     -- SK 1 (far) page 0 or 1
-    o_n_oe2         : out bit1;     -- SK 2 (near, higher priority) page 2 or 3
+    o_n_oe2         : out bit1;     -- SK 2 (near) page 2 or 3
     o_n_oe3         : out bit1;     -- SK1&2 page 13
 
-    o_rom_qa        : out bit1      -- LSB of xFE05
+    o_rom_qa        : out bit1      -- LSB of xFE05 (distinguish between two possible pages)
 
     -- Unused cart socket signals
     -- o_addr 
@@ -102,20 +104,53 @@ entity Expansion_Plus1 is
 end;
 
 architecture RTL of Expansion_Plus1 is
+  signal rom_page_enable : bit1;
+  signal rom_page        : word(2 downto 0);
 
 begin
-  b_data <= 'Z';
+  b_data <= (others => 'Z');
   
-  o_n_oe2 <= '1';
-  o_n_oe3 <= '1';
-  o_n_oe4 <= '1';
+  -- page 12 on board rom
+  o_n_oe <= '0' when i_n_w = '1' and i_addr(15) = '1' and i_addr(14) = '0' and
+                     rom_page_enable = '1' and rom_page = "100" else '1';
 
-  o_rom_qa <= '0';
+  -- page 0 or 1
+  o_n_oe4 <= '0' when i_addr(15) = '1' and i_addr(14) = '0' and  
+                      rom_page_enable = '0' and rom_page(2 downto 1) = "00" else '1';
+  -- page 2 or 3
+  o_n_oe2 <= '0' when i_addr(15) = '1' and i_addr(14) = '0' and  
+                      rom_page_enable = '0' and rom_page(2 downto 1) = "01" else '1';
+  -- page 13
+  o_n_oe3 <= '0' when i_addr(15) = '1' and i_addr(14) = '0' and  
+                      rom_page_enable = '1' and rom_page = "101" else '1';
+  -- LSB FE05
+  o_rom_qa <= rom_page(0);
 
+  -- TODO: [Gary] Verify plus1 logic and update this accordingly
+  p_page_decode : process(i_clk_sys, i_n_rst)
+  begin
+    if i_n_rst = '0' then
+      rom_page_enable <= '0';
+      rom_page <= (others => '0');
+    elsif rising_edge(i_clk_sys) then
+      if i_16m_ena = '1' then
+    
+        -- Register access rom paging
+        if i_addr(15 downto 0) = x"FE05" and i_n_w = '0' then
+          if rom_page_enable = '1' and rom_page(2) = '0' then
+            -- Only 8-15 allowed when page 8-11 is active (ie kbd/basic rom pages AUG p211)
+            if (b_data(3) = '1') then
+              rom_page_enable <= b_data(3); 
+              rom_page <= b_data(2 downto 0);              
+            end if;
+          else
+            rom_page_enable <= b_data(3); 
+            rom_page <= b_data(2 downto 0);
+          end if;
+        end if;
 
-
-  -- TODO: [Gary] FE05 decoding to track which page is currently enabled.
-  -- TODO: [Gary] DDR check if chip enables and select correct ROM address
-  -- TODO: [Gary] ROMQA to determine between the two current banks the OE pin is active for.
+      end if;
+    end if;                
+  end process;
 
 end RTL;
