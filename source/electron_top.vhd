@@ -431,7 +431,7 @@ begin
 
     i_n_rst        => ula_n_reset_out,
     i_n_w          => cpu_n_w,
-    -- i_phiout       => ula_ena_phi_out,
+    i_phiout       => ula_ena_phi_out,
 
     i_16m_ena      => ena_ula,
 

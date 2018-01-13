@@ -62,7 +62,7 @@ entity Expansion_Plus1 is
 
     i_n_rst         : in bit1;
     i_n_w           : in bit1;
-    -- i_phiout        : in bit1;
+    i_phiout        : in bit1;
 
     i_addr          : in word( 15 downto 0 );
     b_data          : inout word( 7 downto 0 );
@@ -126,14 +126,14 @@ begin
   -- LSB FE05
   o_rom_qa <= rom_page(0);
 
-  -- TODO: [Gary] Verify plus1 logic and update this accordingly
+  -- Rom Page decoding
   p_page_decode : process(i_clk_sys, i_n_rst)
   begin
     if i_n_rst = '0' then
       rom_page_enable <= '0';
       rom_page <= (others => '0');
     elsif rising_edge(i_clk_sys) then
-      if i_16m_ena = '1' then
+      if i_phiout = '1' then
     
         -- Register access rom paging
         if i_addr(15 downto 0) = x"FE05" and i_n_w = '0' then
@@ -153,4 +153,6 @@ begin
     end if;                
   end process;
 
+  -- 15 Pin ADC
+  -- 
 end RTL;
