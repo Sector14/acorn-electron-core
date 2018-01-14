@@ -872,15 +872,12 @@ begin
   -- ROM
   -- ====================================================================
   -- Enable main board rom for OS access or BASIC rom if page enable
-  -- TODO: [Gary] reading any register other than 0 or 4 should read from os/basic rom.
   
   -- ROM enabled for 0x8000 - 0xBFFF when page 10 or 11 active, or for
   -- 0xC000 - 0xFFFF except for the memory mapped i/o in 0xFCXX, 0xFDXX, 0xFEXX
   o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and        
                      isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and        -- ROM page 10 or 11
                      isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
-           --'1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
-           --'1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
            '1' when (i_addr(15) = '1' and i_addr(14) = '1') and         -- ROM OS except mem mapped i/o
                     (i_addr(15 downto 8) /= x"FC") and
                     (i_addr(15 downto 8) /= x"FD") and
