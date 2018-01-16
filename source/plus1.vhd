@@ -57,6 +57,9 @@ entity Expansion_Plus1 is
     i_clk_sys       : in bit1;
     o_n_oe          : out bit1;  -- onboard plus 1 ROM
 
+    i_joy_a         : in  word( 5 downto 0);
+    i_joy_b         : in  word( 5 downto 0);
+
     -- Expansion port I/O
     i_16m_ena       : in bit1;
 
@@ -80,7 +83,7 @@ entity Expansion_Plus1 is
     o_n_oe2         : out bit1;     -- SK 2 (near) page 2 or 3
     o_n_oe3         : out bit1;     -- SK1&2 page 13
 
-    o_rom_qa        : out bit1      -- LSB of xFE05 (distinguish between two possible pages)
+    o_rom_qa        : out bit1;      -- LSB of xFE05 (distinguish between two possible pages)
 
     -- Unused cart socket signals
     -- o_addr 
@@ -100,6 +103,8 @@ entity Expansion_Plus1 is
 
     -- o_sound_out
     -- io_adin      -- linked between both carts
+
+    o_debug         : out word(15 downto 0)
   );
 end;
 
@@ -113,8 +118,7 @@ architecture RTL of Expansion_Plus1 is
   signal adc_n_cs, adc_n_r, adc_n_w : bit1;
   signal adc_n_w_l : bit1;
   signal adc_n_intr : bit1;
-  signal adc_chan : word(3 downto 0);
-  signal adc_data : bit1; -- really 8bit but as no ADC is done...
+  signal adc_data : word(7 downto 0);
 
   signal stat_reg : word(7 downto 4);
 begin
@@ -161,73 +165,101 @@ begin
     end if;                
   end process;
 
+  --
   -- 15 Pin ADC0844
-  --
-  -- Only single ended mux supported. Differential and pseudo differential
-  -- not implemented. Single ended is "faked" in that it's a min/max result only
-  -- due to the translation of digital joystick inputs rather than any actual ADC.
-  --
-  -- RD/WR as single signal suggets every conversion must first program a new
-  -- channel configuration before starting conversion. 
-  
-  -- TODO: [Gary] R/W signal is low only for the duration of phiout which is implemented 
-  --       as an enable. Any issues with that?
-
+  --   
   n_fc70 <= '0' when i_addr = x"FC70" else '1';
   n_fc71 <= '0' when i_addr = x"FC71" else '1';
   n_fc72 <= '0' when i_addr = x"FC72" else '1';
   n_fc73 <= '0' when i_addr = x"FC73" else '1';
   
   adc_n_cs <= n_fc70;
-  adc_n_r <= '0' when i_n_w = '1' and i_phiout = '1' else '1';
-  adc_n_w <= '0' when i_n_w = '0' and i_phiout = '1' else '1';
+
+  -- These were AND'd with phiout however due to using clock enable, logic has to be adjusted
+  adc_n_r <= '0' when i_n_w = '1' else '1';
+  adc_n_w <= '0' when i_n_w = '0' else '1';
 
   -- n_romstb <= n_fc73 = '1' and i_n_w = '0';
 
-
+  -- Only single ended mux supported. Differential and pseudo differential
+  -- not implemented. Single ended is "faked" in that it's a min/mid/max result only
+  -- due to the translation of digital joystick inputs rather than real actual ADC.
   p_adc : process (i_clk_sys, i_n_rst)    
   begin
     if i_n_rst = '0' then
       adc_n_intr <= '1';
-      adc_data <= '0';
-      adc_chan <= (others => '0');
-    elsif rising_edge(i_clk_sys) then    
-      -- no enables, chip was async based on n_r, n_w, n_cs
-      -- Single ended operation mode only. Re-config required prior to each conversion.
-      adc_n_w_l <= adc_n_w;
+      adc_data <= x"80";
+    elsif rising_edge(i_clk_sys) then   
+      if i_phiout = '1' then
 
-      if adc_n_cs = '0' then
-        -- falling edge of /WR resets /intr high
-        if adc_n_w_l = '1' and adc_n_w = '0' then
-          adc_n_intr <= '1';
+        if adc_n_cs = '0' then
+          if adc_n_r = '0' then
+            adc_n_intr <= '1';
+          end if;
+
+          if adc_n_w = '0' then
+            -- No input, mid value.
+            adc_data <= x"80";
+
+            -- TODO: [Gary] should really wait 1280 sys clocks (40us) after conversion started
+            --       before joystick values latched with conversion completes            
+            case b_data(3 downto 0) is 
+              -- joy1
+              when "0100" => -- ch1 p15 X
+                if i_joy_a(2) = '0' then
+                  adc_data <= x"00";
+                elsif i_joy_a(3) = '0' then
+                  adc_data <= x"FF";
+                end if;
+              when "0101" => -- ch2 p7  Y            
+                if i_joy_a(0) = '0' then
+                  adc_data <= x"00";
+                elsif i_joy_a(1) = '0' then
+                  adc_data <= x"FF";
+                end if;
+              -- joy2
+              when "0110" => -- ch3 p12 X
+                if i_joy_b(2) = '0' then
+                  adc_data <= x"00";
+                elsif i_joy_b(3) = '0' then
+                  adc_data <= x"FF";
+                end if;
+              when "0111" => -- ch4 p4  Y
+                if i_joy_b(0) = '0' then
+                  adc_data <= x"00";
+                elsif i_joy_b(1) = '0' then
+                  adc_data <= x"FF";
+                end if;
+              when others => 
+                -- No other mode supported
+                adc_data <= x"80"; 
+            end case;
+
+            adc_n_intr <= '0';
+          end if;
+
         end if;
 
-        -- rising edge of /WR latch the configuration (M0..3)
-        if adc_n_w_l = '0' and adc_n_w = '1' then
-          adc_chan <= b_data(3 downto 0);
-
-          -- TODO: [Gary] should really wait 1280 sys clocks = 40us before conversion completes
-          -- TODO: [Gary] Based on active channel latch a 1 or 0 from corresponding replay joystick axis
-          adc_data <= '1';
-          adc_n_intr <= '0';
-        end if;
-                
-        if adc_n_r = '0' then
-          adc_n_intr <= '1';
-        end if;
       end if;
-
     end if;    
   end process;
 
-  -- /stat is read of FC72
-  --   d7 = set/latched 0 when /RST or printer busy (DB7 = 0?), reset = 1 after /CEN? which is a /wr to fc71
-  -- d7-d4: printer /busy, /intr, /button1, /button0
-  stat_reg <= '1' & adc_n_intr & "11";
+  -- d7 = set/latched 0 when /RST or printer busy (DB7 = 0?), reset = 1 after /CEN? which is a /wr to fc71
+  -- d7-d4: printer /busy, /intr, /button1 (p10), /button0 (p13)
+  stat_reg <= '1' & adc_n_intr & i_joy_b(4) & i_joy_a(4);
 
-  b_data <= (others => adc_data) when adc_n_cs = '0' and adc_n_r = '0' else   -- adc read
-            stat_reg & "0000" when n_fc72 = '0' and i_n_w = '1' else          -- FC72 status reg
+  b_data <= adc_data          when adc_n_cs = '0' and adc_n_r = '0' else   -- adc read
+--  b_data <= adc_data          when i_addr = x"FC70" and i_n_w = '1'  else   -- adc read
+            stat_reg & "0000" when n_fc72 = '0' and i_n_w = '1' else       -- FC72 status reg
             (others => 'Z');
   
-
+  o_debug(0) <= n_fc70;
+  o_debug(1) <= n_fc72;
+  o_debug(2) <= adc_n_r;
+  o_debug(3) <= adc_n_w;
+  o_debug(4) <= adc_n_w_l;
+  o_debug(5) <= i_n_w;
+  o_debug(6) <= i_phiout;
+  o_debug(7) <= adc_n_intr;
+  o_debug(8) <= adc_n_cs;
 end RTL;

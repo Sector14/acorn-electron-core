@@ -122,7 +122,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
   
   -- Config
   signal cfg_dblscan : bit1;
@@ -381,7 +381,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => debug(7 downto 0)
+    o_debug       => open
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -424,6 +424,8 @@ begin
     -- Framework interfacing
     i_clk_sys      => i_clk_sys,
     o_n_oe         => plus1_n_oe,
+    i_joy_a        => i_joy_a_l,
+    i_joy_b        => i_joy_b_l,
 
     -- Expansion port I/O
     i_addr         => addr_bus,
@@ -440,7 +442,9 @@ begin
     o_n_oe2       => plus1_n_oe2,     -- SK 2 (near, higher priority) page 2 or 3
     o_n_oe3       => plus1_n_oe3,     -- SK1&2 page 13
 
-    o_rom_qa      => plus1_rom_qa     -- LSB of xFE05
+    o_rom_qa      => plus1_rom_qa,    -- LSB of xFE05
+
+    o_debug       => debug
   );
   
   -- ====================================================================
@@ -602,7 +606,7 @@ begin
     i_cas_to_fch   => ula_cas_o,
     o_cas_fm_fch   => ula_cas_i,
 
-    o_debug        => debug(11 downto 8)
+    o_debug        => open
   );
 
   -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
@@ -770,14 +774,6 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= ula_n_reset_out;
 
-  --o_disk_led <= ula_cas_i;
-  --o_pwr_led <= ula_cas_o;
-
-  debug(12) <= ula_cas_o;
-  debug(13) <= ula_cas_i;
-  debug(14) <= ula_r or ula_g or ula_b;  
-  debug(15) <= i_clk_sys;
-
   o_debug <= debug;
 
   -- ====================================================================
@@ -821,7 +817,9 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62 downto 16) <= (others => '0');
+      cs_trig(62 downto 40) <= (others => '0');
+      cs_trig(39 downto 32) <= data_bus;
+      cs_trig(31 downto 16) <= addr_bus;
       cs_trig(15 downto 0) <= debug(15 downto 0);
     end generate electrontop_cs;
 
