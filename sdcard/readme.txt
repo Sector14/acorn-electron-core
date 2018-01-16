@@ -360,7 +360,7 @@ forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 * Development
   - Driver changed to type 2 to use firmware support for loading from UEF.
     Requires firmware version newer than 8th Jan 2018.
-  - Initial Plus 1 expansion support for ROM carts.
+  - Initial Plus 1 expansion support for ROM carts and joysticks.
 
 * 4/Jan/2018 - V1.2
   - More accurate video address logic
