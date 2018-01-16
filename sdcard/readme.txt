@@ -188,10 +188,13 @@ In addition be careful to adjust voltage levels to be within spec for the FPGA.
 The Plus1 add-on brought 2 cart slots for ROMs and additional hardware as
 well as an analogue port for joysticks/paddles/other hw and a printer port.
 
-This core only supports the usage of ROMs via the Plus 1 interface and
-requires the plus1.rom (sha1sum below)
+ROMs and joysticks are supported. Other Plus1 features are not.
+
+The Plus1 requires the plus1.rom (sha1sum below)
 
   plus1.rom 04bec46e1bb2259e5444cc7b8017221414165ed7
+
+## ROMs
 
 To use the plus1 and ROMs ensure the plus1.rom line is uncommented in the ini
 and the above plus1.rom (or compatible slogger ROM) is located in the same 
@@ -307,6 +310,27 @@ and re-enable with
 
 Alternatively you can physical detached the Plus1 via the OSD "Plus1 Attached"
 menu item (followed by CTRL+BREAK).
+
+## Joystick
+
+The Plus1 provides support for two single button joysticks.
+
+Game support for Joysticks is patchy at best. Games have to explicitly support
+the Plus1, for example Starship Command.
+
+You can verify your joysticks are working using
+
+```
+10 CLS
+20 PRINT TAB(0,0);ADVAL(1),ADVAL(2)
+30 PRINT TAB(0,0);ADVAL(1),ADVAL(2)
+40 PRINT TAB(0,0);ADVAL(0) AND 3
+50 GOTO 20
+```
+
+Which will output the X and Y axis values for each joystick port as well
+as the state of the firebuttons for both ports. For the fire buttons,
+0 = neither pressed, 1 = button0 pressed, 2 = button1 pressed, 3 = both pressed.
 
 
 # Resources

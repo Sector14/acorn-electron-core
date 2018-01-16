@@ -201,8 +201,9 @@ begin
             -- No input, mid value.
             adc_data <= x"80";
 
-            -- TODO: [Gary] should really wait 1280 sys clocks (40us) after conversion started
-            --       before joystick values latched with conversion completes            
+            -- TODO: [Gary] should really wait 40us after conversion started before joystick values latched.
+            -- TODO: [Gary] ADC would have not provided a nice 0, 128, 255 response to the three joystick
+            --              positions. Perhaps add a little variable noise onto this.
             case b_data(3 downto 0) is 
               -- joy1
               when "0100" => -- ch1 p15 X
@@ -248,8 +249,7 @@ begin
   -- d7-d4: printer /busy, /intr, /button1 (p10), /button0 (p13)
   stat_reg <= '1' & adc_n_intr & i_joy_b(4) & i_joy_a(4);
 
-  b_data <= adc_data          when adc_n_cs = '0' and adc_n_r = '0' else   -- adc read
---  b_data <= adc_data          when i_addr = x"FC70" and i_n_w = '1'  else   -- adc read
+  b_data <= adc_data          when adc_n_cs = '0' and adc_n_r = '0' else   -- adc read FC70
             stat_reg & "0000" when n_fc72 = '0' and i_n_w = '1' else       -- FC72 status reg
             (others => 'Z');
   
