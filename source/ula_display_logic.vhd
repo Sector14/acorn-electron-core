@@ -109,8 +109,8 @@ entity ULA_DISPLAY_LOGIC is
       o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
       o_addint              : out boolean;  -- start of new fields active data
       
-      o_pcpu                : out boolean;
-      o_blank               : out boolean;
+      o_n_pcpu              : out boolean;  -- Low when cpu can process regardless of mode contention
+      o_n_blank             : out boolean;  -- n_pcpu sync'd to 1MHz
       o_cntinh              : out boolean;  -- high during sync or border regions of scanline
 
       -- represents VA1,VA2,VA3
@@ -133,9 +133,9 @@ architecture RTL of ULA_DISPLAY_LOGIC is
 
   signal lsff2 : boolean;
 
-  signal cntinh : boolean;
+  signal cntinh  : boolean;
   signal dispend : boolean;
-  signal pcpu : boolean;
+  signal n_pcpu  : boolean;
 begin
   o_csync <= hsync or vsync;
   o_hsync <= hsync;
@@ -144,7 +144,7 @@ begin
   o_de <= '1' when vsync_cnt < 576 and not cntinh and not dispend else '0';
 
   o_dispend <= dispend;
-  o_pcpu <= pcpu;
+  o_n_pcpu <= n_pcpu;
   o_cntinh <= cntinh;
 
   o_rowcount <= vid_row_count;
@@ -221,14 +221,8 @@ begin
 
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
-  -- TODO: [Gary] What does this actually represent. Originally thought it would be used
-  --       as part of the contention logic to pause the cpu, however 
-  --       due to inclusion of gmode (0,1,2,4,5) this seems less likely as contention 
-  --       is only considered in modes 0-3. blankb and pcpub would be always '0' during
-  --       graphics modes whilst in modes 3 & 6 they'd go high during the 2 blanking lines?
-  --       unless it's used as an extra signal to re-enable processing when contention would
-  --       otherwise considered to be active during two blanking lines?
-  pcpu <= vid_row_count >= 8 or cntinh or dispend or (not i_gmode);
+  -- Low when cpu can process regardless of mode contention
+  n_pcpu <= vid_row_count < 8 and not cntinh and not dispend;
 
   -- TODO: [Gary] Schematics show this as sync'd to 1MHz clock but that
   --       offsets rgb by 1us later than it should be?
@@ -237,7 +231,7 @@ begin
   p_inactive_video : process(i_clk, i_rst) 
   begin
     if i_rst = '1' then
-      o_blank <= false;
+      o_n_blank <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
         if i_ck_s1m = '1' then
@@ -247,7 +241,7 @@ begin
           --              where does blank then fit in? Doesn't seem to be used anywhere?
 
           -- pcpu syncrhonised to 1MHz
-          o_blank <= pcpu;
+          o_n_blank <= n_pcpu;
         end if;
       end if;
     end if;

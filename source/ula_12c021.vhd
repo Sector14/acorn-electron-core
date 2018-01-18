@@ -147,6 +147,7 @@ architecture RTL of ULA_12C021 is
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
   signal disp_bline, disp_bline_l     : boolean;
+  signal disp_n_pcpu                  : boolean;
   signal disp_cntinh                  : boolean;
 
 
@@ -486,8 +487,8 @@ begin
 
     o_bline                 => disp_bline,
     o_addint                => disp_addint,
-    o_blank                 => open,
-    o_pcpu                  => open,
+    o_n_blank               => open,
+    o_n_pcpu                => disp_n_pcpu,
     o_cntinh                => disp_cntinh,
 
     o_rowcount              => disp_rowcount,
@@ -681,9 +682,7 @@ begin
 
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
-          -- TODO: [Gary] 2 blanking lines in mode 3/6 are contention free or not?
-          ram_contention <= not disp_cntinh and not disp_frame_end and disp_rowcount < 8 and
-                            misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          ram_contention <= disp_n_pcpu and misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
         ana_hsync_l <= ana_hsync;
@@ -1043,9 +1042,6 @@ begin
         --
         -- Cassette Registers
         --
-        -- TODO: [Gary] Read and write can be split out to separate processes with
-        --       ISR for RX and TX based on external signals just as hightone
-        --       set and clear is.
         if ck_freqx = '1' then
 
           -- 
@@ -1174,7 +1170,6 @@ begin
   o_n_irq <= not isr_status(ISR_MASTER_IRQ);
 
   -- Register data out
-  -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
           '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
           cas_i_data_shift         when i_addr( 3 downto 0) = x"4" else
