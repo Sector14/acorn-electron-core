@@ -119,6 +119,10 @@ architecture RTL of Expansion_Plus1 is
   signal adc_n_w_l : bit1;
   signal adc_n_intr : bit1;
   signal adc_data : word(7 downto 0);
+  signal adc_chan : word(3 downto 0);
+
+  signal adc_converting : boolean;
+  signal adc_delay : integer range 959 downto 0;
 
   signal stat_reg : word(7 downto 4);
 begin
@@ -189,6 +193,8 @@ begin
     if i_n_rst = '0' then
       adc_n_intr <= '1';
       adc_data <= x"80";
+      adc_delay <= 0;
+      adc_converting <= false;
     elsif rising_edge(i_clk_sys) then   
       if i_phiout = '1' then
 
@@ -197,50 +203,66 @@ begin
             adc_n_intr <= '1';
           end if;
 
-          if adc_n_w = '0' then
-            -- No input, mid value.
-            adc_data <= x"80";
+          if adc_n_w = '0' then    
+            adc_n_intr <= '1';
+            
+            adc_chan <= b_data(3 downto 0);
 
-            -- TODO: [Gary] should really wait 40us after conversion started before joystick values latched.
-            -- TODO: [Gary] ADC would have not provided a nice 0, 128, 255 response to the three joystick
-            --              positions. Perhaps add a little variable noise onto this.
-            case b_data(3 downto 0) is 
-              -- joy1
-              when "0100" => -- ch1 p15 X
-                if i_joy_a(2) = '0' then
-                  adc_data <= x"00";
-                elsif i_joy_a(3) = '0' then
-                  adc_data <= x"FF";
-                end if;
-              when "0101" => -- ch2 p7  Y            
-                if i_joy_a(0) = '0' then
-                  adc_data <= x"00";
-                elsif i_joy_a(1) = '0' then
-                  adc_data <= x"FF";
-                end if;
-              -- joy2
-              when "0110" => -- ch3 p12 X
-                if i_joy_b(2) = '0' then
-                  adc_data <= x"00";
-                elsif i_joy_b(3) = '0' then
-                  adc_data <= x"FF";
-                end if;
-              when "0111" => -- ch4 p4  Y
-                if i_joy_b(0) = '0' then
-                  adc_data <= x"00";
-                elsif i_joy_b(1) = '0' then
-                  adc_data <= x"FF";
-                end if;
-              when others => 
-                -- No other mode supported
-                adc_data <= x"80"; 
-            end case;
-
-            adc_n_intr <= '0';
+            -- Datasheet suggests ~30us conversion period is typical
+            adc_delay <= 959;
+            adc_converting <= true;
           end if;
-
         end if;
 
+        if adc_converting and adc_delay = 0 then
+          adc_converting <= false;
+                    
+          -- TODO: [Gary] ADC would have not provided a nice 0, 128, 255 response to the three joystick
+          --              positions. Perhaps add a little variable noise onto this.
+
+          -- No input, mid value.
+          adc_data <= x"80";
+
+          case adc_chan is 
+            -- joy1
+            when "0100" => -- ch1 p15 X
+              if i_joy_a(2) = '0' then
+                adc_data <= x"FF";
+              elsif i_joy_a(3) = '0' then
+                adc_data <= x"00";
+              end if;
+            when "0101" => -- ch2 p7  Y            
+              if i_joy_a(0) = '0' then
+                adc_data <= x"FF";
+              elsif i_joy_a(1) = '0' then
+                adc_data <= x"00";
+              end if;
+            -- joy2
+            when "0110" => -- ch3 p12 X
+              if i_joy_b(2) = '0' then
+                adc_data <= x"FF";
+              elsif i_joy_b(3) = '0' then
+                adc_data <= x"00";
+              end if;
+            when "0111" => -- ch4 p4  Y
+              if i_joy_b(0) = '0' then
+                adc_data <= x"FF";
+              elsif i_joy_b(1) = '0' then
+                adc_data <= x"00";
+              end if;
+            when others => 
+              -- No other mode supported
+              adc_data <= x"80"; 
+          end case;
+
+          adc_n_intr <= '0';
+        end if;
+
+      end if; -- phiout
+
+      -- sys clock based delay
+      if adc_delay > 0 then
+        adc_delay <= adc_delay - 1;
       end if;
     end if;    
   end process;

@@ -104,7 +104,6 @@ entity ULA_DISPLAY_LOGIC is
       -- Interrupts
       o_rtc                 : out boolean;
       o_dispend             : out boolean;
-
       
       o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
       o_addint              : out boolean;  -- start of new fields active data
@@ -235,11 +234,6 @@ begin
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
         if i_ck_s1m = '1' then
-          -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
-          --              looks to be on the master timing sheet, for allowing processing when true??
-          --              schematic had pcpub (active low)
-          --              where does blank then fit in? Doesn't seem to be used anywhere?
-
           -- pcpu syncrhonised to 1MHz
           o_n_blank <= n_pcpu;
         end if;
