@@ -35,7 +35,7 @@ Electron symbol not the symbol shown on a regular keyboard.
 Exceptions to this are:
 
   - : and the shifted * are moved to the key for "'" and "@" key
-  - COPY key is bound to "["
+  - COPY key is bound to "]"
   - BREAK key bound to SCROLL LOCK. Use SCROLL LOCK for soft reset or
     CTRL+SCROLL LOCK for hard reset.
 

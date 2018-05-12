@@ -40,10 +40,10 @@
 -- The Electron's Plus1 provides 2 cart slots, a 15 pin analogue port (2 joysticks,
 -- 4 paddles) and a printer port.
 --
--- Current recreation supports only the onboard ROM (page 12) as well as up to
--- 4 additional 16KB ROMs, two per cart (pages 0-3 or 13).
---
--- Joystick support may be added later but only as a digital version.
+-- Current recreation supports the onboard ROM (page 12) as well as up to
+-- 4 additional 16KB ROMs, two per cart (pages 0-3 or 13). It also interfaces
+-- the replay's digital joystick to the ADC port 
+-- 
 
 library ieee;
   use ieee.std_logic_1164.all;

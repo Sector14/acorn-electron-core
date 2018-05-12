@@ -90,13 +90,15 @@ begin
   -- Keys and address are active low
   -- See AUG p216 or Keyboard matrix in service manual.
   -- Grid is (a0 || k0) && (a1 + k1) && (a2 || k2)... for each bit
-  p_kbd_scan : process(i_clk_sys, i_rst_sys, i_kb_inhibit)
+  p_kbd_scan : process(i_clk_sys, i_rst_sys, i_kb_inhibit)   
+    variable key_n_alt : bit1; 
   begin
     if (i_rst_sys = '1' or i_kb_inhibit = '1') then
       key_extended <= '0';
       key_release <= '0';
       key_state <= (others => (others => '1'));
       key_n_break <= '1';
+      key_n_alt := '1';
     elsif rising_edge(i_clk_sys) then
       
       -- Framework strobes only on activity
@@ -107,14 +109,15 @@ begin
         elsif (i_kb_ps2_data = c_KEY_EXTENDED) then
           key_extended <= '1';
         else
-
+          
           -- keys in scancode_ps2 are ext bit & scancode
           case key_extended & i_kb_ps2_data is
             when c_PS2_ESC         => key_state(13)(0) <= key_release;
             when c_PS2_CAPS_LOCK   => key_state(13)(1) <= key_release;
             when c_PS2_LEFT_CTRL | c_PS2_RIGHT_CTRL   => key_state(13)(2) <= key_release;
             when c_PS2_LEFT_SHIFT | c_PS2_RIGHT_SHIFT => key_state(13)(3) <= key_release;
-           
+            when c_PS2_LEFT_ALT | c_PS2_RIGHT_ALT => key_n_alt := key_release;
+
             when c_PS2_SCROLL_LOCK => key_n_break <= key_release;
 
             when c_PS2_1 => key_state(12)(0) <= key_release;
@@ -168,7 +171,7 @@ begin
             when c_PS2_FWDSLASH  => key_state(3)(3) <= key_release;
 
             when c_PS2_MINUS => key_state(2)(0) <= key_release;
-            when c_PS2_UP    => key_state(2)(1) <= key_release;    
+            when c_PS2_UP => key_state(2)(1) <= key_release;    
             when c_PS2_APOSTROPHE => key_state(2)(2) <= key_release; -- : *            
             -- when UNUSED => key_state(2)(3) <= key_release;
 
@@ -177,13 +180,33 @@ begin
             when c_PS2_ENTER => key_state(1)(2) <= key_release;
             when c_PS2_DELETE | c_PS2_BACKSPACE => key_state(1)(3) <= key_release;
 
-            when c_PS2_RIGHT => key_state(0)(0) <= key_release;            
-            when c_PS2_LEFT_BRACKET => key_state(0)(1) <= key_release; -- COPY
+            when c_PS2_RIGHT => key_state(0)(0) <= key_release;
+            when c_PS2_RIGHT_BRACKET => key_state(0)(1) <= key_release; -- COPY
             -- when UNUSED => key_state(0)(2) <= key_release;
             when c_PS2_SPACE => key_state(0)(3) <= key_release;
 
             when others =>
           end case;
+
+          -- Shift|Ctrl + arrow keys do not work over serial. Remap TFGV to
+          -- act as virtual arrow keys anytime alt is held down. This allows SHITF/CTRL modifiers
+          -- to also be used. TFGV chosen as other keys already have terminal remappings ^H = BS.
+          if (key_n_alt = '0') then
+            -- Cancel out TFGV due to remapping
+            key_state(8)(1)  <= '1';
+            key_state(8)(2) <= '1';
+            key_state(9)(2) <= '1';
+            key_state(9)(3) <= '1';
+
+            -- Remap TFGV to arrow keys
+            case key_extended & i_kb_ps2_data is             
+              when c_PS2_T => key_state(2)(1) <= key_release; -- Cursor UP
+              when c_PS2_F => key_state(1)(0) <= key_release; -- Cursor LEFT
+              when c_PS2_G => key_state(0)(0) <= key_release; -- Cursor RIGHT
+              when c_PS2_V => key_state(1)(1) <= key_release; -- Cursor DOWN
+              when others =>
+            end case;
+          end if;
 
           key_release <= '0';
           key_extended <= '0';
