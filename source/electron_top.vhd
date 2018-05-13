@@ -528,7 +528,8 @@ begin
                   "0010" when  plus1_n_oe2 = '0' and plus1_rom_qa = '0' else -- page 2
                   "0011" when  plus1_n_oe2 = '0' and plus1_rom_qa = '1' else -- page 3
                   "1100" when  plus1_n_oe = '0' else                         -- page 12
-                  "1101" when  plus1_n_oe3 = '0';                            -- page 13
+                  "1101" when  plus1_n_oe3 = '0' else                        -- page 13
+                  "0000";                                                    -- Invalid State
 
   -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;
