@@ -354,29 +354,3 @@ Cassette.
 Please report any issues with the core and any games on the fpgaarcade
 forum http://www.fpgaarcade.com/punbb/viewforum.php?id=20
 
-
-# Change Log
-
-* Development
-  - Driver changed to type 2 to use firmware support for loading from UEF.
-    Requires firmware version newer than 8th Jan 2018.
-  - Initial Plus 1 expansion support for ROM carts and joysticks.
-
-* 4/Jan/2018 - V1.2
-  - More accurate video address logic
-  - Fixes issue with occasional glitch in top quarter of Firetrack
-    
-* 28/Dec/2017 - V1.1
-  - Generate a more accurate Electron PAL signal
-  - Improve timing of RTC/DispEnd interrupts based on new PAL signal
-  - Add authentic/compatibility video mode OSD option
-
-* 28/Nov/2017 - V1.0
-  - Improve accuracy of audio waveform with low+high pass filter
-  - Active video region offset to match Electron.
-
-* 16/Nov/2017
-  - Adjust audio tone frequency with extra div2.
-
-* 04/Nov/2017
-  - Initial release, feature complete.
