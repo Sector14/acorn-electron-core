@@ -753,23 +753,24 @@ begin
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
   
-  -- TODO: [Gary] ram_cpu_slot ends up as a latch, needs resolving. 
   -- Note: ram_cpu_slot needs to be stable before rising edge of "0001" and "1001" as ram_addr 
-  --       will be reg'd however value of ram_cpu_slot depeneds on
-  --       values set on clock phase "0000" and "1000".
-  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, ram_contention)
+  --       will be reg'd however value of ram_cpu_slot depeneds on values set on clock
+  --       phase "0000" and "1000".
+  p_ram_access_sel : process(i_clk_sys, clk_phase, i_addr, rst, nmi, ram_contention)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
-    elsif (clk_phase(2 downto 0) = "001") then
-      -- ula always has phase 8 slot
-      ram_cpu_slot <= '0';
+    elsif rising_edge(i_clk_sys) then
+      if (clk_phase(2 downto 0) = "001") then
+        -- ula always has phase 8 slot
+        ram_cpu_slot <= '0';
 
-      -- ula/cpu contention over phase 0 slot
-      if (clk_phase(3) = '0') and (i_addr(15) = '0') then
-        ram_cpu_slot <= '1';
-        if (nmi = '0') and ram_contention then
-          ram_cpu_slot <= '0';
+        -- ula/cpu contention over phase 0 slot
+        if (clk_phase(3) = '0') and (i_addr(15) = '0') then
+          ram_cpu_slot <= '1';
+          if (nmi = '0') and ram_contention then
+            ram_cpu_slot <= '0';
+          end if;
         end if;
       end if;
     end if;
