@@ -122,7 +122,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := true;
+  constant electrontop_cs_enable : boolean := false;
   
   -- Config
   signal cfg_dblscan : bit1;
@@ -444,7 +444,7 @@ begin
 
     o_rom_qa      => plus1_rom_qa,    -- LSB of xFE05
 
-    o_debug       => debug
+    o_debug       => open
   );
   
   -- ====================================================================
@@ -704,15 +704,16 @@ begin
     o_vid_rgb             => dbl_rgb
   );
 
+
   -- Digital (using analog timings but with separate syncs)
   o_vid_sync.dig_de <= not dbl_blank;
-  o_vid_sync.dig_hs <= dbl_hsync_l;
-  o_vid_sync.dig_vs <= dbl_vsync_l;
+  o_vid_sync.dig_hs <= not dbl_hsync_l;
+  o_vid_sync.dig_vs <= not dbl_vsync_l;
 
   -- Analog
   o_vid_sync.ana_de <= not dbl_blank;
-  o_vid_sync.ana_hs <= dbl_hsync_l when cfg_dblscan = '1' else dbl_csync_l;
-  o_vid_sync.ana_vs <= dbl_vsync_l when cfg_dblscan = '1' else '1';
+  o_vid_sync.ana_hs <= not dbl_hsync_l when cfg_dblscan = '1' else not dbl_csync_l;
+  o_vid_sync.ana_vs <= not dbl_vsync_l when cfg_dblscan = '1' else '1';
 
   o_vid_rgb <= dbl_rgb;
 
