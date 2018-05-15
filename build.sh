@@ -72,7 +72,7 @@ cp ./../cs/*.ngc ./
 
 # project files
 cp ./../source/*.vhd ./
-# cp ./../source/override_lib/*.vhd ./
+cp ./../source/override_lib/*.vhd ./
 cp ./../$NAME.ucf ./
 cp ./../$NAME.scr ./
 cp ./../$NAME.prj ./
