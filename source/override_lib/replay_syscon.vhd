@@ -166,9 +166,7 @@ architecture RTL of Replay_Syscon is
   signal osd_vstart             : bit1;
   signal osd_hexp               : bit1;
   signal osd_vexp               : bit1;
-  signal osd_prog               : bit1;
-  signal osd_oddline            : bit1 := '0';
-
+  
   signal osd_vid_in             : word(23 downto 0);
   signal osd_vid_out            : word(23 downto 0);
 
@@ -557,9 +555,6 @@ begin
 
     hs <= '1' when (hs_t = "01") else '0'; -- hsync rising edge detection
     vs <= '1' when (vs_t = "01") else '0'; -- vsync rising edge detection
-
-    osd_prog <= i_vid_sync.progressive;
-    osd_oddline <= i_vid_sync.oddline;
     
     p_hv_count : process
       variable v_short : bit1; -- set if <320 lines per field
@@ -594,7 +589,7 @@ begin
     end process;
 
     -- to do, add auto scale for hi-res
-    p_osd_start_calc : process(h_size, v_size, osd_hexp, osd_prog)
+    p_osd_start_calc : process(h_size, v_size, osd_hexp, i_vid_sync.progressive)
     begin
       if (osd_hexp = '1') then
         h_start_pos <= ('0' & h_size(11 downto 1)) - 512 - 4;
@@ -602,7 +597,7 @@ begin
         h_start_pos <= ('0' & h_size(11 downto 1)) - 256 - 4;
       end if;
 
-      if (osd_prog = '1') then
+      if (i_vid_sync.progressive = '1') then
         v_start_pos <= ('0' & v_size(11 downto 1)) - 128;
       else
         v_start_pos <= ('0' & v_size(11 downto 1)) - 64;
@@ -631,13 +626,13 @@ begin
   end block;
    --{{{
    --cs_trig(62 downto 57) <= (others => '0');
-   --cs_trig(56) <= osd_oddline;
+   --cs_trig(56) <= i_vid_sync.oddline;
    --cs_trig(55) <= i_ena_vid;
    --cs_trig(54) <= i_vid_sync.dig_hs;
    --cs_trig(53) <= vs;
    --cs_trig(52) <= hs;
    --cs_trig(51) <= osd_ena;
-   --cs_trig(50) <= osd_prog;
+   --cs_trig(50) <= i_vid_sync.progressive;
    --cs_trig(49) <= osd_vstart;
    --cs_trig(48) <= osd_hstart;
    --cs_trig(47 downto 36) <= v_count;
@@ -687,8 +682,8 @@ begin
       i_vstart              => osd_vstart,
       i_hexp                => osd_hexp,
       i_vexp                => osd_vexp,
-      i_stdprog             => osd_prog,      -- low for interlaced, in which case V counts by 2
-      i_voddline            => osd_oddline,   -- starting at 0 or 1 (VOddLine high) - only for osd_prog low
+      i_stdprog             => i_vid_sync.progressive, -- low for interlaced, in which case V counts by 2
+      i_voddline            => i_vid_sync.oddline,     -- starting at 0 or 1 (VOddLine high) - only for osd_prog low
       --
       i_osd_display         => osd_ena,
       i_osd_dim             => '1',
