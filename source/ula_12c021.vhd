@@ -61,6 +61,7 @@ entity ULA_12C021 is
     --
     o_n_vsync     : out bit1;
     o_de          : out bit1;
+    o_oddfield    : out bit1;
 
     -- More compatible video signal when used with scan doubler and hdmi/vga
     -- vs authentic signal for TV Scart usage.
@@ -493,7 +494,8 @@ begin
 
     o_rowcount              => disp_rowcount,
 
-    o_de                    => o_de
+    o_de                    => o_de,
+    o_oddfield              => o_oddfield
   );
 
   o_n_hsync <= not ana_hsync;

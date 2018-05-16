@@ -80,15 +80,17 @@ Package Replay_VideoTiming_Pack is
   end record;
 
   type t_Standard_ana is (PAL, NTSC, NONE);
-
-  constant 
+ 
   type r_Vidsync is record
-    dig_de : bit1;
-    dig_vs : bit1;
-    dig_hs : bit1;
-    ana_de : bit1;
-    ana_vs : bit1;
-    ana_hs : bit1;
+    dig_de      : bit1;
+    dig_vs      : bit1;
+    dig_hs      : bit1;
+    ana_de      : bit1;
+    ana_vs      : bit1;
+    ana_hs      : bit1;
+    --
+    oddline     : bit1; -- odd (1) or even (0) field for interlaced standards
+    progressive : bit1;
   end record;
 
   constant z_Vidsync : r_Vidsync := (
@@ -97,7 +99,10 @@ Package Replay_VideoTiming_Pack is
     dig_hs => '0',
     ana_de => '0',
     ana_vs => '0',
-    ana_hs => '0'
+    ana_hs => '0',
+    --
+    oddline => '0',
+    progressive => '1'
   );
 
   type r_Vidtiming is record -- dynamic

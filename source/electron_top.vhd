@@ -181,6 +181,7 @@ architecture RTL of Electron_Top is
 
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
+  signal ula_oddfield : bit1;
   signal ula_rgb : word(23 downto 0);
 
   -- ULA Glue
@@ -319,7 +320,8 @@ begin
     -- Framework extras
     --
     o_n_vsync     => ula_n_vsync,
-    o_de          => ula_de,               
+    o_de          => ula_de,  
+    o_oddfield    => ula_oddfield,             
     
     i_compatible  => cfg_vid_compatible,
 
@@ -705,18 +707,21 @@ begin
     o_vid_rgb             => dbl_rgb
   );
 
-
   -- Digital (using analog timings but with separate syncs)
   o_vid_sync.dig_de <= not dbl_blank;
   o_vid_sync.dig_hs <= not dbl_hsync_l;
   o_vid_sync.dig_vs <= not dbl_vsync_l;
-
+  
   -- Analog
   o_vid_sync.ana_de <= not dbl_blank;
   o_vid_sync.ana_hs <= not dbl_hsync_l when cfg_dblscan = '1' else not dbl_csync_l;
   o_vid_sync.ana_vs <= not dbl_vsync_l when cfg_dblscan = '1' else '1';
 
+  o_vid_sync.oddline <= ula_oddfield;
+  o_vid_sync.progressive <= '1' when cfg_vid_compatible else '0';
+
   o_vid_rgb <= dbl_rgb;
+
 
   --
   -- Activity LEDs

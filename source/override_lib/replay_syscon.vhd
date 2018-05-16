@@ -558,6 +558,9 @@ begin
     hs <= '1' when (hs_t = "01") else '0'; -- hsync rising edge detection
     vs <= '1' when (vs_t = "01") else '0'; -- vsync rising edge detection
 
+    osd_prog <= i_vid_sync.progressive;
+    osd_oddline <= i_vid_sync.oddline;
+    
     p_hv_count : process
       variable v_short : bit1; -- set if <320 lines per field
     begin
@@ -584,16 +587,6 @@ begin
         if (vs = '1') then
           v_count <= (others => '0');
           v_size  <= v_count;
-          -- unlesss < 256
-          osd_prog <= '0';
-          if (v_count(0) = v_size(0)) and (v_short = '0') then -- every field the same size
-            osd_prog <= '1';
-          end if;
-          --osd_oddline <= v_size(0); -- cheating a bit.. for VGA I standards - sync wrong?
-
-          --osd_oddline <= not v_size(0); -- cheating a bit..
-          osd_oddline <= not osd_oddline; -- cheating a bit..
-
         elsif (hs = '1') then
           v_count <= v_count + "1";
         end if;

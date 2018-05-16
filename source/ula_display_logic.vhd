@@ -90,7 +90,7 @@ entity ULA_DISPLAY_LOGIC is
 
       i_ck_s1m                : in bit1; -- 1MHz enable
       i_ck_s1m2               : in bit1; -- 0.5MHz enable
-
+      
       i_compatible            : in boolean;
 
       -- Graphics mode 0,1,2,4,5
@@ -115,13 +115,15 @@ entity ULA_DISPLAY_LOGIC is
       -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
 
-      o_de                  : out bit1
+      o_de                  : out bit1;
+      o_oddfield            : out bit1
   );
 end;
 
 architecture RTL of ULA_DISPLAY_LOGIC is
   signal hsync : bit1;
   signal vsync : bit1;
+  signal oddfield : bit1;
 
   -- hsync [2-6]
   signal hsync_cnt : unsigned(4 downto 0);
@@ -162,10 +164,14 @@ begin
   hsync <= '1' when hsync_cnt = 24 or hsync_cnt = 25 else '0';
   vsync <= '1' when vsync_cnt >= 564 and vsync_cnt <= 568 else '0';
 
+  o_oddfield <= oddfield;
+
   p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       vsync_cnt <= (others => '0');
+      -- First frame is considered odd for PAL
+      oddfield <= '1'; 
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -176,6 +182,7 @@ begin
             if (i_compatible and vsync_cnt = 623) or (vsync_cnt = 624) then
               vsync_cnt <= (others => '0');
               lsff2 <= false;
+              oddfield <= not oddfield;
             else
               vsync_cnt <= vsync_cnt + 1; 
             end if;
