@@ -67,6 +67,11 @@ entity ULA_12C021 is
     -- vs authentic signal for TV Scart usage.
     i_compatible  : in boolean;
 
+    -- Turbo mode uses avail/taken protocol rather than frequency encoding
+    i_cas_turbo   : in boolean;
+    i_cas_avail   : in boolean;
+    o_cas_taken   : out boolean;
+
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);

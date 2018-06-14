@@ -74,6 +74,12 @@ entity Virtual_Cassette_FileIO is
     i_cas_to_fch         : in bit1;
     o_cas_fm_fch         : out bit1;
 
+    -- When true, switches o_cas_fm_fch from pulse to avail/taken protocol
+    i_cas_turbo          : in boolean;
+    i_cas_taken          : in boolean;
+    o_cas_avail          : out boolean;
+
+
     o_debug              : out word(3 downto 0)
   );
 end;
