@@ -68,6 +68,7 @@ entity ULA_12C021 is
     i_compatible  : in boolean;
 
     -- Turbo mode uses avail/taken protocol rather than frequency encoding
+    -- Turbo mode should operate on cph(3) only to remain in sycn with fileio.
     i_cas_turbo   : in boolean;
     i_cas_avail   : in boolean;
     o_cas_taken   : out boolean;
@@ -132,7 +133,7 @@ entity ULA_12C021 is
     o_n_irq       : out bit1;
     i_n_w         : in bit1;                   -- Data direction, /write, read
 
-    o_debug       : out word(7 downto 0)
+    o_debug       : out word(15 downto 0)
   );
 end;
 
@@ -183,6 +184,9 @@ architecture RTL of ULA_12C021 is
   signal cas_i_edge    : boolean;
   signal cas_i_bit     : bit1;
   signal cas_hightone  : boolean;
+
+  signal cas_turbo     : boolean;
+  signal cas_taken     : boolean;
 
   -- CPU Timing
   type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
@@ -264,10 +268,12 @@ begin
   -- o_debug(2) <= isr_status(ISR_FRAME_END);
   -- o_debug(3) <= isr_status(ISR_RTC);
 
-  o_debug(0) <= ana_csync;
+  --o_debug(0) <= ana_csync;
   --o_debug(1) <= ck_s16m32;
-  o_debug(2) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);     
-  o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
+  o_debug(9) <= isr_status(ISR_RX_FULL);
+  o_debug(10) <= isr_status(ISR_HIGH_TONE);
+  o_debug(13) <= '1' when cas_hightone else '0';
+  --o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  

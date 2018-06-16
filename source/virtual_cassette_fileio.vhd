@@ -165,10 +165,10 @@ begin
   end process;
 
   -- Frequency encode current bit and output to o_cas
-  p_read_encode : process(i_clk, i_ena, i_rst)
+  p_read_encode : process(i_clk, i_ena, i_rst, i_cas_turbo)
     variable cur_bit : integer range 15 downto 0;
   begin
-    if (i_rst = '1') then
+    if (i_rst = '1' or i_cas_turbo) then
       bit_taken_r <= false;
       freq_encoded_bit <= '0';      
     elsif rising_edge(i_clk) then
@@ -181,26 +181,18 @@ begin
         if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if i_cas_turbo then
-            -- Lose a sys_ena cycle by forwarding taken via bit_taken_r but it minimises changes
-            if (i_cas_taken) then
-              bit_taken_r <= true;
-            end if;
-          else  
-            if (freq_cnt = 0) then
-              bit_taken_r <= true;
-            end if;
-
-            -- Pulse generation cnt 0..6666: 2400Hz = 0, 2x1200Hz = 1
-            if (cur_data(15-cur_bit) = '1' and freq_cnt > 1666 and freq_cnt < 3333) or
-                (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
-                (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
-              freq_encoded_bit <= '1';
-            else
-              freq_encoded_bit <= '0';
-            end if;          
+          if (freq_cnt = 0) then
+            bit_taken_r <= true;
           end if;
 
+          -- Pulse generation cnt 0..6666: 2400Hz = 0, 2x1200Hz = 1
+          if (cur_data(15-cur_bit) = '1' and freq_cnt > 1666 and freq_cnt < 3333) or
+              (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
+              (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
+            freq_encoded_bit <= '1';
+          else
+            freq_encoded_bit <= '0';
+          end if;          
         end if;
 
       end if;
@@ -266,9 +258,13 @@ begin
 
   cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_t1) = '1' else false;
 
-  -- Tape is one way sync'd with read/write process and one way 
-  -- sync'd to FileIO request process. No sync back from FIFO
-  -- as ULA will not yield even if ARM transfer stalled.  
+  -- Authentic Mode:
+  --   Tape is one way sync'd with read/write process and one way 
+  --   sync'd to FileIO request process. No sync back from FIFO
+  --   as ULA will not yield even if ARM transfer stalled.  
+  -- Turbo Mode: 
+  --   Tape is read as fast as ULA requests and may stall if FIFO
+  --   queue runs out.
   p_tape_readwrite : process(i_clk, i_rst, i_ena)
     variable cur_bit : integer range 15 downto 0;
   begin
@@ -293,9 +289,17 @@ begin
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
+          if i_cas_turbo and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
+            -- TODO: [Gary] Next bit is assumed to be available in authentic mode due to the 
+            --       slow transfer speed, but in turbo we might empty the queue
+            --       (or run out of tape). Test fileio_valid? if not valid, need to
+            --       delay asserting cas_avail until valid again.
+            o_cas_avail <= true;
+          end if;
+
           -- Reading
-          if bit_taken_r then
-            
+          if bit_taken_r or (i_cas_turbo and i_cas_taken) then
+
             if cur_bit = 15 then
               -- TODO: [Gary] cur_data isn't set until tape position has done one 
               --       16 bit cycle! really first fileio_data byte should be valid
@@ -305,20 +309,9 @@ begin
               -- spi transfers in big endian and uef2raw writes big endian
               cur_data <= fileio_data(15 downto 0);
               fileio_taken <= '1';
-
-              -- TODO: [Gary] Next bit is assumed to be available in authentic mode due to the 
-              --       slow transfer speed, but in turbo we might empty the queue
-              --       (or run out of tape). Test fileio_valid? if not valid, need to
-              --       delay asserting cas_avail until valid again.
             end if;
 
-            -- TODO: [Gary] Do this only for bits 0..14, for 15 see above and extra delayed
-            --       setting during error conditions.
-            if (i_cas_turbo) then
-              o_cas_avail <= true;
-            end if;
-
-          -- Writing
+          -- Writing (Authentic)
           elsif bit_valid_w then
             -- TODO: [Gary] if i_rec is disabled before bit 15, the 16bit word is never
             --       passed to fileio for storage. So far this is not an issue as there's
@@ -335,7 +328,7 @@ begin
 
           end if;
 
-          if (bit_valid_w or bit_taken_r) then
+          if (bit_valid_w or bit_taken_r or i_cas_taken) then
             tape_position <= tape_position + 1;
           end if;          
 

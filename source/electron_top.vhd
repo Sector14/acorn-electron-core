@@ -122,7 +122,7 @@ end;
 
 architecture RTL of Electron_Top is
 
-  constant electrontop_cs_enable : boolean := false;
+  constant electrontop_cs_enable : boolean := true;
   
   -- Config
   signal cfg_dblscan : bit1;
@@ -212,6 +212,7 @@ architecture RTL of Electron_Top is
 
   -- Debug
   signal debug        : word(15 downto 0);
+  signal ula_debug    : word(15 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -393,7 +394,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => open
+    o_debug       => ula_debug
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -838,10 +839,17 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62 downto 40) <= (others => '0');
-      cs_trig(39 downto 32) <= data_bus;
-      cs_trig(31 downto 16) <= addr_bus;
-      cs_trig(15 downto 0) <= debug(15 downto 0);
+      cs_trig(62 downto 17) <= (others => '0');
+      cs_trig(16) <= ula_debug(13); -- cas_hightone
+      cs_trig(15) <= ula_debug(12); -- in_reset
+      cs_trig(14) <= ula_debug(11); -- cas_turbo
+      cs_trig(13 downto 6) <= ula_debug(7 downto 0);
+      cs_trig(5) <= ula_debug(10); -- HighTone
+      cs_trig(4) <= ula_debug(9);  -- RX Full
+      cs_trig(3) <= ula_cas_mo;
+      cs_trig(2) <= '1' when ula_cas_taken else '0';
+      cs_trig(1) <= '1' when cas_avail else '0';
+      cs_trig(0) <= ula_cas_i;
     end generate electrontop_cs;
 
   end block cs_debug;
