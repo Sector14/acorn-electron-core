@@ -132,7 +132,9 @@ architecture RTL of Virtual_Cassette_FileIO is
 
 begin
 
-  o_debug <= (others => '0');
+  o_debug(0) <= '1' when fileio_rx_level = "00000000000" else '0';
+  o_debug(15 downto 1) <= (others => '0');
+
   -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
   --       tape read/write should skip this. On eject, write to this location
   --       the current tape position. On insert, read it and set tape_position

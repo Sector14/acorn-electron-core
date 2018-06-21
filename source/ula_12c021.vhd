@@ -1115,7 +1115,13 @@ begin
             -- Eat high-tone or stop bit
             if cas_turbo and i_cas_avail and not cas_taken then
               cas_taken <= true;
-              cas_last_taken := 6666;
+              -- TODO: With 66 here rather than 6666 repton fails to load instantly.
+              -- investigate why.
+              if cas_hightone then
+                cas_last_taken := 66;
+              else
+                cas_last_taken := 6666;
+              end if;
             end if;
 
             if not cas_turbo or (i_cas_avail and not cas_taken) then
@@ -1134,7 +1140,7 @@ begin
             if (cas_turbo) then
               if (isr_status(ISR_HIGH_TONE) = '0') then
                 -- next bit available
-                if i_cas_avail and not cas_taken and (isr_status(ISR_RX_FULL) = '0') then -- or cas_last_taken = 0) then
+                if i_cas_avail and not cas_taken then
                   -- TODO: Again, if avail isn't asserted this will break as in_reset is set
                   --       as though start bit has been consumed or frameck_ena for data bit!
                   -- eat start bit or any of 8 data bits
@@ -1142,7 +1148,13 @@ begin
                   --       detection in turbo mode? Why does authentic manage ?
                   if (not hack_was_hightone ) then
                     cas_taken <= true;
-                    cas_last_taken := 6666;
+                    if (isr_status(ISR_RX_FULL) = '0') then
+                      -- TODO: Test various faster shift speeds 66 fails, 666 seems reasonably stable?
+                      cas_last_taken := 66;
+                    else
+                      -- regular speed whilst waiting on cpu
+                      cas_last_taken := 6666;
+                    end if;
                   end if;
 
                   if not in_reset then
@@ -1200,6 +1212,7 @@ begin
 
             if cas_i_bits = 8 then 
               isr_status(ISR_RX_FULL) <= '1';
+              cas_last_taken := 6666;
             end if;
             
           end if;
