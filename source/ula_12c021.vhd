@@ -1475,7 +1475,8 @@ begin
               hightone_cnt := 0;
               cas_hightone <= false;
             else
-              if hightone_cnt /= 80 then
+              -- 20 bits taken
+              if hightone_cnt /= 20 then
                 hightone_cnt := hightone_cnt + 1;
               else
                 cas_hightone <= true;
