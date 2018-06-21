@@ -211,8 +211,8 @@ architecture RTL of Electron_Top is
   signal plus1_rom_qa : bit1;
 
   -- Debug
-  signal debug        : word(15 downto 0);
   signal ula_debug    : word(15 downto 0);
+  signal virtio_debug : word(15 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -624,7 +624,7 @@ begin
     i_cas_taken    => ula_cas_taken,
     o_cas_avail    => cas_avail,
 
-    o_debug        => open
+    o_debug        => virtio_debug
   );
 
   -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
@@ -796,7 +796,11 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= ula_n_reset_out;
 
-  o_debug <= debug;
+  o_debug(1) <= ula_cas_i;
+  o_debug(0) <= '1' when ula_debug(13) = '1' or ula_debug(15) = '1' or ula_cas_taken else '0'; -- cas_hightone
+     --'1' when ula_cas_taken else '0'; --ula_debug(15);  -- fkena bit shift in active
+  o_debug(2) <= ula_debug(14); -- data bit shifted in
+  o_debug(15 downto 3) <= (others => '0');
 
   -- ====================================================================
   -- Chipscope

@@ -473,6 +473,18 @@ begin
               ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
+  -- TODO: [Gary] attempt to fall out of turbo mode when high tone active as
+  --       cpu may not ack it and loading will halt waiting to take the next bit.
+  --       really turbo mode needs to keep doing a taken every 1200Hz that pass
+  --       since last taken!
+  cas_turbo <= true when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT and
+                         misc_control(MISC_CASSETTE_MOTOR) = '1' and
+                         i_cas_turbo else 
+               false;
+
+  o_debug(11) <= '1' when cas_turbo else '0';
+  o_cas_taken <= cas_taken;
+
   -- ====================================================================
   -- Video
   -- ====================================================================
@@ -927,6 +939,9 @@ begin
     variable cas_o_data : bit1;
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
+
+    variable cas_last_taken : integer range 6666 downto 0;
+    variable hack_was_hightone : boolean;
   begin
     if rst = '1' then      
       isr_en <= (others => '0');
@@ -941,6 +956,7 @@ begin
       colour_palettes <= (others => (others => '0'));
       
       cas_o_data_shift <= (others => '0');
+      cas_i_data_shift <= (others => '0');
 
       delayed_por_reset := '0';
 
@@ -954,6 +970,9 @@ begin
       cas_o_init := true;
       cas_o_halt := false;      
       
+      hack_was_hightone := false;
+      cas_last_taken := 6666;
+
       o_cas <= '0';
 
       if (i_n_por = '0') then
@@ -1056,49 +1075,133 @@ begin
         --
         -- Cassette Registers
         --
-        if ck_freqx = '1' then
+        if (cas_turbo and i_cph_sys(3) = '1') then
+          if cas_last_taken /= 0 then
+            -- Turbo mode halts for cpu during RX Full and Hightone, but authentic
+            -- hw would keep on processing just at 1200Hz and it's expected that
+            -- bits will be lost whilst waiting on cpu, especially hightone bits.
+            cas_last_taken := cas_last_taken - 1;
+          end if;
+        end if;
+
+        if i_cph_sys(3) = '1' then
+          cas_taken <= false;
+          o_debug(14) <= '0';
+        end if;
+  
+        -- TODO: using cas_last_taken to throttle turbo mode for now to regular speed
+        -- TODO: Also there's an issue with hightone using cas_taken so detection/response
+        --       occurs a sys_ena later.
+        if ck_freqx = '1' or cas_last_taken = 0 then
+          -- TODO: [Gary] Turbo mode is a P.O.C and will need redoing from scratch in
+          --       the least invasive way possible that adds as few new paths to
+          --       maintain. There's a fair bit of logic around multi_cnt that this
+          --       breaks.
+
 
           -- 
           -- Reading
           --
+          o_debug(15) <= '0';
           if cas_hightone or cas_i_bits = 8 then
+            o_debug(15) <= '1';
             if cas_hightone then
               isr_status(ISR_HIGH_TONE) <= '1';
               isr_status(ISR_RX_FULL) <= '0';
             end if;
 
-            cas_i_bits := 0;
+            -- TODO: If not avail at this time, this will break as cas_i_bits would need to
+            --       remain at 8 to re-enter this and finally eat the stop bit.
+            -- Eat high-tone or stop bit
+            if cas_turbo and i_cas_avail and not cas_taken then
+              cas_taken <= true;
+              cas_last_taken := 6666;
+            end if;
+
+            if not cas_turbo or (i_cas_avail and not cas_taken) then
+              cas_i_bits := 0;
+            end if;
             frameck_cnt := 0;
             in_reset := true;
-          elsif (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                 multi_cnt(7 downto 0) = 58 or
-                 multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
-            if frameck_cnt = 3 then
-              frameck_cnt := 0;
-              if not in_reset then
-                frameck_ena := true;
+
+            if cas_hightone then
+              hack_was_hightone := true;
+            end if;
+          else
+            -- TODO: [Gary] In turbo mode, soon as ISR_HIGH_TONE is set we have to 
+            --       exit turbo mode? otherwise high tone can end due to start bit 0
+            --       and RX Full trigger whilst cpu has still to ack hightone...
+            if (cas_turbo) then
+              if (isr_status(ISR_HIGH_TONE) = '0') then
+                -- next bit available
+                if i_cas_avail and not cas_taken and (isr_status(ISR_RX_FULL) = '0') then -- or cas_last_taken = 0) then
+                  -- TODO: Again, if avail isn't asserted this will break as in_reset is set
+                  --       as though start bit has been consumed or frameck_ena for data bit!
+                  -- eat start bit or any of 8 data bits
+                  -- TODO: Why do we need to skip taking a bit after leaving hightone
+                  --       detection in turbo mode? Why does authentic manage ?
+                  if (not hack_was_hightone ) then
+                    cas_taken <= true;
+                    cas_last_taken := 6666;
+                  end if;
+
+                  if not in_reset then
+                    frameck_ena := true;
+                  end if;                
+                  hack_was_hightone := false;
+                  in_reset := false;
+                end if;
+              -- TODO: [Gary] else if counter = 0 take another bit?
               end if;
-              in_reset := false;
-            else
-              frameck_cnt := frameck_cnt + 1;
+            elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
+                    multi_cnt(7 downto 0) = 58 or
+                    multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
+              -- S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
+              if frameck_cnt = 3 then
+                frameck_cnt := 0;
+                if not in_reset then
+                  frameck_ena := true;
+                end if;
+                in_reset := false;
+              else
+                frameck_cnt := frameck_cnt + 1;
+              end if;
             end if;
           end if;
 
+          -- TODO: [Gary] when detecting hightone bits, nothing TAKES the bit!
+
+          -- TODO: Is a start bit actually detected or just a bit?
+          -- TODO: Should this only run IF bit avail and not taken by code above???
+          o_debug(12) <= '0';
           if in_reset then
-            cas_i_bits := 0;
+            o_debug(12) <= '1';
+            -- TODO: [Gary] Should cas_i_bits be cleared again here? Didn't
+            --       the hightone/bits=8 block already do this?
+            --if not cas_turbo then
+              cas_i_bits := 0;
+            --end if;
             if cas_i_bit = '1' then
               -- 1/2 of 1200Hz pulse will have already happened by the time start
               -- bit is detected, pre-sync counter.
               frameck_cnt := 2;
             end if;
           end if;
-          
+
           if frameck_ena then
+            o_debug(14) <= '1';
             cas_i_bits := cas_i_bits + 1;
             cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
+            o_debug(7 downto 0) <= cas_i_bit & cas_i_data_shift(7 downto 1);
+            if (cas_turbo) then
+              cas_i_data_shift <= i_cas & cas_i_data_shift(7 downto 1);
+              o_debug(7 downto 0) <= i_cas & cas_i_data_shift(7 downto 1);
+            end if;
+
             if cas_i_bits = 8 then 
               isr_status(ISR_RX_FULL) <= '1';
             end if;
+            
           end if;
 
           frameck_ena := false;
@@ -1267,6 +1370,7 @@ begin
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
           -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
+          -- TODO: [Gary] cas_i_edge will never occur in turbo mode.
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
@@ -1284,9 +1388,9 @@ begin
   --       used in this implementation due to clock enables.
 
   -- Edge detection
-  p_cas_edge : process(i_clk_sys, rst)
+  p_cas_edge : process(i_clk_sys, rst, cas_turbo)
   begin
-    if rst = '1' then
+    if rst = '1' or cas_turbo then
       cas_i_delay1 <= i_cas;
       cas_i_delay2 <= i_cas;
     elsif rising_edge(i_clk_sys) then
@@ -1301,10 +1405,13 @@ begin
     end if;
   end process;
 
-  cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
+  -- cas_i_edge cannot be used during turbo mode
+  cas_i_edge <= true when not cas_turbo and (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
   -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
-  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_s4m13;
+  ck_cas <= '0' when cas_turbo else
+            '0' when multi_cnt(6 downto 0) = 10 else
+            ck_s4m13;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1315,8 +1422,9 @@ begin
       candidate := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
+
         if ck_s4m13 = '1' then
-          
+
           -- candidate 1/0 decode
           if multi_cnt(6 downto 0) = 114 then    -- S2, 242 or 114
             candidate := '1';
@@ -1334,7 +1442,7 @@ begin
           -- edge being detected and would remain at a '1' due to last receiving
           -- a stop bit or high tone. This is a hacky workaround to allow
           -- southern belle to load until the real solution becomes clear.
-          if  misc_control(MISC_CASSETTE_MOTOR) = '0' then
+          if misc_control(MISC_CASSETTE_MOTOR) = '0' then
             cas_i_bit <= '0';
           end if;
 
@@ -1352,8 +1460,29 @@ begin
       cas_hightone <= false;
       hightone_cnt := 0;
     elsif rising_edge(i_clk_sys) then
-      if i_ena_ula = '1' then          
-        if ck_s4m13 = '1' then
+      if i_ena_ula = '1' then
+
+        -- TODO: [Gary] merge these two cases into one.
+        --       Should turbo mode only be used when motor active and input mode?
+        if cas_turbo then
+          -- TODO: [Gary] Using cas_taken which lags high tone detection behind
+          --       the actual bit taking/processing. Otherwise whilst reading is
+          --       disabled due to RX Full high tone detection would rapidly fill up.
+          --       better option needed to allow it to operate in sync with the read.
+          --       using not RX Full might work but will miss the stop bit.
+          if i_cas_avail and i_cph_sys(3) = '1' and cas_taken then
+            if i_cas = '0' then
+              hightone_cnt := 0;
+              cas_hightone <= false;
+            else
+              if hightone_cnt /= 80 then
+                hightone_cnt := hightone_cnt + 1;
+              else
+                cas_hightone <= true;
+              end if;      
+            end if;
+          end if;
+        elsif ck_s4m13 = '1' then
 
           if multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;

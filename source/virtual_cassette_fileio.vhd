@@ -79,7 +79,7 @@ entity Virtual_Cassette_FileIO is
     i_cas_taken          : in boolean;
     o_cas_avail          : out boolean;
 
-    o_debug              : out word(3 downto 0)
+    o_debug              : out word(15 downto 0)
   );
 end;
 
@@ -132,6 +132,7 @@ architecture RTL of Virtual_Cassette_FileIO is
 
 begin
 
+  o_debug <= (others => '0');
   -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
   --       tape read/write should skip this. On eject, write to this location
   --       the current tape position. On insert, read it and set tape_position
