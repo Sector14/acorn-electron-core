@@ -797,9 +797,11 @@ begin
   o_pwr_led         <= ula_n_reset_out;
 
   o_debug(1) <= ula_cas_i;
-  o_debug(0) <= '1' when ula_debug(13) = '1' or ula_debug(15) = '1' or ula_cas_taken else '0'; -- cas_hightone
-     --'1' when ula_cas_taken else '0'; --ula_debug(15);  -- fkena bit shift in active
-  o_debug(2) <= ula_debug(14); -- data bit shifted in
+  --o_debug(0) <= '1' when ula_debug(13) = '1' or ula_debug(15) = '1' or ula_cas_taken else '0'; -- cas_hightone
+  -- 13=cas_hightone, 14=frame_ck shift,, 15=cas_hightone or cas_bits
+  o_debug(0) <= '1' when ula_debug(15) = '1' or ula_cas_taken else '0';
+  o_debug(2) <= ula_debug(9); -- ISR RX Full
+  --o_debug(2) <= ula_debug(14); -- data bit shifted in frame_ck
   o_debug(15 downto 3) <= (others => '0');
 
   -- ====================================================================
