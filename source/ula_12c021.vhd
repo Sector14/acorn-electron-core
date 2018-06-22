@@ -1075,7 +1075,8 @@ begin
         --
         -- Cassette Registers
         --
-        if (cas_turbo and i_cph_sys(3) = '1') then
+        if (cas_turbo and i_cph_sys(3) = '1' and 
+            not ram_contention) then
           if cas_last_taken /= 0 then
             -- Turbo mode halts for cpu during RX Full and Hightone, but authentic
             -- hw would keep on processing just at 1200Hz and it's expected that
@@ -1092,7 +1093,7 @@ begin
         -- TODO: using cas_last_taken to throttle turbo mode for now to regular speed
         -- TODO: Also there's an issue with hightone using cas_taken so detection/response
         --       occurs a sys_ena later.
-        if ck_freqx = '1' or cas_last_taken = 0 then
+        if (i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0) then
           -- TODO: [Gary] Turbo mode is a P.O.C and will need redoing from scratch in
           --       the least invasive way possible that adds as few new paths to
           --       maintain. There's a fair bit of logic around multi_cnt that this
@@ -1185,9 +1186,7 @@ begin
 
           -- TODO: Is a start bit actually detected or just a bit?
           -- TODO: Should this only run IF bit avail and not taken by code above???
-          o_debug(12) <= '0';
           if in_reset then
-            o_debug(12) <= '1';
             -- TODO: [Gary] Should cas_i_bits be cleared again here? Didn't
             --       the hightone/bits=8 block already do this?
             --if not cas_turbo then
