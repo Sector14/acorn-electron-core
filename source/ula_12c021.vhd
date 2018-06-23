@@ -1083,7 +1083,7 @@ begin
         -- TODO: using cas_last_taken to throttle turbo mode for now to regular speed
         -- TODO: Also there's an issue with hightone using cas_taken so detection/response
         --       occurs a sys_ena later.
-        if (i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0) then
+        if (not i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0) then
           -- TODO: [Gary] Turbo mode is a P.O.C and will need redoing from scratch in
           --       the least invasive way possible that adds as few new paths to
           --       maintain. There's a fair bit of logic around multi_cnt that this
