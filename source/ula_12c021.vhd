@@ -466,6 +466,8 @@ begin
               ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
+  -- NOTE: Take care over clock use in turbo mode. Whilst ck_freqx will stop clocking
+  --       due to ck_cas test for turbo, ck_s4m13 will continue to clock.
   cas_turbo <= true when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT and
                          misc_control(MISC_CASSETTE_MOTOR) = '1' and
                          i_cas_turbo else 
@@ -1167,17 +1169,9 @@ begin
               end if;
             end if;
           end if;
-
-          -- TODO: [Gary] when detecting hightone bits, nothing TAKES the bit!
-
-          -- TODO: Is a start bit actually detected or just a bit?
-          -- TODO: Should this only run IF bit avail and not taken by code above???
+          
           if in_reset then
-            -- TODO: [Gary] Should cas_i_bits be cleared again here? Didn't
-            --       the hightone/bits=8 block already do this?
-            --if not cas_turbo then
-              cas_i_bits := 0;
-            --end if;
+            cas_i_bits := 0;
             if cas_i_bit = '1' then
               -- 1/2 of 1200Hz pulse will have already happened by the time start
               -- bit is detected, pre-sync counter.
@@ -1361,6 +1355,8 @@ begin
           end if;
         end if;
 
+        -- NOTE: Turbo mode relies on this for southern belle to load successfully.
+        --       Keep enabled to ensure final RX Full ISR will occur.
         if ck_s4m13 = '1' then
           -- TODO: [Gary] Counter reset appears to assume it only occurs when all bits are 1
           --       due to nor gate for reset signal. In input mode this is unlikely
@@ -1368,7 +1364,7 @@ begin
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
           -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
-          -- TODO: [Gary] cas_i_edge will never occur in turbo mode.
+          -- TODO: In turbo mode this should probably reset on cas_taken
           if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
@@ -1421,6 +1417,7 @@ begin
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
 
+        -- Allowed even in turbo mode due to motor hack below
         if ck_s4m13 = '1' then
 
           -- candidate 1/0 decode
@@ -1461,7 +1458,6 @@ begin
       if i_ena_ula = '1' then
 
         -- TODO: [Gary] merge these two cases into one.
-        --       Should turbo mode only be used when motor active and input mode?
         if cas_turbo then
           -- TODO: [Gary] Using cas_taken which lags high tone detection behind
           --       the actual bit taking/processing. Otherwise whilst reading is
