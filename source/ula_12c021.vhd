@@ -928,7 +928,9 @@ begin
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
 
-    variable cas_last_taken : integer range 6666 downto 0;
+    constant CAS_TurboHz : integer := 66;
+    constant CAS_1200Hz  : integer := 6666;
+    variable cas_last_taken : integer range CAS_1200Hz downto 0;
     variable hack_was_hightone : boolean;
   begin
     if rst = '1' then      
@@ -959,7 +961,7 @@ begin
       cas_o_halt := false;      
       
       hack_was_hightone := false;
-      cas_last_taken := 6666;
+      cas_last_taken := CAS_1200Hz;
 
       o_cas <= '0';
 
@@ -1104,12 +1106,12 @@ begin
             -- Eat high-tone or stop bit
             if cas_turbo and i_cas_avail and not cas_taken then
               cas_taken <= true;
-              -- TODO: With 66 here rather than 6666 repton fails to load instantly.
+              -- TODO: With CAS_TurboHz here rather than CAS_1200Hz repton fails to load instantly.
               -- investigate why.
               if cas_hightone then
-                cas_last_taken := 66;
+                cas_last_taken := CAS_TurboHz;
               else
-                cas_last_taken := 6666;
+                cas_last_taken := CAS_1200Hz;
               end if;
             end if;
 
@@ -1123,37 +1125,33 @@ begin
               hack_was_hightone := true;
             end if;
           else
-            -- TODO: [Gary] In turbo mode, soon as ISR_HIGH_TONE is set we have to 
-            --       exit turbo mode? otherwise high tone can end due to start bit 0
-            --       and RX Full trigger whilst cpu has still to ack hightone...
-            if (cas_turbo) then
-              if (isr_status(ISR_HIGH_TONE) = '0') then
-                -- next bit available
-                if i_cas_avail and not cas_taken then
-                  -- TODO: Again, if avail isn't asserted this will break as in_reset is set
-                  --       as though start bit has been consumed or frameck_ena for data bit!
-                  -- eat start bit or any of 8 data bits
-                  -- TODO: Why do we need to skip taking a bit after leaving hightone
-                  --       detection in turbo mode? Why does authentic manage ?
-                  if (not hack_was_hightone ) then
-                    cas_taken <= true;
-                    if (isr_status(ISR_RX_FULL) = '0') then
-                      -- TODO: Test various faster shift speeds 66 fails, 666 seems reasonably stable?
-                      cas_last_taken := 66;
-                    else
-                      -- regular speed whilst waiting on cpu
-                      cas_last_taken := 6666;
-                    end if;
+            if cas_turbo then
+              -- next bit available
+              if i_cas_avail and not cas_taken then
+                -- TODO: Again, if avail isn't asserted this will break as in_reset is set
+                --       as though start bit has been consumed or frameck_ena for data bit!
+                -- eat start bit or any of 8 data bits
+                -- TODO: without hack_was_hightone the first data bit is eaten without being
+                --       shifted into cas_i_data_shift. Authentic does not have this issue?
+                if (not hack_was_hightone ) then
+                  cas_taken <= true;
+                  if (isr_status(ISR_RX_FULL) = '0') then
+                    cas_last_taken := CAS_TurboHz;
+                  else
+                    cas_last_taken := CAS_1200Hz;
                   end if;
-
-                  if not in_reset then
-                    frameck_ena := true;
-                  end if;                
-                  hack_was_hightone := false;
-                  in_reset := false;
+                else
+                  -- Just left hightone block, remain at 1200Hz to allow cpu time to clear ISR
+                  cas_last_taken := CAS_1200Hz;
                 end if;
-              -- TODO: [Gary] else if counter = 0 take another bit?
+
+                if not in_reset then
+                  frameck_ena := true;
+                end if;                
+                hack_was_hightone := false;
+                in_reset := false;
               end if;
+            -- Authentic Mode
             elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
                     multi_cnt(7 downto 0) = 58 or
                     multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
@@ -1199,7 +1197,7 @@ begin
 
             if cas_i_bits = 8 then 
               isr_status(ISR_RX_FULL) <= '1';
-              cas_last_taken := 6666;
+              cas_last_taken := CAS_1200Hz;
             end if;
             
           end if;
