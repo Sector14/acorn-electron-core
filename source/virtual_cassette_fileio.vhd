@@ -300,11 +300,9 @@ begin
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
           if i_cas_turbo and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
-            -- TODO: [Gary] Next bit is assumed to be available in authentic mode due to the 
-            --       slow transfer speed, but in turbo we might empty the queue
-            --       (or run out of tape). Test fileio_valid? if not valid, need to
-            --       delay asserting cas_avail until valid again.
-            o_cas_avail <= true;
+            if fileio_valid = '1' then
+              o_cas_avail <= true;
+            end if;
           end if;
 
           -- Reading

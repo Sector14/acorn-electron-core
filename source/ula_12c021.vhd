@@ -1066,31 +1066,24 @@ begin
 
         --
         -- Cassette Registers
-        --
-        if (cas_turbo and i_cph_sys(3) = '1' and 
-            not ram_contention) then
-          if cas_last_taken /= 0 then
-            -- Turbo mode halts for cpu during RX Full and Hightone, but authentic
-            -- hw would keep on processing just at 1200Hz and it's expected that
-            -- bits will be lost whilst waiting on cpu, especially hightone bits.
+        -- 
+
+        if (i_cph_sys(3) = '1' ) then
+          -- cas_taken pulse stretched for 8MHz virtual i/o during turbo mode
+          cas_taken <= false;
+          o_debug(14) <= '0';
+
+          -- Turbo mode stops during ram_contention as the faster timing can cause ISR
+          -- to occur during a time period that the CPU is stopped with no ability to
+          -- service ISR in time before next bit clocked in, even when running at 1200Hz.
+          if not ram_contention and cas_last_taken /= 0 then            
             cas_last_taken := cas_last_taken - 1;
           end if;
         end if;
 
-        if i_cph_sys(3) = '1' then
-          cas_taken <= false;
-          o_debug(14) <= '0';
-        end if;
-  
-        -- TODO: using cas_last_taken to throttle turbo mode for now to regular speed
-        -- TODO: Also there's an issue with hightone using cas_taken so detection/response
-        --       occurs a sys_ena later.
+        -- i_cas_turbo avoids issue when coming out of cas_turbo e.g when motor stops, where
+        -- ck_freqx can be ready to assert the next clock yet a 1200Hz delay may be expected.
         if (not i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0) then
-          -- TODO: [Gary] Turbo mode is a P.O.C and will need redoing from scratch in
-          --       the least invasive way possible that adds as few new paths to
-          --       maintain. There's a fair bit of logic around multi_cnt that this
-          --       breaks.
-
 
           -- 
           -- Reading
@@ -1103,13 +1096,9 @@ begin
               isr_status(ISR_RX_FULL) <= '0';
             end if;
 
-            -- TODO: If not avail at this time, this will break as cas_i_bits would need to
-            --       remain at 8 to re-enter this and finally eat the stop bit.
             -- Eat high-tone or stop bit
             if cas_turbo and i_cas_avail and not cas_taken then
               cas_taken <= true;
-              -- TODO: With CAS_TurboHz here rather than CAS_1200Hz repton fails to load instantly.
-              -- investigate why.
               if cas_hightone then
                 cas_last_taken := CAS_TurboHz;
               else
@@ -1130,7 +1119,7 @@ begin
             if cas_turbo then
               -- next bit available
               if i_cas_avail and not cas_taken then
-                -- TODO: Again, if avail isn't asserted this will break as in_reset is set
+                -- TODO: if avail isn't asserted this will break as in_reset is set
                 --       as though start bit has been consumed or frameck_ena for data bit!
                 -- eat start bit or any of 8 data bits
                 -- TODO: without hack_was_hightone the first data bit is eaten without being
