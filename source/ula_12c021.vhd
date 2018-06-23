@@ -262,18 +262,11 @@ architecture RTL of ULA_12C021 is
   type t_colour_palettes is array(15 downto 8) of t_colour_palette;
   signal colour_palettes : t_colour_palettes;
   
-begin
-  -- o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
-  -- o_debug(1) <= ana_hsync;
-  -- o_debug(2) <= isr_status(ISR_FRAME_END);
-  -- o_debug(3) <= isr_status(ISR_RTC);
-
-  --o_debug(0) <= ana_csync;
-  --o_debug(1) <= ck_s16m32;
+begin  
   o_debug(9) <= isr_status(ISR_RX_FULL);
   o_debug(10) <= isr_status(ISR_HIGH_TONE);
+  o_debug(11) <= '1' when cas_turbo else '0';
   o_debug(13) <= '1' when cas_hightone else '0';
-  --o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -473,16 +466,11 @@ begin
               ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
-  -- TODO: [Gary] attempt to fall out of turbo mode when high tone active as
-  --       cpu may not ack it and loading will halt waiting to take the next bit.
-  --       really turbo mode needs to keep doing a taken every 1200Hz that pass
-  --       since last taken!
   cas_turbo <= true when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT and
                          misc_control(MISC_CASSETTE_MOTOR) = '1' and
                          i_cas_turbo else 
                false;
-
-  o_debug(11) <= '1' when cas_turbo else '0';
+  
   o_cas_taken <= cas_taken;
 
   -- ====================================================================
