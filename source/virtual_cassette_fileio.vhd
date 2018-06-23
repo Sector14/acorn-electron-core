@@ -202,8 +202,15 @@ begin
     end if;
   end process;
 
-  -- Frequency encoding (authentic mode) / Direct bit transfer (turbo mode)
-  o_cas_fm_fch <= freq_encoded_bit when not i_cas_turbo else cur_data(15 - to_integer(unsigned(tape_position(3 downto 0))));
+  -- Frequency encoding (authentic mode)
+  -- Direct bit transfer (turbo mode) 
+  -- Constant 0 when inactive in authentic mode due to no edges. Turbo mode relies
+  -- on receiver checking avail as a 0 here would otherwise be taken as a full 0 bit
+  -- due to lack of pulse encoding in turbo mode. The 0 here is purely to match authentic
+  -- mode for LED usage by the core, as long as avail is checked last bit could be sent forever.
+  o_cas_fm_fch <= freq_encoded_bit when not i_cas_turbo else 
+                  '0' when (i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0') and i_rec = '0' else
+                  cur_data(15 - to_integer(unsigned(tape_position(3 downto 0))));
 
   -- Decode ULA FSK output back to 0/1 and write to current word
   p_write_decode : process(i_clk, i_rst, i_ena)
