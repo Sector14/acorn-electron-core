@@ -142,6 +142,8 @@ begin
 
   -- TODO: [Gary] Notes: Turbo mode should not be toggled whilst fileio
   --       is in progress. Perhaps have ula/file io latch the cfg value?
+  --       Turbo->authentic generally works, but authentic->turbo mid load will fail.
+  --       Transition may need to be delayed until a full bit has being sent.
   
   -- 1/8MHz = 125ns. 1/1200Hz = 833.333us
   -- 833.33us/125ns = 6666 cycles

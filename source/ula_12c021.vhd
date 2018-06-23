@@ -930,7 +930,7 @@ begin
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
 
-    constant CAS_TurboHz : integer := 66;
+    constant CAS_TurboHz : integer := 1;
     constant CAS_1200Hz  : integer := 6666;
     variable cas_last_taken : integer range CAS_1200Hz downto 0;
     variable hack_was_hightone : boolean;
@@ -1102,6 +1102,7 @@ begin
               if cas_hightone then
                 cas_last_taken := CAS_TurboHz;
               else
+                -- Slow down to 1200Hz when hightone ends as CPU needs time to respond to ISR
                 cas_last_taken := CAS_1200Hz;
               end if;
             end if;
@@ -1115,47 +1116,52 @@ begin
             if cas_hightone then
               hack_was_hightone := true;
             end if;
-          else
-            if cas_turbo then
-              -- next bit available
-              if i_cas_avail and not cas_taken then
-                -- TODO: if avail isn't asserted this will break as in_reset is set
-                --       as though start bit has been consumed or frameck_ena for data bit!
-                -- eat start bit or any of 8 data bits
-                -- TODO: without hack_was_hightone the first data bit is eaten without being
-                --       shifted into cas_i_data_shift. Authentic does not have this issue?
-                if (not hack_was_hightone ) then
-                  cas_taken <= true;
-                  if (isr_status(ISR_RX_FULL) = '0') then
-                    cas_last_taken := CAS_TurboHz;
-                  else
-                    cas_last_taken := CAS_1200Hz;
-                  end if;
+          elsif cas_turbo then
+            -- TODO: [Gary] using cas_turbo means when the motor is temporarily stopped during loading            
+            --       and depending on multi_cnt at the time, frameck_ena might assert earlier than
+            --       a 1200Hz period causing a lost bit. Using i_cas_turbo would avoid that, but
+            --       then fail to continue shifting in data at 1200Hz even when loading has ended
+            --       which some games rely on. Really needs to transition out of cas_turbo via a 1200Hz
+            --       pulse
+
+            -- next bit available
+            if i_cas_avail and not cas_taken then
+              -- TODO: [Gary] if avail isn't asserted this will break as in_reset is set
+              --       as though start bit has been consumed or frameck_ena for data bit!
+              -- eat start bit or any of 8 data bits
+              -- TODO: [Gary] without hack_was_hightone the first data bit is eaten without being
+              --       shifted into cas_i_data_shift. Authentic does not have this issue?
+              if (not hack_was_hightone ) then
+                cas_taken <= true;
+                if (isr_status(ISR_RX_FULL) = '0') then
+                  cas_last_taken := CAS_TurboHz;
                 else
-                  -- Just left hightone block, remain at 1200Hz to allow cpu time to clear ISR
                   cas_last_taken := CAS_1200Hz;
                 end if;
-
-                if not in_reset then
-                  frameck_ena := true;
-                end if;                
-                hack_was_hightone := false;
-                in_reset := false;
-              end if;
-            -- Authentic Mode
-            elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                    multi_cnt(7 downto 0) = 58 or
-                    multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
-              -- S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
-              if frameck_cnt = 3 then
-                frameck_cnt := 0;
-                if not in_reset then
-                  frameck_ena := true;
-                end if;
-                in_reset := false;
               else
-                frameck_cnt := frameck_cnt + 1;
+                -- Just left hightone block, remain at 1200Hz to allow cpu time to clear ISR
+                cas_last_taken := CAS_1200Hz;
               end if;
+
+              if not in_reset then
+                frameck_ena := true;
+              end if;                
+              hack_was_hightone := false;
+              in_reset := false;
+            end if;
+          -- Authentic Mode
+          elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
+                  multi_cnt(7 downto 0) = 58 or
+                  multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
+            -- S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
+            if frameck_cnt = 3 then
+              frameck_cnt := 0;
+              if not in_reset then
+                frameck_ena := true;
+              end if;
+              in_reset := false;
+            else
+              frameck_cnt := frameck_cnt + 1;
             end if;
           end if;
           
@@ -1172,17 +1178,15 @@ begin
             o_debug(14) <= '1';
             cas_i_bits := cas_i_bits + 1;
             cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
-            o_debug(7 downto 0) <= cas_i_bit & cas_i_data_shift(7 downto 1);
+
             if (cas_turbo) then
               cas_i_data_shift <= i_cas & cas_i_data_shift(7 downto 1);
-              o_debug(7 downto 0) <= i_cas & cas_i_data_shift(7 downto 1);
             end if;
 
             if cas_i_bits = 8 then 
               isr_status(ISR_RX_FULL) <= '1';
               cas_last_taken := CAS_1200Hz;
-            end if;
-            
+            end if;            
           end if;
 
           frameck_ena := false;
