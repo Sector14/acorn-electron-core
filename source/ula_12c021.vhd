@@ -930,7 +930,8 @@ begin
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
 
-    constant CAS_TurboHz : integer := 1;
+    -- Allow a couple of ticks between bit shifts as cas_hightone detection is delayed
+    constant CAS_TurboHz : integer := 2;
     constant CAS_1200Hz  : integer := 6666;
     variable cas_last_taken : integer range CAS_1200Hz downto 0;
     variable hack_was_hightone : boolean;
@@ -1126,27 +1127,22 @@ begin
 
             -- next bit available
             if i_cas_avail and not cas_taken then
-              -- TODO: [Gary] if avail isn't asserted this will break as in_reset is set
-              --       as though start bit has been consumed or frameck_ena for data bit!
               -- eat start bit or any of 8 data bits
               -- TODO: [Gary] without hack_was_hightone the first data bit is eaten without being
               --       shifted into cas_i_data_shift. Authentic does not have this issue?
+              cas_last_taken := CAS_1200Hz;
               if (not hack_was_hightone ) then
                 cas_taken <= true;
                 if (isr_status(ISR_RX_FULL) = '0') then
+                  -- Not leaving hightone block therefore no need to wait for cpu time to clear ISR
                   cas_last_taken := CAS_TurboHz;
-                else
-                  cas_last_taken := CAS_1200Hz;
                 end if;
-              else
-                -- Just left hightone block, remain at 1200Hz to allow cpu time to clear ISR
-                cas_last_taken := CAS_1200Hz;
               end if;
+              hack_was_hightone := false;
 
               if not in_reset then
                 frameck_ena := true;
               end if;                
-              hack_was_hightone := false;
               in_reset := false;
             end if;
           -- Authentic Mode
