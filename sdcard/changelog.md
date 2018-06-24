@@ -4,6 +4,7 @@
 ## [Unreleased]
 ### Added
   - Initial Plus 1 expansion support for ROM carts and joysticks.
+  - Turbo Mode for loading from cassette. 
 
 ### Changed
   - Driver changed to type 2 to use firmware support for loading from UEF.
