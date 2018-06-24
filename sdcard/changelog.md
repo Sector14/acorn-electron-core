@@ -11,6 +11,10 @@
   - V/H/CSync polarity changed to negative
   - Remove a couple of unnecessary latches
 
+### Fixed
+  - PS2 over serial usage.
+  - Support ] Key over serial.
+
 ## [1.2.0] - 2018-01-04
 ### Changed
   - More accurate video address logic
