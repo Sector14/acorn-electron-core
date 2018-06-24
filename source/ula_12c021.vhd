@@ -1118,13 +1118,6 @@ begin
               hack_was_hightone := true;
             end if;
           elsif cas_turbo then
-            -- TODO: [Gary] using cas_turbo means when the motor is temporarily stopped during loading            
-            --       and depending on multi_cnt at the time, frameck_ena might assert earlier than
-            --       a 1200Hz period causing a lost bit. Using i_cas_turbo would avoid that, but
-            --       then fail to continue shifting in data at 1200Hz even when loading has ended
-            --       which some games rely on. Really needs to transition out of cas_turbo via a 1200Hz
-            --       pulse
-
             -- next bit available
             if i_cas_avail and not cas_taken then
               -- eat start bit or any of 8 data bits
@@ -1145,11 +1138,10 @@ begin
               end if;                
               in_reset := false;
             end if;
-          -- Authentic Mode
           elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
                   multi_cnt(7 downto 0) = 58 or
                   multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
-            -- S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
+            -- Authentic Mode: S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
             if frameck_cnt = 3 then
               frameck_cnt := 0;
               if not in_reset then
@@ -1422,7 +1414,7 @@ begin
           end if;
 
           -- TODO: [Gary] This is inaccurate. Electron after loading a program
-          -- can still generate RD Full interrupts without needing a soft reset.
+          -- can still somehow generate RD Full interrupts without needing a soft reset.
           -- Not sure why as CDATA (cas_i_bit) cannot change without a CAS IN
           -- edge being detected and would remain at a '1' due to last receiving
           -- a stop bit or high tone. This is a hacky workaround to allow
