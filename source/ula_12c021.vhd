@@ -1084,7 +1084,7 @@ begin
 
         -- i_cas_turbo avoids issue when coming out of cas_turbo e.g when motor stops, where
         -- ck_freqx can be ready to assert the next clock yet a 1200Hz delay may be expected.
-        if (not i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0) then
+        if (not i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0 and i_cph_sys(3) = '1') then
 
           -- 
           -- Reading
@@ -1172,6 +1172,7 @@ begin
 
           if frameck_ena then
             o_debug(14) <= '1';
+
             cas_i_bits := cas_i_bits + 1;
             cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
 
@@ -1353,8 +1354,8 @@ begin
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
           -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
-          -- TODO: In turbo mode this should probably reset on cas_taken
-          if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
+          if (not cas_turbo and cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT) or
+             (cas_turbo and cas_taken)  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
         end if;
@@ -1448,11 +1449,10 @@ begin
 
         -- TODO: [Gary] merge these two cases into one.
         if cas_turbo then
-          -- TODO: [Gary] Using cas_taken which lags high tone detection behind
+          -- TODO: [Gary] Using cas_taken despite lagging high tone detection behind
           --       the actual bit taking/processing. Otherwise whilst reading is
           --       disabled due to RX Full high tone detection would rapidly fill up.
           --       better option needed to allow it to operate in sync with the read.
-          --       using not RX Full might work but will miss the stop bit.
           if i_cas_avail and i_cph_sys(3) = '1' and cas_taken then
             if i_cas = '0' then
               hightone_cnt := 0;
