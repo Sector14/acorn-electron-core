@@ -921,7 +921,6 @@ begin
     variable delayed_por_reset : bit1;
 
     variable in_reset : boolean;
-    variable frameck_ena : boolean;
     variable frameck_cnt : integer range 0 to 3;
     variable cas_i_bits : integer range 0 to 9;
     
@@ -954,7 +953,6 @@ begin
       delayed_por_reset := '0';
 
       in_reset := false;
-      frameck_ena := false;
       frameck_cnt := 0;
       cas_i_bits := 0;
 
@@ -1069,10 +1067,12 @@ begin
         -- Cassette Registers
         -- 
 
+        -- 
+        -- Reading
+        -- 
         if (i_cph_sys(3) = '1' ) then
           -- cas_taken pulse stretched for 8MHz virtual i/o during turbo mode
           cas_taken <= false;
-          o_debug(14) <= '0';
 
           -- Turbo mode stops during ram_contention as the faster timing can cause ISR
           -- to occur during a time period that the CPU is stopped with no ability to
@@ -1082,103 +1082,65 @@ begin
           end if;
         end if;
 
+        -- TODO: Review this, as due to reset of counter now upon turbo taken, can that
+        --       still occur?
         -- i_cas_turbo avoids issue when coming out of cas_turbo e.g when motor stops, where
         -- ck_freqx can be ready to assert the next clock yet a 1200Hz delay may be expected.
         if (not i_cas_turbo and ck_freqx = '1') or (i_cas_turbo and cas_last_taken = 0 and i_cph_sys(3) = '1') then
 
-          -- 
-          -- Reading
-          --
           o_debug(15) <= '0';
           if cas_hightone or cas_i_bits = 8 then
             o_debug(15) <= '1';
-            if cas_hightone then
-              isr_status(ISR_HIGH_TONE) <= '1';
-              isr_status(ISR_RX_FULL) <= '0';
-            end if;
-
-            -- Eat high-tone or stop bit
-            if cas_turbo and i_cas_avail and not cas_taken then
-              cas_taken <= true;
-              if cas_hightone then
-                cas_last_taken := CAS_TurboHz;
-              else
-                -- Slow down to 1200Hz when hightone ends as CPU needs time to respond to ISR
-                cas_last_taken := CAS_1200Hz;
-              end if;
-            end if;
-
-            if not cas_turbo or (i_cas_avail and not cas_taken) then
-              cas_i_bits := 0;
-            end if;
             frameck_cnt := 0;
             in_reset := true;
 
             if cas_hightone then
-              hack_was_hightone := true;
-            end if;
-          elsif cas_turbo then
-            -- next bit available
-            if i_cas_avail and not cas_taken then
-              -- eat start bit or any of 8 data bits
-              -- TODO: [Gary] without hack_was_hightone the first data bit is eaten without being
-              --       shifted into cas_i_data_shift. Authentic does not have this issue?
-              cas_last_taken := CAS_1200Hz;
-              if (not hack_was_hightone ) then
-                cas_taken <= true;
-                if (isr_status(ISR_RX_FULL) = '0') then
-                  -- Not leaving hightone block therefore no need to wait for cpu time to clear ISR
-                  cas_last_taken := CAS_TurboHz;
-                end if;
-              end if;
-              hack_was_hightone := false;
-
-              if not in_reset then
-                frameck_ena := true;
-              end if;                
-              in_reset := false;
-            end if;
-          elsif  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                  multi_cnt(7 downto 0) = 58 or
-                  multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
-            -- Authentic Mode: S1 and S11 ensure 2x2400Hz or 1x1200 Hz produces a 4 count regardless
-            if frameck_cnt = 3 then
-              frameck_cnt := 0;
-              if not in_reset then
-                frameck_ena := true;
-              end if;
-              in_reset := false;
-            else
-              frameck_cnt := frameck_cnt + 1;
+              isr_status(ISR_HIGH_TONE) <= '1';
+              isr_status(ISR_RX_FULL) <= '0';
             end if;
           end if;
-          
+
+          -- frameck_cnt is reset early if stop bit ("1") detected whilst cdck_latch set
           if in_reset then
             cas_i_bits := 0;
+
             if cas_i_bit = '1' then
-              -- 1/2 of 1200Hz pulse will have already happened by the time start
-              -- bit is detected, pre-sync counter.
-              frameck_cnt := 2;
+              frameck_cnt := 0;
             end if;
           end if;
 
-          if frameck_ena then
-            o_debug(14) <= '1';
+          -- FRAMECK trigger for CKx2 & CKx4 ripple counter
+          if  (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
+               multi_cnt(7 downto 0) = 58 or
+               multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
 
-            cas_i_bits := cas_i_bits + 1;
-            cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
+            -- start bit allows clocking even during reset. It can also cause corruption
+            -- if one occurs when the circuit expects a stop bit ("1").
+            if not in_reset or cas_i_bit = '0' then
+              -- shifting occurs during 1->2 transition rather than on wrap
+              if frameck_cnt = 1 then
+                o_debug(15) <= '1';
+                -- start bit will be shifted regardless of cas_i_bits counter inc
+                cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
 
-            if (cas_turbo) then
-              cas_i_data_shift <= i_cas & cas_i_data_shift(7 downto 1);
+                if not in_reset then
+                  cas_i_bits := cas_i_bits + 1;
+
+                  if cas_i_bits = 8 then 
+                    isr_status(ISR_RX_FULL) <= '1';
+                  end if;   
+                end if;
+
+                in_reset := false;
+              end if;
+                            
+              if frameck_cnt = 3 then
+                frameck_cnt := 0;
+              else
+                frameck_cnt := frameck_cnt + 1;
+              end if;
             end if;
-
-            if cas_i_bits = 8 then 
-              isr_status(ISR_RX_FULL) <= '1';
-              cas_last_taken := CAS_1200Hz;
-            end if;            
-          end if;
-
-          frameck_ena := false;
+          end if;          
 
         end if;
 
