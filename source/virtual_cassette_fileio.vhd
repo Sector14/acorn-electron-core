@@ -301,7 +301,10 @@ begin
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if i_cas_turbo and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
+          if i_cas_turbo and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then 
+            -- Turbo mode runs a slightly higher risk of exhausting the queue if the arm stalls.
+            -- This pause relies on the arm still sending data after EOF is reached as up to 16 bits
+            -- of valid data may reside in cur_data and will not process until queue no longer empty.
             if fileio_valid = '1' then
               o_cas_avail <= true;
             end if;

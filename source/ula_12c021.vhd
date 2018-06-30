@@ -1078,8 +1078,8 @@ begin
           cas_taken <= false;
 
           -- Turbo mode stops during ram_contention as the faster timing can cause ISR
-          -- to occur during a time period that the CPU is stopped with no ability to
-          -- service ISR before next bit clocked in, even when running at 1200Hz.
+          -- to occur whilst CPU is stopped with no ability to service ISR before next
+          -- bit clocked in even when running at 1200Hz.
           if not ram_contention and cas_last_taken /= 0 and i_cas_avail then            
             cas_last_taken := cas_last_taken - 1;
           end if;
@@ -1096,6 +1096,8 @@ begin
           if cas_turbo then            
             cas_taken <= true;
             cur_bit := i_cas;
+            -- Fixup frameck to shift this cycle due to 1 cycle per bit in turbo
+            -- hightone or stop bit may later override this.
             frameck_cnt := 1;
 
             if cas_hightone then
