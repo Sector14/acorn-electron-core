@@ -129,7 +129,7 @@ architecture RTL of Electron_Top is
   signal cfg_vid_compatible : boolean;
   signal cfg_plus1_attached : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
-  signal cfg_cas_turbo_load : boolean;
+  signal cfg_cas_turbo_load : boolean;  
 
   -- LED Blink
   signal led         : bit1;
@@ -185,6 +185,7 @@ architecture RTL of Electron_Top is
   signal ula_oddfield : bit1;
   signal ula_rgb : word(23 downto 0);
 
+  signal ula_cas_turbo : boolean;
   signal ula_cas_taken : boolean;
   signal cas_avail     : boolean;
 
@@ -332,7 +333,7 @@ begin
     
     i_compatible  => cfg_vid_compatible,
 
-    i_cas_turbo   => cfg_cas_turbo_load,
+    i_cas_turbo   => ula_cas_turbo,
     i_cas_avail   => cas_avail,
     o_cas_taken   => ula_cas_taken,
 
@@ -622,6 +623,8 @@ begin
 
     i_cas_turbo    => cfg_cas_turbo_load,
     i_cas_taken    => ula_cas_taken,
+    
+    o_cas_turbo    => ula_cas_turbo,
     o_cas_avail    => cas_avail,
 
     o_debug        => virtio_debug

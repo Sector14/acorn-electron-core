@@ -931,7 +931,8 @@ begin
     variable cas_o_init : boolean;
 
     -- Allow a couple of ticks between bit shifts as cas_hightone detection is delayed
-    constant CAS_TurboHz : integer := 2;
+    -- allow a few more ticks for safer switching in and out of turbo mode
+    constant CAS_TurboHz : integer := 4;
     constant CAS_1200Hz  : integer := 6666;
     variable cas_last_taken : integer range CAS_1200Hz downto 0;
     variable was_in_hightone_hack : boolean;
@@ -1438,7 +1439,7 @@ begin
           --       the actual bit taking/processing. Otherwise whilst reading is
           --       disabled due to RX Full high tone detection would rapidly fill up.
           --       better option needed to allow it to operate in sync with the read.
-          if i_cas_avail and i_cph_sys(3) = '1' and cas_taken then
+          if i_cph_sys(3) = '1' and cas_taken then
             if i_cas = '0' then
               hightone_cnt := 0;
               cas_hightone <= false;

@@ -74,9 +74,11 @@ entity Virtual_Cassette_FileIO is
     i_cas_to_fch         : in bit1;
     o_cas_fm_fch         : out bit1;
 
-    -- When true, switches o_cas_fm_fch from pulse to avail/taken protocol
+    -- When true, requests switch of o_cas_fm_fch from pulse to avail/taken protocol
     i_cas_turbo          : in boolean;
     i_cas_taken          : in boolean;
+
+    o_cas_turbo          : out boolean;
     o_cas_avail          : out boolean;
 
     o_debug              : out word(15 downto 0)
@@ -130,27 +132,39 @@ architecture RTL of Virtual_Cassette_FileIO is
   -- current 16 bit data buffer for read / write of tape position
   signal cur_data               : word(15 downto 0);
 
+  signal cas_turbo_latch        : boolean;
+  
 begin
-
-  o_debug(0) <= '1' when fileio_rx_level = "00000000000" else '0';
-  o_debug(15 downto 1) <= (others => '0');
-
   -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
   --       tape read/write should skip this. On eject, write to this location
   --       the current tape position. On insert, read it and set tape_position
   --       accordingly.
 
-  -- TODO: [Gary] Notes: Turbo mode should not be toggled whilst fileio
-  --       is in progress. Perhaps have ula/file io latch the cfg value?
-  --       Turbo->authentic generally works, but authentic->turbo mid load will fail.
-  --       Transition may need to be delayed until a full bit has being sent.
-  
+  o_debug(15 downto 0) <= (others => '0');
+
+  p_turbo_latch : process(i_clk, i_rst, i_cas_turbo)
+  begin
+    if (i_rst = '1') then
+      cas_turbo_latch <= i_cas_turbo;
+    elsif rising_edge(i_clk) then
+      if (i_ena = '1') then
+        -- Leaving turbo mode is restricted to when motor is not active due to
+        -- tricky timing issues.
+        if i_motor = '0' or freq_cnt = 0 then
+          cas_turbo_latch <= i_cas_turbo;
+        end if;
+      end if;
+    end if;
+  end process;
+
+  o_cas_turbo <= cas_turbo_latch;
+
   -- 1/8MHz = 125ns. 1/1200Hz = 833.333us
   -- 833.33us/125ns = 6666 cycles
   -- 1200Hz with 50% duty cycle = 3333 cycles high.
-  p_freq_cnt : process(i_clk, i_ena, i_rst)
+  p_freq_cnt : process(i_clk, i_rst, cas_turbo_latch)
   begin
-    if (i_rst = '1') then
+    if (i_rst = '1' or cas_turbo_latch) then
       freq_cnt <= 6666;
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
@@ -170,10 +184,10 @@ begin
   end process;
 
   -- Frequency encode current bit and output to o_cas
-  p_read_encode : process(i_clk, i_ena, i_rst, i_cas_turbo)
+  p_read_encode : process(i_clk, i_ena, i_rst, cas_turbo_latch)
     variable cur_bit : integer range 15 downto 0;
   begin
-    if (i_rst = '1' or i_cas_turbo) then
+    if (i_rst = '1' or cas_turbo_latch) then
       bit_taken_r <= false;
       freq_encoded_bit <= '0';      
     elsif rising_edge(i_clk) then
@@ -210,7 +224,7 @@ begin
   -- on receiver checking avail as a 0 here would otherwise be taken as a full 0 bit
   -- due to lack of pulse encoding in turbo mode. The 0 here is purely to match authentic
   -- mode for LED usage by the core, as long as avail is checked last bit could be sent forever.
-  o_cas_fm_fch <= freq_encoded_bit when not i_cas_turbo else 
+  o_cas_fm_fch <= freq_encoded_bit when not cas_turbo_latch else 
                   '0' when (i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0') and i_rec = '0' else
                   cur_data(15 - to_integer(unsigned(tape_position(3 downto 0))));
 
@@ -301,7 +315,7 @@ begin
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if i_cas_turbo and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then 
+          if cas_turbo_latch and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then 
             -- Turbo mode runs a slightly higher risk of exhausting the queue if the arm stalls.
             -- This pause relies on the arm still sending data after EOF is reached as up to 16 bits
             -- of valid data may reside in cur_data and will not process until queue no longer empty.
@@ -311,7 +325,7 @@ begin
           end if;
 
           -- Reading
-          if bit_taken_r or (i_cas_turbo and i_cas_taken) then
+          if bit_taken_r or i_cas_taken then
 
             if cur_bit = 15 then
               -- TODO: [Gary] cur_data isn't set until tape position has done one 
