@@ -1079,7 +1079,7 @@ begin
 
           -- Turbo mode stops during ram_contention as the faster timing can cause ISR
           -- to occur during a time period that the CPU is stopped with no ability to
-          -- service ISR in time before next bit clocked in, even when running at 1200Hz.
+          -- service ISR before next bit clocked in, even when running at 1200Hz.
           if not ram_contention and cas_last_taken /= 0 and i_cas_avail then            
             cas_last_taken := cas_last_taken - 1;
           end if;
@@ -1091,27 +1091,28 @@ begin
         -- ck_freqx can be ready to assert the next clock yet a 1200Hz delay may be expected.
         if (not i_cas_turbo and ck_freqx = '1') or (i_cas_avail and i_cas_turbo and cas_last_taken = 0 and i_cph_sys(3) = '1') then
 
-          -- Slow down to 1200Hz when hightone ends as CPU needs time to respond to ISR
           cas_last_taken := CAS_1200Hz;
+
           if cas_turbo then            
             cas_taken <= true;
             cur_bit := i_cas;
             frameck_cnt := 1;
+
+            if cas_hightone then
+              cas_last_taken := CAS_TurboHz;
+              -- Ensure slow down to 1200Hz when hightone ends as CPU needs time to respond to ISR
+              was_in_hightone_hack := true;
+            end if;
           end if;
 
           if cas_hightone or cas_i_bits = 8 then
             frameck_cnt := 0;
             in_reset := true;
+          end if;
 
-            if cas_hightone then
-              isr_status(ISR_HIGH_TONE) <= '1';
-              isr_status(ISR_RX_FULL) <= '0';
-
-              if cas_turbo then
-                cas_last_taken := CAS_TurboHz;
-                was_in_hightone_hack := true;
-              end if;
-            end if;
+          if cas_hightone then
+            isr_status(ISR_HIGH_TONE) <= '1';
+            isr_status(ISR_RX_FULL) <= '0';
           end if;
 
           -- frameck_cnt is reset early if stop bit ("1") detected whilst cdck_latch set
@@ -1126,11 +1127,11 @@ begin
           -- FRAMECK trigger for CKx2 & CKx4 ripple counter
           if  cas_turbo or
               ( not cas_turbo and 
-                 ( multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                   multi_cnt(7 downto 0) = 58 or
-                   multi_cnt(6 downto 0) = 42
+                 ( multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122
+                   multi_cnt(7 downto 0) = 58 or    -- S1,  58
+                   multi_cnt(6 downto 0) = 42       -- S11, 170 or 42
                  )
-              ) then -- S11, 170 or 42
+              ) then 
 
             -- start bit allows clocking even during reset. It can also cause corruption
             -- if one occurs when the circuit expects a stop bit ("1").
@@ -1142,16 +1143,15 @@ begin
               -- shifting occurs during 1->2 transition rather than on wrap
               if frameck_cnt = 1 then
                 o_debug(15) <= '1';
+
                 -- start bit will be shifted regardless of cas_i_bits counter inc
                 cas_i_data_shift <= cur_bit & cas_i_data_shift(7 downto 1);
+
+                -- Allow entry during reset IF just left hightone block in turbo mode otherwise
+                -- first data bit will end up being skipped.
                 if not in_reset or was_in_hightone_hack then
                   was_in_hightone_hack := false;
-                  -- TODO: Without hightone hack, the first data bit after leaving hightone 
-                  --       appears to be skipped. If instead of this hack, in_reset is set to 
-                  --       false during the earlier in_reset block & start bit detected, the first
-                  --       data bit is no longer lost as the start bit is corrected identified. However,
-                  --       The opposite problem occurs. The 2nd+ words will take the start bit as data
-                  --       Is it related to the timing delay cas_hightone detection/leaving brings?
+
                   cas_i_bits := cas_i_bits + 1;
 
                   if cas_i_bits = 8 then 
