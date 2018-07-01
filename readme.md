@@ -2,7 +2,7 @@
 
 Acorn Electon core for the [FPGA Replay](http://www.fpgaarcade.com/)
 
-Please refer to sdcard/readme.txt for usage/status information.
+Please refer to [sdcard/readme.md](sdcard/readme.md) for usage/status information.
 
 A series of blog posts covering this core are available on
 [my website](https://www.mups.co.uk/post/2017/07/acorn-electron-fpga-project/)

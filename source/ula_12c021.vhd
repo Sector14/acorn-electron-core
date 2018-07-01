@@ -61,10 +61,17 @@ entity ULA_12C021 is
     --
     o_n_vsync     : out bit1;
     o_de          : out bit1;
+    o_oddfield    : out bit1;
 
     -- More compatible video signal when used with scan doubler and hdmi/vga
     -- vs authentic signal for TV Scart usage.
     i_compatible  : in boolean;
+
+    -- Turbo mode uses avail/taken protocol rather than frequency encoding
+    -- Turbo mode should operate on cph(3) only to remain in sycn with fileio.
+    i_cas_turbo   : in boolean;
+    i_cas_avail   : in boolean;
+    o_cas_taken   : out boolean;
 
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
@@ -126,7 +133,7 @@ entity ULA_12C021 is
     o_n_irq       : out bit1;
     i_n_w         : in bit1;                   -- Data direction, /write, read
 
-    o_debug       : out word(7 downto 0)
+    o_debug       : out word(15 downto 0)
   );
 end;
 
@@ -147,6 +154,7 @@ architecture RTL of ULA_12C021 is
   signal disp_rtc_l, disp_frame_end_l : boolean;
   signal disp_addint                  : boolean;
   signal disp_bline, disp_bline_l     : boolean;
+  signal disp_n_pcpu                  : boolean;
   signal disp_cntinh                  : boolean;
 
 
@@ -176,6 +184,9 @@ architecture RTL of ULA_12C021 is
   signal cas_i_edge    : boolean;
   signal cas_i_bit     : bit1;
   signal cas_hightone  : boolean;
+
+  signal cas_turbo     : boolean;
+  signal cas_taken     : boolean;
 
   -- CPU Timing
   type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
@@ -251,16 +262,11 @@ architecture RTL of ULA_12C021 is
   type t_colour_palettes is array(15 downto 8) of t_colour_palette;
   signal colour_palettes : t_colour_palettes;
   
-begin
-  -- o_debug(0) <= '1' when isr_status(ISR_FRAME_END) = '1' or isr_status(ISR_RTC) = '1' else '0';
-  -- o_debug(1) <= ana_hsync;
-  -- o_debug(2) <= isr_status(ISR_FRAME_END);
-  -- o_debug(3) <= isr_status(ISR_RTC);
-
-  o_debug(0) <= ana_csync;
-  --o_debug(1) <= ck_s16m32;
-  o_debug(2) <= isr_status(ISR_FRAME_END) or isr_status(ISR_RTC);     
-  o_debug(3) <= '1' when disp_frame_end or disp_rtc else '0'; -- isr_status(ISR_FRAME_END) or isr_status(ISR_RTC); 
+begin  
+  o_debug(9) <= isr_status(ISR_RX_FULL);
+  o_debug(10) <= isr_status(ISR_HIGH_TONE);
+  o_debug(11) <= '1' when cas_turbo else '0';
+  o_debug(13) <= '1' when cas_hightone else '0';
 
   -- Hard/Soft Reset
   rst <= not i_n_reset or not i_n_por;  
@@ -460,6 +466,15 @@ begin
               ck_s8m13  when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT else
               '0';
 
+  -- NOTE: Take care over clock use in turbo mode. Whilst ck_freqx will stop clocking
+  --       due to ck_cas test for turbo, ck_s4m13 will continue to clock.
+  cas_turbo <= true when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT and
+                         misc_control(MISC_CASSETTE_MOTOR) = '1' and
+                         i_cas_turbo else 
+               false;
+  
+  o_cas_taken <= cas_taken;
+
   -- ====================================================================
   -- Video
   -- ====================================================================
@@ -486,13 +501,14 @@ begin
 
     o_bline                 => disp_bline,
     o_addint                => disp_addint,
-    o_blank                 => open,
-    o_pcpu                  => open,
+    o_n_blank               => open,
+    o_n_pcpu                => disp_n_pcpu,
     o_cntinh                => disp_cntinh,
 
     o_rowcount              => disp_rowcount,
 
-    o_de                    => o_de
+    o_de                    => o_de,
+    o_oddfield              => o_oddfield
   );
 
   o_n_hsync <= not ana_hsync;
@@ -681,9 +697,7 @@ begin
 
         -- Check for CPU RAM contention change only on phase 0
         if (clk_phase = "0000") then
-          -- TODO: [Gary] 2 blanking lines in mode 3/6 are contention free or not?
-          ram_contention <= not disp_cntinh and not disp_frame_end and disp_rowcount < 8 and
-                            misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
+          ram_contention <= disp_n_pcpu and misc_control(MISC_DISPLAY_MODE'LEFT) = '0';
         end if;
 
         ana_hsync_l <= ana_hsync;
@@ -754,23 +768,24 @@ begin
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
   
-  -- TODO: [Gary] ram_cpu_slot ends up as a latch, needs resolving. 
   -- Note: ram_cpu_slot needs to be stable before rising edge of "0001" and "1001" as ram_addr 
-  --       will be reg'd however value of ram_cpu_slot depeneds on
-  --       values set on clock phase "0000" and "1000".
-  p_ram_access_sel : process(clk_phase, i_addr, rst, nmi, ram_contention)
+  --       will be reg'd however value of ram_cpu_slot depeneds on values set on clock
+  --       phase "0000" and "1000".
+  p_ram_access_sel : process(i_clk_sys, clk_phase, i_addr, rst, nmi, ram_contention)
   begin
     if (rst = '1') then
       ram_cpu_slot <= '0';
-    elsif (clk_phase(2 downto 0) = "001") then
-      -- ula always has phase 8 slot
-      ram_cpu_slot <= '0';
+    elsif rising_edge(i_clk_sys) then
+      if (clk_phase(2 downto 0) = "001") then
+        -- ula always has phase 8 slot
+        ram_cpu_slot <= '0';
 
-      -- ula/cpu contention over phase 0 slot
-      if (clk_phase(3) = '0') and (i_addr(15) = '0') then
-        ram_cpu_slot <= '1';
-        if (nmi = '0') and ram_contention then
-          ram_cpu_slot <= '0';
+        -- ula/cpu contention over phase 0 slot
+        if (clk_phase(3) = '0') and (i_addr(15) = '0') then
+          ram_cpu_slot <= '1';
+          if (nmi = '0') and ram_contention then
+            ram_cpu_slot <= '0';
+          end if;
         end if;
       end if;
     end if;
@@ -872,15 +887,12 @@ begin
   -- ROM
   -- ====================================================================
   -- Enable main board rom for OS access or BASIC rom if page enable
-  -- TODO: [Gary] reading any register other than 0 or 4 should read from os/basic rom.
   
   -- ROM enabled for 0x8000 - 0xBFFF when page 10 or 11 active, or for
   -- 0xC000 - 0xFFFF except for the memory mapped i/o in 0xFCXX, 0xFDXX, 0xFEXX
   o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and        
                      isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and        -- ROM page 10 or 11
                      isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
-           --'1' when (i_addr >= x"C000" and i_addr <= x"FBFF") else      -- ROM OS
-           --'1' when (i_addr >= x"FF00" and i_addr <= x"FFFF") else      -- ROM OS
            '1' when (i_addr(15) = '1' and i_addr(14) = '1') and         -- ROM OS except mem mapped i/o
                     (i_addr(15 downto 8) /= x"FC") and
                     (i_addr(15 downto 8) /= x"FD") and
@@ -909,14 +921,21 @@ begin
     variable delayed_por_reset : bit1;
 
     variable in_reset : boolean;
-    variable frameck_ena : boolean;
     variable frameck_cnt : integer range 0 to 3;
     variable cas_i_bits : integer range 0 to 9;
+    variable cur_bit    : bit1;
     
     variable cas_o_bits : integer range 0 to 10;
     variable cas_o_data : bit1;
     variable cas_o_halt : boolean;
     variable cas_o_init : boolean;
+
+    -- Allow a couple of ticks between bit shifts as cas_hightone detection is delayed
+    -- allow a few more ticks for safer switching in and out of turbo mode
+    constant CAS_TurboHz : integer := 4;
+    constant CAS_1200Hz  : integer := 6666;
+    variable cas_last_taken : integer range CAS_1200Hz downto 0;
+    variable was_in_hightone_hack : boolean;
   begin
     if rst = '1' then      
       isr_en <= (others => '0');
@@ -931,11 +950,11 @@ begin
       colour_palettes <= (others => (others => '0'));
       
       cas_o_data_shift <= (others => '0');
+      cas_i_data_shift <= (others => '0');
 
       delayed_por_reset := '0';
 
       in_reset := false;
-      frameck_ena := false;
       frameck_cnt := 0;
       cas_i_bits := 0;
 
@@ -944,6 +963,9 @@ begin
       cas_o_init := true;
       cas_o_halt := false;      
       
+      was_in_hightone_hack := false;
+      cas_last_taken := CAS_1200Hz;
+
       o_cas <= '0';
 
       if (i_n_por = '0') then
@@ -1045,56 +1067,108 @@ begin
 
         --
         -- Cassette Registers
-        --
-        -- TODO: [Gary] Read and write can be split out to separate processes with
-        --       ISR for RX and TX based on external signals just as hightone
-        --       set and clear is.
-        if ck_freqx = '1' then
+        -- 
 
-          -- 
-          -- Reading
-          --
-          if cas_hightone or cas_i_bits = 8 then
+        -- 
+        -- Reading
+        -- 
+        cur_bit := cas_i_bit;
+        o_debug(15) <= '0';
+        if (i_cph_sys(3) = '1' ) then
+          -- cas_taken pulse stretched for 8MHz virtual i/o during turbo mode
+          cas_taken <= false;
+
+          -- Turbo mode stops during ram_contention as the faster timing can cause ISR
+          -- to occur whilst CPU is stopped with no ability to service ISR before next
+          -- bit clocked in even when running at 1200Hz.
+          if not ram_contention and cas_last_taken /= 0 and i_cas_avail then            
+            cas_last_taken := cas_last_taken - 1;
+          end if;
+        end if;
+        
+        if (not cas_turbo and ck_freqx = '1') or (cas_turbo and i_cas_avail and cas_last_taken = 0 and i_cph_sys(3) = '1') then
+
+          cas_last_taken := CAS_1200Hz;
+
+          if cas_turbo then            
+            cas_taken <= true;
+            cur_bit := i_cas;
+            -- Fixup frameck to shift this cycle due to 1 cycle per bit in turbo
+            -- hightone or stop bit may later override this.
+            frameck_cnt := 1;
+
             if cas_hightone then
-              isr_status(ISR_HIGH_TONE) <= '1';
-              isr_status(ISR_RX_FULL) <= '0';
+              cas_last_taken := CAS_TurboHz;
+              -- Ensure slow down to 1200Hz when hightone ends as CPU needs time to respond to ISR
+              was_in_hightone_hack := true;
             end if;
+          end if;
 
-            cas_i_bits := 0;
+          if cas_hightone or cas_i_bits = 8 then
             frameck_cnt := 0;
             in_reset := true;
-          elsif (multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122 or 58
-                 multi_cnt(7 downto 0) = 58 or
-                 multi_cnt(6 downto 0) = 42) then -- S11, 170 or 42
-            if frameck_cnt = 3 then
-              frameck_cnt := 0;
-              if not in_reset then
-                frameck_ena := true;
-              end if;
-              in_reset := false;
-            else
-              frameck_cnt := frameck_cnt + 1;
-            end if;
           end if;
 
+          if cas_hightone then
+            isr_status(ISR_HIGH_TONE) <= '1';
+            isr_status(ISR_RX_FULL) <= '0';
+          end if;
+
+          -- frameck_cnt is reset early if stop bit ("1") detected whilst cdck_latch set
           if in_reset then
             cas_i_bits := 0;
-            if cas_i_bit = '1' then
-              -- 1/2 of 1200Hz pulse will have already happened by the time start
-              -- bit is detected, pre-sync counter.
-              frameck_cnt := 2;
-            end if;
-          end if;
-          
-          if frameck_ena then
-            cas_i_bits := cas_i_bits + 1;
-            cas_i_data_shift <= cas_i_bit & cas_i_data_shift(7 downto 1);
-            if cas_i_bits = 8 then 
-              isr_status(ISR_RX_FULL) <= '1';
+
+            if cur_bit = '1' then
+              frameck_cnt := 0;
             end if;
           end if;
 
-          frameck_ena := false;
+          -- FRAMECK trigger for CKx2 & CKx4 ripple counter
+          if  cas_turbo or
+              ( not cas_turbo and 
+                 ( multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122
+                   multi_cnt(7 downto 0) = 58 or    -- S1,  58
+                   multi_cnt(6 downto 0) = 42       -- S11, 170 or 42
+                 )
+              ) then 
+
+            -- start bit allows clocking even during reset. It can also cause corruption
+            -- if one occurs when the circuit expects a stop bit ("1").
+            if not in_reset or cur_bit = '0' then
+              if cas_turbo and isr_status(ISR_RX_FULL) = '0' and not was_in_hightone_hack then
+                cas_last_taken := CAS_TurboHz;
+              end if;
+
+              -- shifting occurs during 1->2 transition rather than on wrap
+              if frameck_cnt = 1 then
+                o_debug(15) <= '1';
+
+                -- start bit will be shifted regardless of cas_i_bits counter inc
+                cas_i_data_shift <= cur_bit & cas_i_data_shift(7 downto 1);
+
+                -- Allow entry during reset IF just left hightone block in turbo mode otherwise
+                -- first data bit will end up being skipped.
+                if not in_reset or was_in_hightone_hack then
+                  was_in_hightone_hack := false;
+
+                  cas_i_bits := cas_i_bits + 1;
+
+                  if cas_i_bits = 8 then 
+                    isr_status(ISR_RX_FULL) <= '1';
+                    cas_last_taken := CAS_1200Hz;
+                  end if;   
+                end if;
+
+                in_reset := false;
+              end if;
+                            
+              if frameck_cnt = 3 then
+                frameck_cnt := 0;
+              else
+                frameck_cnt := frameck_cnt + 1;
+              end if;
+            end if;
+          end if;          
 
         end if;
 
@@ -1177,7 +1251,6 @@ begin
   o_n_irq <= not isr_status(ISR_MASTER_IRQ);
 
   -- Register data out
-  -- TODO: [Gary] Is it just 0 and 4 that are readable?
   b_pd <= (others => 'Z')          when i_n_w = '0' or i_addr(15 downto 8) /= x"FE" else
           '1' & isr_status         when i_addr( 3 downto 0) = x"0" else
           cas_i_data_shift         when i_addr( 3 downto 0) = x"4" else
@@ -1254,6 +1327,8 @@ begin
           end if;
         end if;
 
+        -- NOTE: Turbo mode relies on this for southern belle to load successfully.
+        --       Keep enabled to ensure final RX Full ISR will occur.
         if ck_s4m13 = '1' then
           -- TODO: [Gary] Counter reset appears to assume it only occurs when all bits are 1
           --       due to nor gate for reset signal. In input mode this is unlikely
@@ -1261,7 +1336,8 @@ begin
           --       operation. May want to ensure nor loading is accounted for to
           --       match Electron operation if a non 0 reg is used.
           -- TODO: [Gary] Reset on pulse edges in input mode also depend upon DATACNT?
-          if cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT  then
+          if (not cas_turbo and cas_i_edge and misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT) or
+             (cas_turbo and cas_taken)  then
             multi_cnt <= '0' & multi_cnt_reg;
           end if;
         end if;
@@ -1278,9 +1354,9 @@ begin
   --       used in this implementation due to clock enables.
 
   -- Edge detection
-  p_cas_edge : process(i_clk_sys, rst)
+  p_cas_edge : process(i_clk_sys, rst, cas_turbo)
   begin
-    if rst = '1' then
+    if rst = '1' or cas_turbo then
       cas_i_delay1 <= i_cas;
       cas_i_delay2 <= i_cas;
     elsif rising_edge(i_clk_sys) then
@@ -1295,10 +1371,13 @@ begin
     end if;
   end process;
 
-  cas_i_edge <= true when (cas_i_delay1 xor cas_i_delay2) = '1' else false;
+  -- cas_i_edge cannot be used during turbo mode
+  cas_i_edge <= true when not cas_turbo and (cas_i_delay1 xor cas_i_delay2) = '1' else false;
 
   -- Stop clocking cas counter to resync if S15 (138 or 10) reached with no detected edge
-  ck_cas <= '0' when multi_cnt(6 downto 0) = 10 else ck_s4m13;
+  ck_cas <= '0' when cas_turbo else
+            '0' when multi_cnt(6 downto 0) = 10 else
+            ck_s4m13;
 
   -- Frequency detection
   p_cas_freq_decode : process(i_clk_sys, rst)
@@ -1309,8 +1388,10 @@ begin
       candidate := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
+
+        -- Allowed even in turbo mode due to motor hack below
         if ck_s4m13 = '1' then
-          
+
           -- candidate 1/0 decode
           if multi_cnt(6 downto 0) = 114 then    -- S2, 242 or 114
             candidate := '1';
@@ -1323,12 +1404,12 @@ begin
           end if;
 
           -- TODO: [Gary] This is inaccurate. Electron after loading a program
-          -- can still generate RD Full interrupts without needing a soft reset.
+          -- can still somehow generate RD Full interrupts without needing a soft reset.
           -- Not sure why as CDATA (cas_i_bit) cannot change without a CAS IN
           -- edge being detected and would remain at a '1' due to last receiving
           -- a stop bit or high tone. This is a hacky workaround to allow
           -- southern belle to load until the real solution becomes clear.
-          if  misc_control(MISC_CASSETTE_MOTOR) = '0' then
+          if misc_control(MISC_CASSETTE_MOTOR) = '0' then
             cas_i_bit <= '0';
           end if;
 
@@ -1346,8 +1427,28 @@ begin
       cas_hightone <= false;
       hightone_cnt := 0;
     elsif rising_edge(i_clk_sys) then
-      if i_ena_ula = '1' then          
-        if ck_s4m13 = '1' then
+      if i_ena_ula = '1' then
+
+        -- TODO: [Gary] merge these two cases into one.
+        if cas_turbo then
+          -- TODO: [Gary] Using cas_taken despite lagging high tone detection behind
+          --       the actual bit taking/processing. Otherwise whilst reading is
+          --       disabled due to RX Full high tone detection would rapidly fill up.
+          --       better option needed to allow it to operate in sync with the read.
+          if i_cph_sys(3) = '1' and cas_taken then
+            if i_cas = '0' then
+              hightone_cnt := 0;
+              cas_hightone <= false;
+            else
+              -- 20 bits taken
+              if hightone_cnt /= 20 then
+                hightone_cnt := hightone_cnt + 1;
+              else
+                cas_hightone <= true;
+              end if;      
+            end if;
+          end if;
+        elsif ck_s4m13 = '1' then
 
           if multi_cnt(6 downto 0) = 10 then  -- S15, 138 or 10
             hightone_cnt := 0;

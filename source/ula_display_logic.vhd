@@ -90,7 +90,7 @@ entity ULA_DISPLAY_LOGIC is
 
       i_ck_s1m                : in bit1; -- 1MHz enable
       i_ck_s1m2               : in bit1; -- 0.5MHz enable
-
+      
       i_compatible            : in boolean;
 
       -- Graphics mode 0,1,2,4,5
@@ -104,25 +104,26 @@ entity ULA_DISPLAY_LOGIC is
       -- Interrupts
       o_rtc                 : out boolean;
       o_dispend             : out boolean;
-
       
       o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
       o_addint              : out boolean;  -- start of new fields active data
       
-      o_pcpu                : out boolean;
-      o_blank               : out boolean;
+      o_n_pcpu              : out boolean;  -- Low when cpu can process regardless of mode contention
+      o_n_blank             : out boolean;  -- n_pcpu sync'd to 1MHz
       o_cntinh              : out boolean;  -- high during sync or border regions of scanline
 
       -- represents VA1,VA2,VA3
       o_rowcount            : out integer range 0 to 10;
 
-      o_de                  : out bit1
+      o_de                  : out bit1;
+      o_oddfield            : out bit1
   );
 end;
 
 architecture RTL of ULA_DISPLAY_LOGIC is
   signal hsync : bit1;
   signal vsync : bit1;
+  signal oddfield : bit1;
 
   -- hsync [2-6]
   signal hsync_cnt : unsigned(4 downto 0);
@@ -133,9 +134,9 @@ architecture RTL of ULA_DISPLAY_LOGIC is
 
   signal lsff2 : boolean;
 
-  signal cntinh : boolean;
+  signal cntinh  : boolean;
   signal dispend : boolean;
-  signal pcpu : boolean;
+  signal n_pcpu  : boolean;
 begin
   o_csync <= hsync or vsync;
   o_hsync <= hsync;
@@ -144,7 +145,7 @@ begin
   o_de <= '1' when vsync_cnt < 576 and not cntinh and not dispend else '0';
 
   o_dispend <= dispend;
-  o_pcpu <= pcpu;
+  o_n_pcpu <= n_pcpu;
   o_cntinh <= cntinh;
 
   o_rowcount <= vid_row_count;
@@ -163,10 +164,14 @@ begin
   hsync <= '1' when hsync_cnt = 24 or hsync_cnt = 25 else '0';
   vsync <= '1' when vsync_cnt >= 564 and vsync_cnt <= 568 else '0';
 
+  o_oddfield <= oddfield;
+
   p_vsync : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       vsync_cnt <= (others => '0');
+      -- First frame is considered odd for PAL
+      oddfield <= '1'; 
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
@@ -177,6 +182,7 @@ begin
             if (i_compatible and vsync_cnt = 623) or (vsync_cnt = 624) then
               vsync_cnt <= (others => '0');
               lsff2 <= false;
+              oddfield <= not oddfield;
             else
               vsync_cnt <= vsync_cnt + 1; 
             end if;
@@ -221,14 +227,8 @@ begin
 
   o_bline <= (vid_row_count = 9) or (vid_row_count = 7 and i_gmode);
 
-  -- TODO: [Gary] What does this actually represent. Originally thought it would be used
-  --       as part of the contention logic to pause the cpu, however 
-  --       due to inclusion of gmode (0,1,2,4,5) this seems less likely as contention 
-  --       is only considered in modes 0-3. blankb and pcpub would be always '0' during
-  --       graphics modes whilst in modes 3 & 6 they'd go high during the 2 blanking lines?
-  --       unless it's used as an extra signal to re-enable processing when contention would
-  --       otherwise considered to be active during two blanking lines?
-  pcpu <= vid_row_count >= 8 or cntinh or dispend or (not i_gmode);
+  -- Low when cpu can process regardless of mode contention
+  n_pcpu <= vid_row_count < 8 and not cntinh and not dispend;
 
   -- TODO: [Gary] Schematics show this as sync'd to 1MHz clock but that
   --       offsets rgb by 1us later than it should be?
@@ -237,17 +237,12 @@ begin
   p_inactive_video : process(i_clk, i_rst) 
   begin
     if i_rst = '1' then
-      o_blank <= false;
+      o_n_blank <= false;
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
         if i_ck_s1m = '1' then
-          -- TODO: [Gary] Investigate where the non synchronised pcpu is used and why.
-          --              looks to be on the master timing sheet, for allowing processing when true??
-          --              schematic had pcpub (active low)
-          --              where does blank then fit in? Doesn't seem to be used anywhere?
-
           -- pcpu syncrhonised to 1MHz
-          o_blank <= pcpu;
+          o_n_blank <= n_pcpu;
         end if;
       end if;
     end if;

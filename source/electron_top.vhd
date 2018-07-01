@@ -35,15 +35,6 @@
 -- You are responsible for any legal issues arising from your use of this code.
 --
 
-
---
--- DDR Layout
---
--- 0x0000 - 0x7FFF  RAM Not currently used
--- 0x8000 - 0xFFFF  ROM (some mem mapped i/o interleaved too, see ULA notes)
--- Rest of DDR space unused
---
-
 library ieee;
   use ieee.std_logic_1164.all;
   use ieee.std_logic_unsigned.all;
@@ -136,8 +127,9 @@ architecture RTL of Electron_Top is
   -- Config
   signal cfg_dblscan : bit1;
   signal cfg_vid_compatible : boolean;
+  signal cfg_plus1_attached : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
-
+  signal cfg_cas_turbo_load : boolean;  
 
   -- LED Blink
   signal led         : bit1;
@@ -153,8 +145,9 @@ architecture RTL of Electron_Top is
   signal data_bus    : word( 7 downto 0);
 
   -- ROM
-  signal rom_data    : word( 7 downto 0);
-  signal ddr_valid   : bit1;
+  signal rom_data     : word( 7 downto 0);
+  signal ddr_valid    : bit1;
+  signal ddr_rom_page : word(3 downto 0);
 
   -- RAM  
   signal ram_addr    : word( 7 downto 0);
@@ -164,7 +157,7 @@ architecture RTL of Electron_Top is
   signal ram_n_cas   : bit1;
 
   -- CPU
-  signal cpu_n_w     : bit1;
+  signal cpu_n_w      : bit1;
   signal cpu_data_in  : word(7 downto 0);
   signal cpu_data_out : word(7 downto 0);
   signal cpu_addr     : word(23 downto 0);
@@ -189,13 +182,18 @@ architecture RTL of Electron_Top is
 
   -- ULA/Framework extras
   signal ula_n_hsync, ula_n_vsync, ula_n_csync, ula_de : bit1;   
+  signal ula_oddfield : bit1;
   signal ula_rgb : word(23 downto 0);
+
+  signal ula_cas_turbo : boolean;
+  signal ula_cas_taken : boolean;
+  signal cas_avail     : boolean;
 
   -- ULA Glue
   signal div13       : bit1;
   signal n_por       : bit1;
   signal audio_filter_in_s  : signed(15 downto 0);
-  signal audio_filter_lpf_s  : signed(15 downto 0);
+  signal audio_filter_lpf_s : signed(15 downto 0);
   signal audio_filter_out_s : signed(15 downto 0);
 
   -- CPU/ULA Glue
@@ -205,8 +203,17 @@ architecture RTL of Electron_Top is
   signal kbd_n_break  : bit1;
   signal kbd_data     : word(3 downto 0);
 
+  --
+  -- Expansion HW
+  -- 
+
+  -- Plus1
+  signal plus1_n_oe, plus1_n_oe2, plus1_n_oe3, plus1_n_oe4 : bit1;
+  signal plus1_rom_qa : bit1;
+
   -- Debug
-  signal debug        : word(15 downto 0);
+  signal ula_debug    : word(15 downto 0);
+  signal virtio_debug : word(15 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -220,11 +227,14 @@ begin
   -- Config
   cfg_dblscan           <= i_cfg_dynamic(0);
   cfg_vid_compatible    <= i_cfg_dynamic(5) = '1';
+  cfg_plus1_attached    <= i_cfg_dynamic(6) = '1';
 
   cfg_cas_play          <= i_cfg_dynamic(1);
   cfg_cas_rec           <= i_cfg_dynamic(2);
   cfg_cas_ffwd          <= i_cfg_dynamic(3);
   cfg_cas_rwnd          <= i_cfg_dynamic(4);
+
+  cfg_cas_turbo_load    <= i_cfg_dynamic(7) = '1';
 
   -- ====================================================================
   -- Misc
@@ -318,9 +328,14 @@ begin
     -- Framework extras
     --
     o_n_vsync     => ula_n_vsync,
-    o_de          => ula_de,               
+    o_de          => ula_de,  
+    o_oddfield    => ula_oddfield,             
     
     i_compatible  => cfg_vid_compatible,
+
+    i_cas_turbo   => ula_cas_turbo,
+    i_cas_avail   => cas_avail,
+    o_cas_taken   => ula_cas_taken,
 
     -- Clock   
     i_clk_sys     => i_clk_sys,
@@ -380,7 +395,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => debug(7 downto 0)
+    o_debug       => ula_debug
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -413,8 +428,41 @@ begin
   -- 16MHz from sys_clk / 2
   ena_ula <= i_cph_sys(1) or i_cph_sys(3);
 
+
   -- ====================================================================
-  -- Framwork Interfacing
+  -- Plus 1 Expansion
+  -- ====================================================================
+
+  expansion_plus1 : entity work.expansion_plus1
+  port map (
+    -- Framework interfacing
+    i_clk_sys      => i_clk_sys,
+    o_n_oe         => plus1_n_oe,
+    i_joy_a        => i_joy_a_l,
+    i_joy_b        => i_joy_b_l,
+
+    -- Expansion port I/O
+    i_addr         => addr_bus,
+    b_data         => data_bus,
+
+    i_n_rst        => ula_n_reset_out,
+    i_n_w          => cpu_n_w,
+    i_phiout       => ula_ena_phi_out,
+
+    i_16m_ena      => ena_ula,
+
+    -- ROM Enables
+    o_n_oe4       => plus1_n_oe4,     -- SK 1 (far) page 0 or 1
+    o_n_oe2       => plus1_n_oe2,     -- SK 2 (near, higher priority) page 2 or 3
+    o_n_oe3       => plus1_n_oe3,     -- SK1&2 page 13
+
+    o_rom_qa      => plus1_rom_qa,    -- LSB of xFE05
+
+    o_debug       => open
+  );
+  
+  -- ====================================================================
+  -- Framework Interfacing
   -- ====================================================================
   
   --
@@ -444,11 +492,38 @@ begin
   --
   -- DDR 
   --
-  -- IC2 ROM 32kB (addressable via ARM bus)
-  -- Original ROM, Hitatchi HN613256 with tri-state output buffer
-  -- DDR ROM addressable 0x8000 - 0xFFFF
+
+  -- Electron Memory Map:
+  --   0x0000 - 0x7FFF  RAM
+  --   0x8000 - 0xBFFF  BASIC/Paged ROM
+  --   0xC000 - 0xFFFF  OS ROM (some mem mapped i/o interleaved too, see ULA notes)
+  --
+  -- IC2 ROM 32kB 0x8000 - 0xFFFF, original ROM, Hitatchi HN613256 with tri-state output buffer
+  --
+  -- Page register (FE05) 0-15 
+  -- Slots 8-11 are occupied by Keyboard/BASIC. Remaining slots may be claimed by
+  -- add-on hardware such as carts in the Plus1 using chip enables based on
+  -- decoding FE05 address writes.
+  --
+  -- Chip select is simulated by addressing higher areas of DDR based on current
+  -- ROM number paged in. Note, original hw could possibly glitch and multiple
+  -- ROMs use the data bus at the same time. This is not replicated (yet).
   -- 
-  -- NOTE: DDR samples address after sys_ena and will present result in time
+  -- DDR Usage for 0x0000-0xFFFF matches the Electron's 0-15 bit address layout
+  -- although ironically, RAM is not yet stored in DDR.
+  --
+  -- Additional paged ROMs
+  -- 0x40000 - 0x7C000   Up to 12 x 16KB (12 x 0x4000) Paged ROMs 
+  -- slots 8-11 unused although DDR memory allocated for simplicity of accessing 12-15.
+  --
+  --
+  -- Rest of DDR space unused
+  --
+  -- NOTE: Paging bits are ignored when ula_rom is active. This is the case for
+  -- OS ROM access and anytime BASIC ROM is paged in and accessed. A15-0 can be
+  -- used directly as 0x0000-0xFFFF DDR mirrors Electron's 32K RAM + 32K ROM base setup.
+  --
+  -- NOTE 2: DDR samples address after sys_ena and will present result in time
   -- for following sys_ena 4 sys_clk ticks later. 
   -- i.e samples on i_cph_sys(0), result by i_cph_sys(3)
   -- ULA controller ticks twice per ena_sys and must thus ensure at least
@@ -457,26 +532,42 @@ begin
   -- take one more sys clk to become visible to the ULA, in effect requests by the
   -- ULA on phase 0 will have data visible to the ULA (via rom_data) by phase 3.
   --
+  -- Timing allows 1 DDR access for CPU or ULA and room for 3 further accesses
+  -- before ULA would require another access followed again by 3 spare accesses.
+  --
+
+  -- Plus 1 chip select decoding to ROM page
+  ddr_rom_page <= "0000" when  plus1_n_oe4 = '0' and plus1_rom_qa = '0' else -- page 0
+                  "0001" when  plus1_n_oe4 = '0' and plus1_rom_qa = '1' else -- page 1
+                  "0010" when  plus1_n_oe2 = '0' and plus1_rom_qa = '0' else -- page 2
+                  "0011" when  plus1_n_oe2 = '0' and plus1_rom_qa = '1' else -- page 3
+                  "1100" when  plus1_n_oe = '0' else                         -- page 12
+                  "1101" when  plus1_n_oe3 = '0' else                        -- page 13
+                  "0000";                                                    -- Invalid State
+
   -- 32kB of ROM, 4 bytes returned per read (only 1 used each access)
   o_ddr_hp_fm_core.valid  <= ddr_valid;
   o_ddr_hp_fm_core.burst  <= "00";
-  o_ddr_hp_fm_core.addr(25 downto 16) <= (others => '0');
-  o_ddr_hp_fm_core.addr(15 downto  2) <= addr_bus(15 downto 2); 
-
+  o_ddr_hp_fm_core.addr(25 downto 19) <= (others => '0');
+  o_ddr_hp_fm_core.addr(18 downto  2) <= "000" & addr_bus(15 downto 2) when ula_rom_ena = '1' else -- OS/BASIC
+                                         '1' & ddr_rom_page & addr_bus(13 downto 2);               -- Paged ROM
   -- read only
   o_ddr_hp_fm_core.rw_l   <= '1';
   o_ddr_hp_fm_core.w_be   <= "1111";
   o_ddr_hp_fm_core.w_data <= (others => '0');
 
   p_program_rom : process(i_clk_sys, i_rst_sys, i_halt)
+    variable rom_page : word(3 downto 0);
   begin
     if (i_rst_sys = '1' or i_halt = '1') then
       rom_data <= (others => '0');
+      rom_page := (others => '0');
     elsif rising_edge(i_clk_sys) then
       -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
       -- ula_ena_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses    
       -- @ 2MHz or 8 @ 1MHz. Ample spare time to interleave ULA RAM access.
       if (i_ena_sys = '1') then
+      
         if (ddr_valid = '1') then
           -- note, default is big endian in the DRAM controller
           rom_data <= i_ddr_hp_to_core.r_data(31 downto 24);
@@ -488,18 +579,20 @@ begin
             when others => null;
           end case;
         end if;
-
+      
       end if;
     end if;
   end process;
 
-  -- TODO: [Gary] Only need to do one DDR read every 4. For now allow multiple
-  -- redundant reads to occur as long as rom_ena is high. This will become an issue
-  -- when ram is moved to DDR or any other DDR access needs to be interleaved. 
-  ddr_valid <= ula_rom_ena;
+  -- 4 DDR reads possible when running @2MHz. 3 of which are redundant reads atm
+  ddr_valid <= '1' when ula_rom_ena = '1' else
+               '1' when cfg_plus1_attached and ((plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4) = '0') else
+               '0';
 
-  -- rom data tri-state via OE
-  data_bus <= rom_data when ula_rom_ena = '1' else (others => 'Z');
+  -- rom data tri-state when any enabled rom is read
+  data_bus <= rom_data when ula_rom_ena = '1' else
+              rom_data when cfg_plus1_attached and ((plus1_n_oe and plus1_n_oe2 and plus1_n_oe3 and plus1_n_oe4) = '0') else
+              (others => 'Z');
 
   --
   -- Cassette
@@ -528,7 +621,13 @@ begin
     i_cas_to_fch   => ula_cas_o,
     o_cas_fm_fch   => ula_cas_i,
 
-    o_debug        => debug(11 downto 8)
+    i_cas_turbo    => cfg_cas_turbo_load,
+    i_cas_taken    => ula_cas_taken,
+    
+    o_cas_turbo    => ula_cas_turbo,
+    o_cas_avail    => cas_avail,
+
+    o_debug        => virtio_debug
   );
 
   -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
@@ -601,10 +700,6 @@ begin
   o_sound_op <= ula_sound_o;
 
   --
-  -- Expansion roms
-  --
-
-  --
   -- Scanline Doubling
   --
   u_DblScan : entity work.Replay_DblScan
@@ -632,15 +727,19 @@ begin
 
   -- Digital (using analog timings but with separate syncs)
   o_vid_sync.dig_de <= not dbl_blank;
-  o_vid_sync.dig_hs <= dbl_hsync_l;
-  o_vid_sync.dig_vs <= dbl_vsync_l;
-
+  o_vid_sync.dig_hs <= not dbl_hsync_l;
+  o_vid_sync.dig_vs <= not dbl_vsync_l;
+  
   -- Analog
   o_vid_sync.ana_de <= not dbl_blank;
-  o_vid_sync.ana_hs <= dbl_hsync_l when cfg_dblscan = '1' else dbl_csync_l;
-  o_vid_sync.ana_vs <= dbl_vsync_l when cfg_dblscan = '1' else '1';
+  o_vid_sync.ana_hs <= not dbl_hsync_l when cfg_dblscan = '1' else not dbl_csync_l;
+  o_vid_sync.ana_vs <= not dbl_vsync_l when cfg_dblscan = '1' else '1';
+
+  o_vid_sync.oddline <= ula_oddfield;
+  o_vid_sync.progressive <= '1' when cfg_vid_compatible else '0';
 
   o_vid_rgb <= dbl_rgb;
+
 
   --
   -- Activity LEDs
@@ -700,15 +799,11 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= ula_n_reset_out;
 
-  --o_disk_led <= ula_cas_i;
-  --o_pwr_led <= ula_cas_o;
-
-  debug(12) <= ula_cas_o;
-  debug(13) <= ula_cas_i;
-  debug(14) <= ula_r or ula_g or ula_b;  
-  debug(15) <= i_clk_sys;
-
-  o_debug <= debug;
+  -- ula_debug 13=cas_hightone, 14=frame_ck shift,, 15=cas_hightone or cas_bits
+  o_debug(0) <= '1' when ula_debug(15) = '1' or ula_cas_taken else '0';
+  o_debug(1) <= ula_cas_i;
+  o_debug(2) <= ula_debug(9); -- ISR RX Full
+  o_debug(15 downto 3) <= (others => '0');
 
   -- ====================================================================
   -- Chipscope
@@ -751,8 +846,17 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62 downto 16) <= (others => '0');
-      cs_trig(15 downto 0) <= debug(15 downto 0);
+      cs_trig(62 downto 17) <= (others => '0');
+      cs_trig(16) <= ula_debug(13); -- cas_hightone
+      cs_trig(15) <= ula_debug(12); -- in_reset
+      cs_trig(14) <= ula_debug(11); -- cas_turbo
+      cs_trig(13 downto 6) <= ula_debug(7 downto 0);
+      cs_trig(5) <= ula_debug(10); -- HighTone
+      cs_trig(4) <= ula_debug(9);  -- RX Full
+      cs_trig(3) <= ula_cas_mo;
+      cs_trig(2) <= '1' when ula_cas_taken else '0';
+      cs_trig(1) <= '1' when cas_avail else '0';
+      cs_trig(0) <= ula_cas_i;
     end generate electrontop_cs;
 
   end block cs_debug;

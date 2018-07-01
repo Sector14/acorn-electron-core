@@ -74,7 +74,14 @@ entity Virtual_Cassette_FileIO is
     i_cas_to_fch         : in bit1;
     o_cas_fm_fch         : out bit1;
 
-    o_debug              : out word(3 downto 0)
+    -- When true, requests switch of o_cas_fm_fch from pulse to avail/taken protocol
+    i_cas_turbo          : in boolean;
+    i_cas_taken          : in boolean;
+
+    o_cas_turbo          : out boolean;
+    o_cas_avail          : out boolean;
+
+    o_debug              : out word(15 downto 0)
   );
 end;
 
@@ -110,12 +117,13 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal fileio_req_state       : t_fileio_req_state;
   
   -- tape
-  signal cas_to_fch_l           : bit1;
+  signal cas_to_fch_t1           : bit1;
   signal cas_to_fch_negedge     : boolean;
   signal bit_taken_r            : boolean;
   signal bit_valid_w            : boolean;
   
   signal ula_to_fileio          : bit1; 
+  signal freq_encoded_bit       : bit1;
 
   -- Doubtful anyone will want a 500MB tape but why not :)
   signal tape_position          : unsigned(31 downto 0);  -- in bits
@@ -124,19 +132,39 @@ architecture RTL of Virtual_Cassette_FileIO is
   -- current 16 bit data buffer for read / write of tape position
   signal cur_data               : word(15 downto 0);
 
+  signal cas_turbo_latch        : boolean;
+  
 begin
-
   -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
   --       tape read/write should skip this. On eject, write to this location
   --       the current tape position. On insert, read it and set tape_position
   --       accordingly.
 
+  o_debug(15 downto 0) <= (others => '0');
+
+  p_turbo_latch : process(i_clk, i_rst, i_cas_turbo)
+  begin
+    if (i_rst = '1') then
+      cas_turbo_latch <= i_cas_turbo;
+    elsif rising_edge(i_clk) then
+      if (i_ena = '1') then
+        -- Leaving turbo mode is restricted to when motor is not active due to
+        -- tricky timing issues.
+        if i_motor = '0' or freq_cnt = 0 then
+          cas_turbo_latch <= i_cas_turbo;
+        end if;
+      end if;
+    end if;
+  end process;
+
+  o_cas_turbo <= cas_turbo_latch;
+
   -- 1/8MHz = 125ns. 1/1200Hz = 833.333us
   -- 833.33us/125ns = 6666 cycles
   -- 1200Hz with 50% duty cycle = 3333 cycles high.
-  p_freq_cnt : process(i_clk, i_ena, i_rst)
+  p_freq_cnt : process(i_clk, i_rst, cas_turbo_latch)
   begin
-    if (i_rst = '1') then
+    if (i_rst = '1' or cas_turbo_latch) then
       freq_cnt <= 6666;
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
@@ -156,37 +184,49 @@ begin
   end process;
 
   -- Frequency encode current bit and output to o_cas
-  p_read_encode : process(i_clk, i_ena, i_rst)
+  p_read_encode : process(i_clk, i_ena, i_rst, cas_turbo_latch)
     variable cur_bit : integer range 15 downto 0;
   begin
-    if (i_rst = '1') then
+    if (i_rst = '1' or cas_turbo_latch) then
       bit_taken_r <= false;
-      o_cas_fm_fch <= '0';
+      freq_encoded_bit <= '0';      
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
-        o_cas_fm_fch <= '0';
-        bit_taken_r <= false;
 
+        freq_encoded_bit <= '0';
+        bit_taken_r <= false;
+    
         -- Read active
         if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
+          cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
+
           if (freq_cnt = 0) then
             bit_taken_r <= true;
           end if;
 
-          cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
-  
           -- Pulse generation cnt 0..6666: 2400Hz = 0, 2x1200Hz = 1
           if (cur_data(15-cur_bit) = '1' and freq_cnt > 1666 and freq_cnt < 3333) or
-             (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
-             (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
-             o_cas_fm_fch <= '1';
-          end if;
-          
+              (cur_data(15-cur_bit) = '1' and freq_cnt > 4999) or
+              (cur_data(15-cur_bit) = '0' and freq_cnt > 3333) then
+            freq_encoded_bit <= '1';
+          else
+            freq_encoded_bit <= '0';
+          end if;          
         end if;
 
       end if;
     end if;
   end process;
+
+  -- Frequency encoding (authentic mode)
+  -- Direct bit transfer (turbo mode) 
+  -- Constant 0 when inactive in authentic mode due to no edges. Turbo mode relies
+  -- on receiver checking avail as a 0 here would otherwise be taken as a full 0 bit
+  -- due to lack of pulse encoding in turbo mode. The 0 here is purely to match authentic
+  -- mode for LED usage by the core, as long as avail is checked last bit could be sent forever.
+  o_cas_fm_fch <= freq_encoded_bit when not cas_turbo_latch else 
+                  '0' when (i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0') and i_rec = '0' else
+                  cur_data(15 - to_integer(unsigned(tape_position(3 downto 0))));
 
   -- Decode ULA FSK output back to 0/1 and write to current word
   p_write_decode : process(i_clk, i_rst, i_ena)
@@ -197,13 +237,13 @@ begin
     if (i_rst = '1') then
       bit_valid_w  <= false;
       high_cnt := 0;
-      cas_to_fch_l <= '0';
+      cas_to_fch_t1 <= '0';
       ula_to_fileio <= '0';
       skip_next_pulse := false;
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         bit_valid_w  <= false;
-        cas_to_fch_l <= i_cas_to_fch;
+        cas_to_fch_t1 <= i_cas_to_fch;
 
         if i_fch_cfg.inserted(0) = '0' or
            i_play = '0' or i_rec = '0' or i_motor = '0' then
@@ -242,11 +282,15 @@ begin
     end if;
   end process;
 
-  cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_l) = '1' else false;
+  cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_t1) = '1' else false;
 
-  -- Tape is one way sync'd with read/write process and one way 
-  -- sync'd to FileIO request process. No sync back from FIFO
-  -- as ULA will not yield even if ARM transfer stalled.  
+  -- Authentic Mode:
+  --   Tape is one way sync'd with read/write process and one way 
+  --   sync'd to FileIO request process. No sync back from FIFO
+  --   as ULA will not yield even if ARM transfer stalled.  
+  -- Turbo Mode: 
+  --   Tape is read as fast as ULA requests and may stall if FIFO
+  --   queue runs out.
   p_tape_readwrite : process(i_clk, i_rst, i_ena)
     variable cur_bit : integer range 15 downto 0;
   begin
@@ -256,10 +300,12 @@ begin
       fileio_w_data <= (others => '0');
       fileio_taken <= '0';
       fileio_we <= '0';
+      o_cas_avail <= false;
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         fileio_taken <= '0';
         fileio_we <= '0';
+        o_cas_avail <= false;
 
         if (i_fch_cfg.inserted(0) = '0') then
           tape_position <= (others => '0');
@@ -269,9 +315,18 @@ begin
           
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
+          if cas_turbo_latch and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then 
+            -- Turbo mode runs a slightly higher risk of exhausting the queue if the arm stalls.
+            -- This pause relies on the arm still sending data after EOF is reached as up to 16 bits
+            -- of valid data may reside in cur_data and will not process until queue no longer empty.
+            if fileio_valid = '1' then
+              o_cas_avail <= true;
+            end if;
+          end if;
+
           -- Reading
-          if bit_taken_r then
-            
+          if bit_taken_r or i_cas_taken then
+
             if cur_bit = 15 then
               -- TODO: [Gary] cur_data isn't set until tape position has done one 
               --       16 bit cycle! really first fileio_data byte should be valid
@@ -283,11 +338,11 @@ begin
               fileio_taken <= '1';
             end if;
 
-          -- Writing
+          -- Writing (Authentic)
           elsif bit_valid_w then
             -- TODO: [Gary] if i_rec is disabled before bit 15, the 16bit word is never
             --       passed to fileio for storage. So far this is not an issue as there's
-            --       ample high tone that losing a bit of it doesn't change anything. Needs
+            --       ample high tone that losing a bit (or 15) of it doesn't change anything. Needs
             --       fixing though.
             if cur_bit = 15 then
               fileio_w_data <= cur_data(15 downto 1) & ula_to_fileio;
@@ -300,7 +355,7 @@ begin
 
           end if;
 
-          if (bit_valid_w or bit_taken_r) then
+          if (bit_valid_w or bit_taken_r or i_cas_taken) then
             tape_position <= tape_position + 1;
           end if;          
 
@@ -408,11 +463,11 @@ begin
                   fileio_req_state <= S_IDLE;
                 end if;
               end if;
-        
-              -- buffer >= half full (512 words), start transfer
-              if (fileio_tx_level(9) = '1') then
+
+              -- Start transmit as soon as 64 (0x40) bytes available (buffer >= 32 words)
+              if (fileio_tx_level(5) = '1') then
                 fileio_req  <= '1';
-                fileio_size <= x"0400";
+                fileio_size <= x"0040";
               end if;
 
               if (fileio_ack_req = '1') then
@@ -435,14 +490,15 @@ begin
             --
             when S_R_IDLE =>
               fileio_dir <= '0';
-              fileio_size <= x"0400";
+              fileio_size <= x"0040";
 
               -- Stopping playback or switching to record?
               if (i_play = '0' or i_rec = '1') then
                 fileio_rx_flush <= '1';
                 fileio_req_state <= S_IDLE;
               else            
-                -- buffer < half full pre-fetch more data
+                -- bit 9 = buffer < half full (512 words)
+                -- Results in at most one request over half full (1024 + 64 bytes) buffered
                 if fileio_rx_level(9) = '0' then
                   fileio_req  <= '1'; -- note, request only sent when ack received
                 end if;
