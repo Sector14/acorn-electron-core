@@ -1349,7 +1349,7 @@ begin
   -- 
   -- Cassette Interface
   --
-  -- Based on sheet 4 & 10 of the Synertek ULA schematics with noted exceptions.
+  -- Based on sheet 4 & 10 of the Ferranti ULA schematics with noted exceptions.
   -- NOTE: S* signals are ranged based on the ULA but only a single value has been
   --       used in this implementation due to clock enables.
 
