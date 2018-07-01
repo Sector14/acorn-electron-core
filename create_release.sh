@@ -1,7 +1,7 @@
 #!/bin/bash
 # Crude packaging script for releases
 hash zip 2>/dev/null || { echo >&2 "zip required but not found.  Aborting."; exit 1; }
-hash git 2>/dev/null || { echo >&2 "zip required but not found.  Aborting."; exit 1; }
+hash git 2>/dev/null || { echo >&2 "git required but not found.  Aborting."; exit 1; }
 
 VERSION=`git describe --tags`
 DATE=`date -u '+%Y%m%d%H%M%S'`
