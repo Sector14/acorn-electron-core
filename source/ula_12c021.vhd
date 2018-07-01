@@ -1086,11 +1086,7 @@ begin
           end if;
         end if;
         
-        -- TODO: Review this, as due to reset of counter now upon turbo taken, can that
-        --       still occur?        
-        -- i_cas_turbo avoids issue when coming out of cas_turbo e.g when motor stops, where
-        -- ck_freqx can be ready to assert the next clock yet a 1200Hz delay may be expected.
-        if (not i_cas_turbo and ck_freqx = '1') or (i_cas_avail and i_cas_turbo and cas_last_taken = 0 and i_cph_sys(3) = '1') then
+        if (not cas_turbo and ck_freqx = '1') or (cas_turbo and i_cas_avail and cas_last_taken = 0 and i_cph_sys(3) = '1') then
 
           cas_last_taken := CAS_1200Hz;
 
