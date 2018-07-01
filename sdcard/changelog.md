@@ -1,10 +1,13 @@
 # Acorn Electron Core - Change Log
 
+Uses semantic versioning. Major version bumps signify a breaking change and
+should not be upgraded to blindly. For example, you may require newer ARM
+firmware.
 
 ## [Unreleased]
 ### Added
   - Initial Plus 1 expansion support for ROM carts and joysticks.
-  - Turbo Mode for loading from cassette. 
+  - Experimental Turbo Mode for loading from cassette ~6x faster. 
 
 ### Changed
   - Driver changed to type 2 to use firmware support for loading from UEF.
