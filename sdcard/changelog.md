@@ -26,7 +26,7 @@ firmware.
 ### Fixed
   - Fixes issue with occasional glitch in top quarter of Firetrack
     
-## [1.1.0] - 2017-12-28
+## [1.1.1] - 2017-12-28
 ### Added
   - Add authentic/compatibility video mode OSD option
 
