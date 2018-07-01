@@ -129,6 +129,7 @@ architecture RTL of Electron_Top is
   signal cfg_vid_compatible : boolean;
   signal cfg_plus1_attached : boolean;
   signal cfg_cas_play, cfg_cas_rec, cfg_cas_ffwd, cfg_cas_rwnd : bit1;
+  signal cfg_cas_turbo_load : boolean;  
 
   -- LED Blink
   signal led         : bit1;
@@ -184,6 +185,10 @@ architecture RTL of Electron_Top is
   signal ula_oddfield : bit1;
   signal ula_rgb : word(23 downto 0);
 
+  signal ula_cas_turbo : boolean;
+  signal ula_cas_taken : boolean;
+  signal cas_avail     : boolean;
+
   -- ULA Glue
   signal div13       : bit1;
   signal n_por       : bit1;
@@ -207,7 +212,8 @@ architecture RTL of Electron_Top is
   signal plus1_rom_qa : bit1;
 
   -- Debug
-  signal debug        : word(15 downto 0);
+  signal ula_debug    : word(15 downto 0);
+  signal virtio_debug : word(15 downto 0);
 begin
     
   o_cfg_status(15 downto  0) <= (others => '0');
@@ -227,6 +233,8 @@ begin
   cfg_cas_rec           <= i_cfg_dynamic(2);
   cfg_cas_ffwd          <= i_cfg_dynamic(3);
   cfg_cas_rwnd          <= i_cfg_dynamic(4);
+
+  cfg_cas_turbo_load    <= i_cfg_dynamic(7) = '1';
 
   -- ====================================================================
   -- Misc
@@ -325,6 +333,10 @@ begin
     
     i_compatible  => cfg_vid_compatible,
 
+    i_cas_turbo   => ula_cas_turbo,
+    i_cas_avail   => cas_avail,
+    o_cas_taken   => ula_cas_taken,
+
     -- Clock   
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
@@ -383,7 +395,7 @@ begin
     o_n_irq       => ula_n_irq,
     i_n_w         => cpu_n_w,                   -- Data direction, /write, read
 
-    o_debug       => open
+    o_debug       => ula_debug
   );
 
   -- 1 bit r,g,b to 24 bit
@@ -609,7 +621,13 @@ begin
     i_cas_to_fch   => ula_cas_o,
     o_cas_fm_fch   => ula_cas_i,
 
-    o_debug        => open
+    i_cas_turbo    => cfg_cas_turbo_load,
+    i_cas_taken    => ula_cas_taken,
+    
+    o_cas_turbo    => ula_cas_turbo,
+    o_cas_avail    => cas_avail,
+
+    o_debug        => virtio_debug
   );
 
   -- TODO: [Gary] Multiplex i_cas/o_cas aux pins and i_cas_virt/o_cas_virt with ula_cas_i/o
@@ -781,7 +799,11 @@ begin
   o_disk_led        <= led;
   o_pwr_led         <= ula_n_reset_out;
 
-  o_debug <= debug;
+  -- ula_debug 13=cas_hightone, 14=frame_ck shift,, 15=cas_hightone or cas_bits
+  o_debug(0) <= '1' when ula_debug(15) = '1' or ula_cas_taken else '0';
+  o_debug(1) <= ula_cas_i;
+  o_debug(2) <= ula_debug(9); -- ISR RX Full
+  o_debug(15 downto 3) <= (others => '0');
 
   -- ====================================================================
   -- Chipscope
@@ -824,10 +846,17 @@ begin
 
       cs_clk  <= i_clk_sys;
 
-      cs_trig(62 downto 40) <= (others => '0');
-      cs_trig(39 downto 32) <= data_bus;
-      cs_trig(31 downto 16) <= addr_bus;
-      cs_trig(15 downto 0) <= debug(15 downto 0);
+      cs_trig(62 downto 17) <= (others => '0');
+      cs_trig(16) <= ula_debug(13); -- cas_hightone
+      cs_trig(15) <= ula_debug(12); -- in_reset
+      cs_trig(14) <= ula_debug(11); -- cas_turbo
+      cs_trig(13 downto 6) <= ula_debug(7 downto 0);
+      cs_trig(5) <= ula_debug(10); -- HighTone
+      cs_trig(4) <= ula_debug(9);  -- RX Full
+      cs_trig(3) <= ula_cas_mo;
+      cs_trig(2) <= '1' when ula_cas_taken else '0';
+      cs_trig(1) <= '1' when cas_avail else '0';
+      cs_trig(0) <= ula_cas_i;
     end generate electrontop_cs;
 
   end block cs_debug;

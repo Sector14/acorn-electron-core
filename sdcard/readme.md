@@ -151,6 +151,15 @@ Rewind/Fast forward is not currently supported. You can work around this by
 ejecting and re-inserting the tape which will reset the position to
 the beginning of the tape.
 
+Setting "Speed" to "Turbo Load" via the Tape Player menu will greatly
+reduce tape loading time. Elite will tape 5m 6s to load in authentic
+mode and 52s in turbo mode.
+
+Turbo Load may be activated at any time, however once enabled requests
+to return to authentic mode will be ignored until the cassette motor
+stops. It is recommended you set "Speed" prior to starting a load
+and leave it set for the duration.
+
 
 ## Saving 
 
