@@ -1,17 +1,17 @@
 # Acorn Electron Core - Change Log
 
-Uses semantic versioning. Major version bumps signify a breaking change and
+Uses semantic versions. Major version bumps signify a breaking change and
 should not be upgraded to blindly. For example, you may require newer ARM
 firmware.
 
-## [Unreleased]
+## [2.0.0] - 2018-07-01
 ### Added
   - Initial Plus 1 expansion support for ROM carts and joysticks.
   - Experimental Turbo Mode for loading from cassette ~6x faster. 
 
 ### Changed
   - Driver changed to type 2 to use firmware support for loading from UEF.
-    Requires firmware version newer than 8th Jan 2018.
+    Loading now requires ARM firmware version newer than 8th Jan 2018.
   - V/H/CSync polarity changed to negative
   - Remove a couple of unnecessary latches
 
