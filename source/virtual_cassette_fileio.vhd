@@ -476,13 +476,13 @@ begin
 
             when S_W_WAIT =>
               if (fileio_ack_trans = '1') then
+                fileio_req_state <= S_W_IDLE;
                 if (red_or(fileio_trans_err) = '1') then
                   -- unhandled - write failed.
                   fileio_req_state <= S_HALT;
                 else       
                   fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
-                fileio_req_state <= S_W_IDLE;
               end if;
         
             --
@@ -509,6 +509,7 @@ begin
 
             when S_R_WAIT =>
               if (fileio_ack_trans = '1') then
+                fileio_req_state <= S_R_IDLE;
                 if (red_or(fileio_trans_err) = '1') then
                   -- TODO: [Gary] Check truncated for end of tape. How to handle? Same way
                   --       as tape_position reaching max val? Report error status to OSD via flags?
@@ -516,7 +517,6 @@ begin
                 else
                   fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
-                fileio_req_state <= S_R_IDLE;
               end if;
 
             when others => null;
