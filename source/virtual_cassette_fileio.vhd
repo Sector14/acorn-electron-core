@@ -131,6 +131,7 @@ architecture RTL of Virtual_Cassette_FileIO is
 
   -- current 16 bit data buffer for read / write of tape position
   signal cur_data               : word(15 downto 0);
+  signal cur_data_r_valid       : boolean;
 
   signal cas_turbo_latch        : boolean;
   
@@ -149,7 +150,7 @@ begin
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         -- Leaving turbo mode is restricted to when motor is not active due to
-        -- tricky timing issues.
+        -- tricky timing issues. Entering via freq_cnt = 0 is safe during playback.
         if i_motor = '0' or freq_cnt = 0 then
           cas_turbo_latch <= i_cas_turbo;
         end if;
@@ -169,7 +170,7 @@ begin
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
         
-        if i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0' then
+        if i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0' or not cur_data_r_valid then
           freq_cnt <= 6666;
         else
           freq_cnt <= freq_cnt - 1;    
@@ -197,10 +198,12 @@ begin
         bit_taken_r <= false;
     
         -- Read active
-        if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then
+        if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' and cur_data_r_valid then
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if (freq_cnt = 0) then
+          -- Take on 1 as p_tape_readwrite will not react to taken flag until next tick and
+          -- new data will then appear one tick after that e.g in sync with freq_cnt wrap to 6666
+          if (freq_cnt = 1) then
             bit_taken_r <= true;
           end if;
 
@@ -286,17 +289,20 @@ begin
 
   -- Authentic Mode:
   --   Tape is one way sync'd with read/write process and one way 
-  --   sync'd to FileIO request process. No sync back from FIFO
-  --   as ULA will not yield even if ARM transfer stalled.  
-  -- Turbo Mode: 
-  --   Tape is read as fast as ULA requests and may stall if FIFO
-  --   queue runs out.
+  --   sync'd to FileIO request process. Whilst FIFO empty can cause a stall
+  --   ULA will not yield resulting in data corruption. Transfer is slow enough
+  --   and buffer large enough this should never occur.
+  -- Turbo Mode (read only): 
+  --   Tape is read as fast as ULA requests and may safely stall if FIFO
+  --   queue runs out. 
+  -- 
   p_tape_readwrite : process(i_clk, i_rst, i_ena)
     variable cur_bit : integer range 15 downto 0;
   begin
     if (i_rst = '1') then
       tape_position <= (others => '0');
       cur_data <= (others => '0');
+      cur_data_r_valid <= false;
       fileio_w_data <= (others => '0');
       fileio_taken <= '0';
       fileio_we <= '0';
@@ -310,37 +316,35 @@ begin
         if (i_fch_cfg.inserted(0) = '0') then
           tape_position <= (others => '0');
           cur_data <= (others => '0');
+          cur_data_r_valid <= false;
         else
-          -- TODO: [Gary] Handle reaching limit of tape_position
-          
+
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if cas_turbo_latch and i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' then 
-            -- Turbo mode runs a slightly higher risk of exhausting the queue if the arm stalls.
-            -- This pause relies on the arm still sending data after EOF is reached as up to 16 bits
-            -- of valid data may reside in cur_data and will not process until queue no longer empty.
-            if fileio_valid = '1' then
+          if cas_turbo_latch and i_play = '1' and i_motor = '1' and i_rec = '0' then 
+            if cur_data_r_valid then
               o_cas_avail <= true;
             end if;
           end if;
 
           -- Reading
-          if bit_taken_r or i_cas_taken then
+          if i_rec = '0' and (bit_taken_r or i_cas_taken or not cur_data_r_valid) then
 
-            if cur_bit = 15 then
-              -- TODO: [Gary] cur_data isn't set until tape position has done one 
-              --       16 bit cycle! really first fileio_data byte should be valid
-              --       before allowing tape to start ticking away? Once move to FSM
-              --       to handle loading tape header this problem will go away.
+            if cur_bit = 15 or not cur_data_r_valid then
+              cur_data_r_valid <= false;
 
-              -- spi transfers in big endian and uef2raw writes big endian
-              cur_data <= fileio_data(15 downto 0);
-              fileio_taken <= '1';
+              if fileio_valid = '1' then
+                -- spi transfers in big endian and uef2raw writes big endian
+                cur_data <= fileio_data(15 downto 0);
+                cur_data_r_valid <= true;
+
+                fileio_taken <= '1';
+              end if;
             end if;
 
           -- Writing (Authentic)
-          elsif bit_valid_w then
-            -- TODO: [Gary] if i_rec is disabled before bit 15, the 16bit word is never
+          elsif i_rec = '1' and bit_valid_w then
+            -- TODO: [Gary] if i_rec (or motor) is disabled before bit 15, the 16bit word is never
             --       passed to fileio for storage. So far this is not an issue as there's
             --       ample high tone that losing a bit (or 15) of it doesn't change anything. Needs
             --       fixing though.
