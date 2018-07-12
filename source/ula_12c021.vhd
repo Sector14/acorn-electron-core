@@ -1349,7 +1349,7 @@ begin
   -- 
   -- Cassette Interface
   --
-  -- Based on sheet 4 & 10 of the Synertek ULA schematics with noted exceptions.
+  -- Based on sheet 4 & 10 of the Ferranti ULA schematics with noted exceptions.
   -- NOTE: S* signals are ranged based on the ULA but only a single value has been
   --       used in this implementation due to clock enables.
 
@@ -1429,7 +1429,6 @@ begin
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
 
-        -- TODO: [Gary] merge these two cases into one.
         if cas_turbo then
           -- TODO: [Gary] Using cas_taken despite lagging high tone detection behind
           --       the actual bit taking/processing. Otherwise whilst reading is

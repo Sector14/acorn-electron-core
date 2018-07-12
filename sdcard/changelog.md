@@ -4,6 +4,11 @@ Uses semantic versions. Major version bumps signify a breaking change and
 should not be upgraded to blindly. For example, you may require newer ARM
 firmware.
 
+## [2.0.1] - 2018-07-13 
+### Fixed
+  - Turbo mode will not DOS the ARM/OSD once end of tape reached.
+    Truncated fileio response is now correctly handled.
+
 ## [2.0.0] - 2018-07-01
 ### Added
   - Initial Plus 1 expansion support for ROM carts and joysticks.
@@ -26,7 +31,7 @@ firmware.
 ### Fixed
   - Fixes issue with occasional glitch in top quarter of Firetrack
     
-## [1.1.0] - 2017-12-28
+## [1.1.1] - 2017-12-28
 ### Added
   - Add authentic/compatibility video mode OSD option
 
