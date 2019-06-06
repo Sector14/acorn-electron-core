@@ -1,0 +1,15 @@
+#vhdl    work    fifo_syncsrl_d16.vhd
+#vhdl    work    fifo_syncblock_d1024_w18.vhd
+#vhdl    work    fifo_syncblock_d2048_w18.vhd
+#vhdl    work    fifo_syncblock_d2048_w8.vhd
+#vhdl    work    dpram_be_d64.vhd
+#vhdl    work    dpram_d64.vhd
+#vhdl    work    dpram_d16.vhd
+
+#vhdl    work    replay_lib_wrap_pack.vhd
+
+replay_common/lib/cpu/t65
+replay_common/lib/generic/filters/rc_butter_1O
+
+[R1] replay_common/replay_targets/R1
+[V4] replay_common/replay_targets/V4
