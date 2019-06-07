@@ -20,7 +20,7 @@ Games and programs may be loaded from tape (uef/raw) and saved back out
 to tape (raw). Refer to the Virtual Cassette section for file format/usage.
 
 The notable missing features are:
-  
+
   - Fast Forward / Rewind
   - Tape position counter
   - Various hardware add-ons
@@ -28,7 +28,7 @@ The notable missing features are:
 
 # Key Binds
 
-Most non-shifted keys on the Electron have been mapped to the same non-shifted 
+Most non-shifted keys on the Electron have been mapped to the same non-shifted
 key on a regular keyboard, however, the shifted and ctrl states will be the
 Electron symbol not the symbol shown on a regular keyboard.
 
@@ -39,13 +39,13 @@ Exceptions to this are:
   - BREAK key bound to SCROLL LOCK. Use SCROLL LOCK for soft reset or
     CTRL+SCROLL LOCK for hard reset.
 
-For example, the "shift+8" on a normal keyboard outputs "*" whilst on the 
+For example, the "shift+8" on a normal keyboard outputs "*" whilst on the
 Electron you get a "(". The "*" symbol on the Electron keyboard is shown
 instead on the "shift+:" key. However, as noted above, the core uses the
 "shift+'" key for a "*" as the ":" key was mapped to "'" due to conflicting with
 the ";" key and its shifted key "+" (clear as mud?)
-  
-As with the original electron, caps-lock is toggled via shift+capslock, whilst 
+
+As with the original electron, caps-lock is toggled via shift+capslock, whilst
 holding capslock will result in the function key, i.e capslock+e will output
 "ELSE"
 
@@ -95,7 +95,7 @@ faster per 5 minutes of runtime or 99.9844Hz vs 100.128Hz
 ## Cables
 
 For Scart connections a DVI/VGA adapter plus VGA to Scart cable will be needed.
-Be aware that most VGA/Scart cables will not have a compatible pin-out but most 
+Be aware that most VGA/Scart cables will not have a compatible pin-out but most
 scart cables can easily have the pins switched around.
 
 See http://www.fpgaarcade.com/punbb/viewtopic.php?id=1211 for instructions
@@ -112,7 +112,7 @@ http://amigakit.leamancomputing.com/catalog/product_info.php?products_id=919
 ## UEF Format
 
 The UEF file format is the most common means of archiving Electron (and BBC)
-tapes and is directly supported by the Replay in uncompressed form. 
+tapes and is directly supported by the Replay in uncompressed form.
 
 Whilst a program may have the .uef extension, it may be gzip compressed
 and should be renamed to .uef.gz and decompressed by gunzip (Linux) or
@@ -120,10 +120,10 @@ and should be renamed to .uef.gz and decompressed by gunzip (Linux) or
 
 ## RAW Format
 
-In addition to UEF, the core continues to support the older raw format with the 
-file extension ".raw". Such a file can be created by extracting the tape data 
-from a UEF file including start/stop bits. A python uef2raw.py script will 
-do this for you and can be found in the SVN sw/tools/acorn folder.
+In addition to UEF, the core continues to support the older raw format with the
+file extension ".raw". Such a file can be created by extracting the tape data
+from a UEF file including start/stop bits. A python uef2raw.py script will
+do this for you and can be found in the tools/ folder.
 
 Usage:
 
@@ -135,14 +135,14 @@ be needed.
 
 ## Loading
 
-From the "Virtual Tape" OSD menu, select tape "1" and choose a 
+From the "Virtual Tape" OSD menu, select tape "1" and choose a
 uef or raw file (prepared as above). Switch to the "Cassette Player" menu
 and switch "Play" to ON. The core implements motor control so the
 tape will not begin playing until the Electron enables the motor.
 
 Load the program/app/game as normal by issuing
 
-  CHAIN"" 
+  CHAIN""
 
 There is no need to toggle play to OFF, the Electron will pause playback
 as and when needed.
@@ -152,7 +152,7 @@ ejecting and re-inserting the tape which will reset the position to
 the beginning of the tape.
 
 Setting "Speed" to "Turbo Load" via the Tape Player menu will greatly
-reduce tape loading time. Elite will tape 5m 6s to load in authentic
+reduce tape loading time. Elite will take 5m 6s to load in authentic
 mode and 52s in turbo mode.
 
 Turbo Load may be activated at any time, however once enabled requests
@@ -161,7 +161,7 @@ stops. It is recommended you set "Speed" prior to starting a load
 and leave it set for the duration.
 
 
-## Saving 
+## Saving
 
 In order to save, you need to mount a raw file with plenty of space. You
 can create blank 1 megabyte tape on Linux using:-
@@ -176,9 +176,9 @@ switch REC to ON and then PLAY to ON. Save as normal e.g
 
   SAVE "TESTING"
 
-and press return. 
+and press return.
 
-Support for saving to the UEF format and creating "blank" tapes is planned 
+Support for saving to the UEF format and creating "blank" tapes is planned
 for a future firmware version.
 
 
@@ -188,8 +188,8 @@ A physical cassette recorder cannot yet be attached to the Replay Board.
 However the core should support loading once suitable pins are routed to it.
 
 You will need to replicate the original Acorn cassette hardware interface
-for CAS IN, CAS OUT and optionally CAS MO. CAS RC is not used currently. 
-In addition be careful to adjust voltage levels to be within spec for the FPGA. 
+for CAS IN, CAS OUT and optionally CAS MO. CAS RC is not used currently.
+In addition be careful to adjust voltage levels to be within spec for the FPGA.
 
 
 # Plus1 Hardware Expansion
@@ -206,7 +206,7 @@ The Plus1 requires the plus1.rom (sha1sum below)
 ## ROMs
 
 To use the plus1 and ROMs ensure the plus1.rom line is uncommented in the ini
-and the above plus1.rom (or compatible slogger ROM) is located in the same 
+and the above plus1.rom (or compatible slogger ROM) is located in the same
 directory as the basic/os roms.
 
 Transfer to a roms/ folder any games, program or language roms you wish to use.
@@ -229,7 +229,7 @@ OS 1.00
 
 The Plus1 has two cartridge slots each of which supports two 16KB ROMs.
 Socket 1 is for rom pages 0 and 1, Socket 2 for pages 2 and 3. ROMs
-in socket 1 will take priority. 
+in socket 1 will take priority.
 
 Currently you need to edit the replay.ini file and set which .rom files
 should be loaded into each of the four pages. Some games/programs were
@@ -250,7 +250,7 @@ ROM = empty.rom, 0x4000, 0x4C000           # page 3
 ```
 
 Alternatively if you wanted two different game ROMs, such as
-Starship Command in socket 1 and Countdown to Doom in socket 2 
+Starship Command in socket 1 and Countdown to Doom in socket 2
 
 ```
 ROM = roms/starship_command_1.rom,  0x4000, 0x40000    # page 0
@@ -264,7 +264,7 @@ is switched on preventing you from making use of BASIC (or another
 language ROM) and loading the game in the other ROM socket. ROMs
 in the page 0/1 socket will take priority.
 
-To prevent this from occurring, press CTRL+BREAK, wait about one second 
+To prevent this from occurring, press CTRL+BREAK, wait about one second
 and then press ESCAPE. This should drop you to the prompt for the active
 language.
 

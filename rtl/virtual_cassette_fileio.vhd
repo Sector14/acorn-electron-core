@@ -35,7 +35,7 @@
 -- You are responsible for any legal issues arising from your use of this code.
 --
 
--- Interface the frequency based ULA cassette i/o pins with SD Card based 
+-- Interface the frequency based ULA cassette i/o pins with SD Card based
 -- files using Generic FileIO.
 --
 -- File IO only handles 0 or 1 states where as tape has pulses of 0's,
@@ -49,7 +49,8 @@ library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
 
-use work.Replay_Pack.all;
+  use work.Replay_Pack.all;
+  use work.Replay_CoreIO_Pack.all;
 
 entity Virtual_Cassette_FileIO is
   port (
@@ -59,7 +60,6 @@ entity Virtual_Cassette_FileIO is
     i_rst                : in bit1;
 
     -- FileIO channel
-    i_fch_cfg            : in  r_Cfg_fileio;
     i_fch_to_core        : in  r_Fileio_to_core;
     o_fch_fm_core        : out r_Fileio_fm_core;
 
@@ -115,14 +115,14 @@ architecture RTL of Virtual_Cassette_FileIO is
   -- fileio req
   type t_fileio_req_state is (S_IDLE, S_W_IDLE, S_R_IDLE, S_W_WAIT, S_R_WAIT, S_HALT);
   signal fileio_req_state       : t_fileio_req_state;
-  
+
   -- tape
   signal cas_to_fch_t1           : bit1;
   signal cas_to_fch_negedge     : boolean;
   signal bit_taken_r            : boolean;
   signal bit_valid_w            : boolean;
-  
-  signal ula_to_fileio          : bit1; 
+
+  signal ula_to_fileio          : bit1;
   signal freq_encoded_bit       : bit1;
 
   -- Doubtful anyone will want a 500MB tape but why not :)
@@ -134,7 +134,7 @@ architecture RTL of Virtual_Cassette_FileIO is
   signal cur_data_r_valid       : boolean;
 
   signal cas_turbo_latch        : boolean;
-  
+
 begin
   -- TODO: [Gary] Adapt uef2raw to emit a small header to start of virtual tape.
   --       tape read/write should skip this. On eject, write to this location
@@ -169,11 +169,11 @@ begin
       freq_cnt <= 6666;
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
-        
-        if i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0' or not cur_data_r_valid then
+
+        if i_fch_to_core.inserted(0) = '0' or i_play = '0' or i_motor = '0' or not cur_data_r_valid then
           freq_cnt <= 6666;
         else
-          freq_cnt <= freq_cnt - 1;    
+          freq_cnt <= freq_cnt - 1;
 
           if freq_cnt = 0 then
             freq_cnt <= 6666;
@@ -190,15 +190,15 @@ begin
   begin
     if (i_rst = '1' or cas_turbo_latch) then
       bit_taken_r <= false;
-      freq_encoded_bit <= '0';      
+      freq_encoded_bit <= '0';
     elsif rising_edge(i_clk) then
       if (i_ena = '1') then
 
         freq_encoded_bit <= '0';
         bit_taken_r <= false;
-    
+
         -- Read active
-        if i_fch_cfg.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' and cur_data_r_valid then
+        if i_fch_to_core.inserted(0) = '1' and i_play = '1' and i_motor = '1' and i_rec = '0' and cur_data_r_valid then
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
           -- Take on 1 as p_tape_readwrite will not react to taken flag until next tick and
@@ -214,7 +214,7 @@ begin
             freq_encoded_bit <= '1';
           else
             freq_encoded_bit <= '0';
-          end if;          
+          end if;
         end if;
 
       end if;
@@ -222,13 +222,13 @@ begin
   end process;
 
   -- Frequency encoding (authentic mode)
-  -- Direct bit transfer (turbo mode) 
+  -- Direct bit transfer (turbo mode)
   -- Constant 0 when inactive in authentic mode due to no edges. Turbo mode relies
   -- on receiver checking avail as a 0 here would otherwise be taken as a full 0 bit
   -- due to lack of pulse encoding in turbo mode. The 0 here is purely to match authentic
   -- mode for LED usage by the core, as long as avail is checked last bit could be sent forever.
-  o_cas_fm_fch <= freq_encoded_bit when not cas_turbo_latch else 
-                  '0' when (i_fch_cfg.inserted(0) = '0' or i_play = '0' or i_motor = '0') and i_rec = '0' else
+  o_cas_fm_fch <= freq_encoded_bit when not cas_turbo_latch else
+                  '0' when (i_fch_to_core.inserted(0) = '0' or i_play = '0' or i_motor = '0') and i_rec = '0' else
                   cur_data(15 - to_integer(unsigned(tape_position(3 downto 0))));
 
   -- Decode ULA FSK output back to 0/1 and write to current word
@@ -248,17 +248,17 @@ begin
         bit_valid_w  <= false;
         cas_to_fch_t1 <= i_cas_to_fch;
 
-        if i_fch_cfg.inserted(0) = '0' or
+        if i_fch_to_core.inserted(0) = '0' or
            i_play = '0' or i_rec = '0' or i_motor = '0' then
           high_cnt := 0;
           ula_to_fileio <= '0';
           skip_next_pulse := false;
         else
-          
+
           if i_cas_to_fch = '1' then
             high_cnt := high_cnt + 1;
           end if;
-          
+
           -- TODO: [Gary] Additional latches to avoid noise triggering negedge?
           if cas_to_fch_negedge then
 
@@ -274,7 +274,7 @@ begin
                 ula_to_fileio <= '1';
                 skip_next_pulse := true;
                 bit_valid_w <= true;
-              end if;              
+              end if;
             end if;
 
             high_cnt := 0;
@@ -288,14 +288,14 @@ begin
   cas_to_fch_negedge <= true when (not i_cas_to_fch and cas_to_fch_t1) = '1' else false;
 
   -- Authentic Mode:
-  --   Tape is one way sync'd with read/write process and one way 
+  --   Tape is one way sync'd with read/write process and one way
   --   sync'd to FileIO request process. Whilst FIFO empty can cause a stall
   --   ULA will not yield resulting in data corruption. Transfer is slow enough
   --   and buffer large enough this should never occur.
-  -- Turbo Mode (read only): 
+  -- Turbo Mode (read only):
   --   Tape is read as fast as ULA requests and may safely stall if FIFO
-  --   queue runs out. 
-  -- 
+  --   queue runs out.
+  --
   p_tape_readwrite : process(i_clk, i_rst, i_ena)
     variable cur_bit : integer range 15 downto 0;
   begin
@@ -313,7 +313,7 @@ begin
         fileio_we <= '0';
         o_cas_avail <= false;
 
-        if (i_fch_cfg.inserted(0) = '0') then
+        if (i_fch_to_core.inserted(0) = '0') then
           tape_position <= (others => '0');
           cur_data <= (others => '0');
           cur_data_r_valid <= false;
@@ -321,7 +321,7 @@ begin
 
           cur_bit := to_integer(unsigned(tape_position(3 downto 0)));
 
-          if cas_turbo_latch and i_play = '1' and i_motor = '1' and i_rec = '0' then 
+          if cas_turbo_latch and i_play = '1' and i_motor = '1' and i_rec = '0' then
             if cur_data_r_valid then
               o_cas_avail <= true;
             end if;
@@ -352,7 +352,7 @@ begin
               fileio_w_data <= cur_data(15 downto 1) & ula_to_fileio;
               fileio_we <= '1';
               cur_data <= (others => '0');
-            else            
+            else
               -- ULA shifts out to right. LSB in ULA will end up stored in MSB on tape.
               cur_data(15-cur_bit) <= ula_to_fileio;
             end if;
@@ -361,7 +361,7 @@ begin
 
           if (bit_valid_w or bit_taken_r or i_cas_taken) then
             tape_position <= tape_position + 1;
-          end if;          
+          end if;
 
           -- TODO: [Gary] Handle ffwd/rwnd. Will need to cause fileio read and write address changes.
         end if;
@@ -415,7 +415,7 @@ begin
 
   -- Enable/pause data request via the Generic FileIO entity
   p_fileio_req : process(i_clk, i_rst)
-  begin   
+  begin
     if (i_rst = '1') then
       fileio_addr <= (others => '0');
       fileio_req  <= '0';
@@ -425,12 +425,12 @@ begin
     elsif rising_edge(i_clk) then
 
       if (i_ena = '1') then
-        
+
         fileio_req  <= '0';
         fileio_rx_flush <= '0';
         fileio_tx_flush <= '0';
 
-        if i_fch_cfg.inserted(0) = '0' then     
+        if i_fch_to_core.inserted(0) = '0' then
           fileio_addr <= (others => '0');
           fileio_req_state <= S_IDLE;
           fileio_rx_flush <= '1';
@@ -449,12 +449,12 @@ begin
                 fileio_dir <= '0';
               end if;
 
-            -- 
+            --
             -- Write states
             --
             when S_W_IDLE =>
-              fileio_dir <= '1';              
-              
+              fileio_dir <= '1';
+
               -- User attempting to leave record mode or in case of motor stop, writing
               -- has finished and remainder of FIFO queue needs transfering asap.
               if (i_play = '0' or i_rec = '0' or i_motor = '0') then
@@ -484,11 +484,11 @@ begin
                 if (red_or(fileio_trans_err) = '1') then
                   -- unhandled - write failed.
                   fileio_req_state <= S_HALT;
-                else       
+                else
                   fileio_addr <= word(unsigned(fileio_addr) + unsigned(fileio_size));
                 end if;
               end if;
-        
+
             --
             -- Read states
             --
@@ -500,7 +500,7 @@ begin
               if (i_play = '0' or i_rec = '1') then
                 fileio_rx_flush <= '1';
                 fileio_req_state <= S_IDLE;
-              else            
+              else
                 -- bit 9 = buffer < half full (512 words)
                 -- Results in at most one request over half full (1024 + 64 bytes) buffered
                 if fileio_rx_level(9) = '0' then

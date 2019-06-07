@@ -1,0 +1,10 @@
+core_pack.vhd
+ram_d32k_w8.vhd
+tm4164ea4_64k_w4.vhd
+ula_display_logic.vhd
+ula_12c021.vhd
+ps2_translate.vhd
+virtual_cassette_fileio.vhd
+plus1.vhd
+electron_top.vhd
+core_top.vhd
