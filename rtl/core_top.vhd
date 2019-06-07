@@ -44,62 +44,30 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
-  use work.Replay_Lib_Wrap_Pack.all;
-  use work.Replay_VideoTiming_Pack.all;
+  use work.Replay_Target_Core_Wrap_Pack.all;
 
-library UNISIM;
-  use UNISIM.Vcomponents.all;
-
+--
+-- This is an interface layer between the board support library, and the "core"
+--
 entity Core_Top is
   port (
-    ------------------------------------------------------
-    -- To Lib
-    ------------------------------------------------------
-
-    -- Clocks
-    o_ctrl                : out   r_Ctrl_fm_core;
-    i_ctrl                : in    r_Ctrl_to_core;
-    -- Config
-    o_cfg                 : out   r_Cfg_fm_core;
-    i_cfg                 : in    r_Cfg_to_core;
-    -- Keyboard, Mouse and Joystick
-    o_kb_ms_joy           : out   r_KbMsJoy_fm_core;
-    i_kb_ms_joy           : in    r_KbMsJoy_to_core;
-    -- DDR memory
-    o_ddr                 : out   r_DDR_fm_core;
-    i_ddr                 : in    r_DDR_to_core;
-    -- File/Mem IO
-    o_io                  : out   r_IO_fm_core;
-    i_io                  : in    r_IO_to_core;
-    -- Audio/Video
-    o_av                  : out   r_AV_fm_core;
-    i_av                  : in    r_AV_to_core;
-
-    ------------------------------------------------------
-    -- Other IO
-    ------------------------------------------------------
-    i_rs232_rxd           : in    bit1;
-    o_rs232_txd           : out   bit1;
-    i_rs232_cts           : in    bit1;
-    o_rs232_rts           : out   bit1;
-
-    b_2v5_io_1            : inout bit1;
-    b_2v5_io_0            : inout bit1;
-
-    o_clk_68k             : out   bit1;
-    b_clk_aux             : out   bit1;
-
-    b_io                  : inout word(54 downto 0);
-    b_aux_io              : inout word(39 downto 0);
-    i_aux_ip              : in    word(22 downto 0);
-
-    o_disk_led            : out   bit1;
-    o_pwr_led             : out   bit1
-    );
+    -- system
+    i_si         : in  r_to_core := z_to_core;
+    o_so         : out r_fm_core;
+    -- external
+    i_ei         : in  r_Pins_to_core := z_Pins_to_core;
+    o_eo         : out r_Pins_fm_core
+  );
 end;
 
 architecture RTL of Core_Top is
+  -- this faff is so we can assign defaults to the complete output records
+  signal si : r_to_core;
+  signal so : r_fm_core := z_fm_core;
 
+  signal ei : r_Pins_to_core;
+  signal eo : r_Pins_fm_core := z_Pins_fm_core;
+  --
   signal clk_sys                : bit1;
   signal ena_sys                : bit1;
   signal cph_sys                : word(3 downto 0);
@@ -107,23 +75,29 @@ architecture RTL of Core_Top is
 
   signal pwr_led                : bit1;
   signal disk_led               : bit1;
+
   signal debug                  : word(15 downto 0);
 
-  signal av                     : r_AV_fm_core;
-
 begin
+  si <= i_si; -- save typing
+  ei <= i_ei;
 
   -- Sys clock used for system, audio and video
-  clk_sys <= i_ctrl.clk_sys;
-  rst_sys <= i_ctrl.rst_sys;
-  ena_sys <= i_ctrl.ena_sys;
-  cph_sys <= i_ctrl.cph_sys;
+  clk_sys <= si.ctrl.clk_sys;
+  ena_sys <= si.ctrl.ena_sys;
+  cph_sys <= si.ctrl.cph_sys;
+  rst_sys <= si.ctrl.rst_sys;
 
-  o_ctrl.clk_aud <= clk_sys;
-  o_ctrl.ena_aud <= ena_sys;
-  o_ctrl.rst_aud <= rst_sys;
+  so.ctrl.clk_aud <= clk_sys;
+  so.ctrl.ena_aud <= ena_sys;
+  so.ctrl.rst_aud <= rst_sys;
 
-  o_ctrl.ena_vid <= '1';
+  so.ctrl.ena_vid <= '1';
+
+  --
+  -- CONFIG
+  --
+  so.ctrl.rst_soft   <= '0';
 
   --
   -- The Core
@@ -136,96 +110,63 @@ begin
     i_cph_sys             => cph_sys,
     i_rst_sys             => rst_sys,
 
-    i_clk_ram             => i_ctrl.clk_ram,
-    i_rst_ram             => i_ctrl.rst_ram,
+    --
+    o_cfg_status          => so.cfg.cfg_status,
+    i_cfg_static          => si.cfg.cfg_static,
+    i_cfg_dynamic         => si.cfg.cfg_dynamic,
+
+    i_halt                => si.ctrl.halt,
 
     --
-    o_cfg_status          => o_cfg.cfg_status,
-    i_cfg_static          => i_cfg.cfg_static,
-    i_cfg_dynamic         => i_cfg.cfg_dynamic,
-
-    i_tick_1us            => i_ctrl.tick_1us,
-    i_tick_100us          => i_ctrl.tick_100us,
-    i_halt                => i_ctrl.halt,
-    i_dram_ref_panic      => i_ctrl.dram_ref_panic,
-    o_rst_soft            => o_ctrl.rst_soft,
+    i_joy_a_l             => si.kbmsjoy.joy_a_l,
+    i_joy_b_l             => si.kbmsjoy.joy_b_l,
 
     --
-    i_joy_a_l             => i_kb_ms_joy.joy_a_l,
-    i_joy_b_l             => i_kb_ms_joy.joy_b_l,
+    o_kb_ps2_leds         => so.kbmsjoy.kb_ps2_leds,
+    i_kb_ps2_we           => si.kbmsjoy.kb_ps2_we,
+    i_kb_ps2_data         => si.kbmsjoy.kb_ps2_data,
+    i_kb_inhibit          => si.kbmsjoy.kb_inhibit,
 
     --
-    o_kb_ps2_leds         => o_kb_ms_joy.kb_ps2_leds,
-    i_kb_ps2_we           => i_kb_ms_joy.kb_ps2_we,
-    i_kb_ps2_data         => i_kb_ms_joy.kb_ps2_data,
-    i_kb_inhibit          => i_kb_ms_joy.kb_inhibit,
+    i_memio_to_core       => si.mem_a,
+    o_memio_fm_core       => so.mem_a,
 
     --
-    o_ddr_hp_fm_core  => o_ddr.ddr_hp_fm_core,
-    i_ddr_hp_to_core  => i_ddr.ddr_hp_to_core,
-    
-    --
-    i_fcha_cfg            => i_io.fcha_cfg,
-    i_fcha_to_core        => i_io.fcha_to_core,
-    o_fcha_fm_core        => o_io.fcha_fm_core,
+    i_fcha_to_core        => si.io.fcha_to_core,
+    o_fcha_fm_core        => so.io.fcha_fm_core,
 
-    i_fchb_cfg            => i_io.fchb_cfg,
-    i_fchb_to_core        => i_io.fchb_to_core,
-    o_fchb_fm_core        => o_io.fchb_fm_core,
+    i_fchb_to_core        => si.io.fchb_to_core,
+    o_fchb_fm_core        => so.io.fchb_fm_core,
 
     --
-    i_memio_to_core       => i_io.memio_to_core,
-    o_memio_fm_core       => o_io.memio_fm_core,
+    i_cfgio_to_core       => si.io.cfg_to_core,
+    o_cfgio_fm_core       => so.io.cfg_fm_core,
 
     --
-    o_vid_rgb             => av.vid_rgb,
-    o_vid_sync            => av.vid_sync,
-    --o_vid_rgb             => o_av.vid_rgb,
-    --o_vid_sync            => o_av.vid_sync,
-    
+    o_vid_rgb             => so.av.vid_rgb,
+    o_vid_sync            => so.av.vid_sync,
 
     --
-    o_audio_l             => o_av.audio_l,
-    o_audio_r             => o_av.audio_r,
-    i_audio_taken         => i_av.audio_taken,
+    o_audio_l             => so.av.audio_l,
+    o_audio_r             => so.av.audio_r,
+    i_audio_taken         => si.av.audio_taken,
 
     ------------------------------------------------------
     -- Other IO
     ------------------------------------------------------
-    o_disk_led            => o_disk_led,
-    o_pwr_led             => o_pwr_led,
+    o_disk_led            => disk_led,
+    o_pwr_led             => pwr_led,
 
-    o_sound_op            => b_aux_io(6),
+    o_sound_op            => open, -- b_aux_io(6),
     o_debug               => debug(15 downto 0)
-    );
+  );
 
-  -- debug
-  o_av.vid_rgb  <= av.vid_rgb;
-  o_av.vid_sync <= av.vid_sync;
+  o_so <= so;
 
+  g_R1 : if (c_Target = R1) generate
+    eo.disk_led <= disk_led;
+    eo.pwr_led  <= pwr_led;
+  end generate;
+  o_eo <= eo;
 
-  --o_ddr.ddr_hp_fm_core      <= z_DDR_hp_fm_core;
-  o_ddr.ddr_vp_fm_core      <= z_DDR_vp_fm_core;
-
-  o_kb_ms_joy.ms_load <= '0';
-  o_kb_ms_joy.ms_posx <= (others => '0');
-  o_kb_ms_joy.ms_posy <= (others => '0');
-
-   -- IO
-  b_2v5_io_1  <= 'Z';
-  b_2v5_io_0  <= 'Z';
-  o_clk_68k   <= 'Z';
-  b_clk_aux   <= 'Z';
-  o_rs232_txd <= '0';
-  o_rs232_rts <= '0';
-
-  b_io(54 downto 0)     <= (others => 'Z');
-  b_aux_io(39 downto 16) <= (others => 'Z');
-  b_aux_io(11 downto  0) <= (others => 'Z');
-
-  -- scope debug via aux io
-  b_aux_io(12) <= debug(0);
-  b_aux_io(13) <= debug(1);
-  b_aux_io(14) <= debug(2);
-  b_aux_io(15) <= debug(3);
 end RTL;

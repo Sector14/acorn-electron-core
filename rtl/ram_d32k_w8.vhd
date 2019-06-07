@@ -49,6 +49,7 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
+  use work.Replay_CoreIO_Pack.all;
 
 library UNISIM;
   use UNISIM.Vcomponents.all;
@@ -63,10 +64,10 @@ entity RAM_D32K_W8 is -- 32k 0x000 - 0x7FFF
     );
   port (
     -- ARM interface
-    i_memio_to_core             : in  r_Memio_to_core := z_Memio_to_core;
+    i_cfgio_to_core             : in  r_Cfgio_to_core := z_Cfgio_to_core;
     --
-    i_memio_fm_core             : in  r_Memio_fm_core := z_Memio_fm_core; -- cascade input. Must be z_Memio_fm_core on first memory
-    o_memio_fm_core             : out r_Memio_fm_core; -- output back to LIB, or cascade into i_memio_fm_core on next memory
+    i_cfgio_fm_core             : in  r_Cfgio_fm_core := z_Cfgio_fm_core; -- cascade input. Must be z_Cfgio_fm_core on first memory
+    o_cfgio_fm_core             : out r_Cfgio_fm_core; -- output back to LIB, or cascade into i_cfgio_fm_core on next memory
     --
     i_clk_sys                   : in  bit1 := '0';
     i_ena_sys                   : in  bit1 := '0';
@@ -101,10 +102,10 @@ architecture RTL of RAM_D32K_W8 is
   signal o_data1                : word(7 downto 0);
 
 begin
-  p_sel : process(i_memio_to_core)
+  p_sel : process(i_cfgio_to_core)
   begin
     memio_match <= '0';
-    if (i_memio_to_core.addr(30 downto 15) and g_mask(30 downto 15)) = (g_addr(30 downto 15) and g_mask(30 downto 15)) then
+    if (i_cfgio_to_core.addr(30 downto 15) and g_mask(30 downto 15)) = (g_addr(30 downto 15) and g_mask(30 downto 15)) then
       memio_match <= '1';
     end if;
   end process;
@@ -116,9 +117,9 @@ begin
       memio_cycle <= '0';
       memio_we    <= '0';
 
-      if (memio_match = '1') and (i_memio_to_core.valid = '1') and (memio_cycle = '0') then
+      if (memio_match = '1') and (i_cfgio_to_core.valid = '1') and (memio_cycle = '0') then
         memio_cycle <= '1';
-        memio_we    <= not i_memio_to_core.rw_l;
+        memio_we    <= not i_cfgio_to_core.rw_l;
       end if;
     end if;
   end process;
@@ -132,11 +133,11 @@ begin
     port map (
       DOA   => memio_dout0(i downto i),
       DOB   => o_data0(i downto i),
-      ADDRA => i_memio_to_core.addr(13 downto 0),
+      ADDRA => i_cfgio_to_core.addr(13 downto 0),
       ADDRB => i_addr(13 downto 0),
       CLKA  => i_clk_sys,
       CLKB  => i_clk,
-      DIA   => i_memio_to_core.w_data(i downto i),
+      DIA   => i_cfgio_to_core.w_data(i downto i),
       DIB   => i_data(i downto i),
       ENA   => memio_ena0,
       ENB   => i_ena0,
@@ -150,11 +151,11 @@ begin
     port map (
       DOA   => memio_dout1(i downto i),
       DOB   => o_data1(i downto i),
-      ADDRA => i_memio_to_core.addr(13 downto 0),
+      ADDRA => i_cfgio_to_core.addr(13 downto 0),
       ADDRB => i_addr(13 downto 0),
       CLKA  => i_clk_sys,
       CLKB  => i_clk,
-      DIA   => i_memio_to_core.w_data(i downto i),
+      DIA   => i_cfgio_to_core.w_data(i downto i),
       DIB   => i_data(i downto i),
       ENA   => memio_ena1,
       ENB   => i_ena1,
@@ -165,15 +166,15 @@ begin
       );
   end generate;
 
-  -- bank enable 
+  -- bank enable
   -- data in, addr, write enable ignored whilst disabled.
-  memio_ena0 <= memio_ena when i_memio_to_core.addr(14) = '0' else '0';
-  memio_ena1 <= memio_ena when i_memio_to_core.addr(14) = '1' else '0';
+  memio_ena0 <= memio_ena when i_cfgio_to_core.addr(14) = '0' else '0';
+  memio_ena1 <= memio_ena when i_cfgio_to_core.addr(14) = '1' else '0';
   i_ena0 <= i_ena when i_addr(14) = '0' else '0';
   i_ena1 <= i_ena when i_addr(14) = '1' else '0';
 
   -- 2:1 mux for data out
-  memio_dout <= memio_dout0 when i_memio_to_core.addr(14) = '0' else memio_dout1;
+  memio_dout <= memio_dout0 when i_cfgio_to_core.addr(14) = '0' else memio_dout1;
   o_data <= o_data0 when i_addr(14) = '0' else o_data1;
 
   p_out : process
@@ -186,7 +187,7 @@ begin
 
   memio_dout_g <= memio_dout when (memio_re = '1') else (others => '0');
 
-  o_memio_fm_core.taken  <= memio_cycle  or i_memio_fm_core.taken;
-  o_memio_fm_core.r_we   <= memio_re     or i_memio_fm_core.r_we;
-  o_memio_fm_core.r_data <= memio_dout_g or i_memio_fm_core.r_data;
+  o_cfgio_fm_core.taken  <= memio_cycle  or i_cfgio_fm_core.taken;
+  o_cfgio_fm_core.r_we   <= memio_re     or i_cfgio_fm_core.r_we;
+  o_cfgio_fm_core.r_data <= memio_dout_g or i_cfgio_fm_core.r_data;
 end;
