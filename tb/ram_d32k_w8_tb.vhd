@@ -54,13 +54,13 @@ entity a_RAM_D32K_W8_tb is
 end;
 
 architecture rtl of a_RAM_D32K_W8_tb is
-  
+
   constant c_clk_sys_period : time := 1 us / 128.000; -- MHz
-  
+
   -- memio_to_core : r_Memio_to_core;
   -- memio_fm_core : r_Memio_fm_core;
   signal o_memio_fm_core : r_Memio_fm_core;
-  
+
   signal clk_sys : bit1 := '0';
   signal ena_sys : bit1 := '0';
 
@@ -115,7 +115,7 @@ begin
     i_memio_to_core  => z_Memio_to_core,  -- not used
     --
     i_memio_fm_core  => z_Memio_fm_core,  -- first module
-    o_memio_fm_core  => o_memio_fm_core,  
+    o_memio_fm_core  => o_memio_fm_core,
     --
     i_clk_sys  => clk_sys,                -- ARM clock
     i_ena_sys  => ena_sys,
@@ -125,12 +125,12 @@ begin
     i_ena   => ena,
     i_wen   => wen,
     o_data  => data_read,
-    --      
+    --
     i_clk   => clk_sys                    -- FPGA clock
   );
 
   rw_process : process
-  begin    
+  begin
     --
     -- Bank 0 address 0 & 1 write/read
     --
@@ -139,20 +139,20 @@ begin
     -- Test FPGA write/read
     addr <= x"00" & "0000000";
     data_write <= "00011011";
-    wen <= '1';    
+    wen <= '1';
 
     wait until falling_edge(clk_sys);
     addr <= x"00" & "0000001";
     data_write <= "01010101";
-    wen <= '1';    
-    
+    wen <= '1';
+
     wait until falling_edge(clk_sys);
     addr <= x"00" & "0000000";
     data_write <= "11111111";
     wen <= '0';
 
     wait until falling_edge(clk_sys);
-    
+
     assert (data_read = "00011011")
       report "Unexpected data read from address 0x0"
       severity FAILURE;
@@ -164,30 +164,30 @@ begin
     -- Test FPGA write/read
     addr <= x"80" & "0000000";
     data_write <= "11011011";
-    wen <= '1';    
+    wen <= '1';
 
     wait until falling_edge(clk_sys);
     addr <= x"80" & "0000001";
     data_write <= "11010101";
-    wen <= '1';    
-    
+    wen <= '1';
+
     wait until falling_edge(clk_sys);
     addr <= x"80" & "0000000";
     data_write <= "11111111";
     wen <= '0';
 
     wait until falling_edge(clk_sys);
-    
+
     assert (data_read = "11011011")
       report "Unexpected data read from address 0x4000"
       severity FAILURE;
-    
+
     -- Check bank 0 address 0 still correct
     addr <= x"00" & "0000000";
     wen <= '0';
 
     wait until falling_edge(clk_sys);
-    
+
     assert (data_read = "00011011")
       report "Unexpected data read from address 0x0"
       severity FAILURE;
@@ -199,7 +199,7 @@ begin
     --
     -- Test ARM port write then FPGA read, both banks
     --
-    
+
   end process;
 
 end;
