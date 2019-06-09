@@ -326,6 +326,8 @@ begin
     -- Clock
     i_clk_sys     => i_clk_sys,
     i_cph_sys     => i_cph_sys,
+    i_halt        => i_halt,
+
     i_ena_ula     => ena_ula,                   -- 1 in 2, 16MHz
     i_ena_div13   => div13,                     -- ena_ula div 13
 
@@ -389,9 +391,9 @@ begin
              (15 downto 8  => ula_g) &
              (7  downto 0  => ula_b);
 
-  p_por : process(i_clk_sys, i_rst_sys, i_halt, kbd_n_break)
+  p_por : process(i_clk_sys, i_rst_sys, kbd_n_break)
   begin
-    if (i_rst_sys = '1' or i_halt = '1') then
+    if (i_rst_sys = '1') then
       n_por <= '0';
       ula_n_reset_in <= '0';
     elsif (kbd_n_break = '0') then
@@ -536,18 +538,16 @@ begin
   o_memio_fm_core.burst  <= "00";
   o_memio_fm_core.addr(25 downto 19) <= (others => '0');
   o_memio_fm_core.addr(18 downto  2) <= "000" & addr_bus(15 downto 2) when ula_rom_ena = '1' else -- OS/BASIC
-                                         '1' & ddr_rom_page & addr_bus(13 downto 2);               -- Paged ROM
+                                         '1' & ddr_rom_page & addr_bus(13 downto 2);              -- Paged ROM
   -- read only
   o_memio_fm_core.rw_l   <= '1';
   o_memio_fm_core.w_be   <= "1111";
   o_memio_fm_core.w_data <= (others => '0');
 
-  p_program_rom : process(i_clk_sys, i_rst_sys, i_halt)
-    variable rom_page : word(3 downto 0);
+  p_program_rom : process(i_clk_sys, i_rst_sys)
   begin
-    if (i_rst_sys = '1' or i_halt = '1') then
+    if (i_rst_sys = '1') then
       rom_data <= (others => '0');
-      rom_page := (others => '0');
     elsif rising_edge(i_clk_sys) then
       -- DDR access takes 4 clk_sys cycles. ula runs at clk_sys/2 (16MHz) and generates
       -- ula_ena_phi_out at 0, 1 or 2MHz aligned to cph_sys(3). Room for 4 full DDR accesses
