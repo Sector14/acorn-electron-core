@@ -4,7 +4,16 @@ Uses semantic versions. Major version bumps signify a breaking change and
 should not be upgraded to blindly. For example, you may require newer ARM
 firmware.
 
-## [2.0.1] - 2018-07-13 
+## [2.1] - 2019-06-16
+### Added
+  - Support new FPGA Replay build system, requires python 3
+
+### Changed
+  - Support OSD based ROM switching feature added in newer Replay firmware.
+    i_halt no longer prevents clocking of ULA, only CPU is halted.
+  - Replay Firmware newer than 25th May 2019 required for OSD ROM support.
+
+## [2.0.1] - 2018-07-13
 ### Fixed
   - Turbo mode will not DOS the ARM/OSD once end of tape reached.
     Truncated fileio response is now correctly handled.
@@ -12,7 +21,7 @@ firmware.
 ## [2.0.0] - 2018-07-01
 ### Added
   - Initial Plus 1 expansion support for ROM carts and joysticks.
-  - Experimental Turbo Mode for loading from cassette ~6x faster. 
+  - Experimental Turbo Mode for loading from cassette ~6x faster.
 
 ### Changed
   - Driver changed to type 2 to use firmware support for loading from UEF.
@@ -30,7 +39,7 @@ firmware.
 
 ### Fixed
   - Fixes issue with occasional glitch in top quarter of Firetrack
-    
+
 ## [1.1.1] - 2017-12-28
 ### Added
   - Add authentic/compatibility video mode OSD option

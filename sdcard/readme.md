@@ -9,8 +9,7 @@ Rom sha1sum
   basic.rom    4a7393f3a45ea309f744441c16723e2ef447a281
   os_basic.rom bad51a4666ff9e9eed19811a1eb9d4cda10e69a3
 
-Replay firmware newer than 8th Jan 2018 also required.
-
+Replay firmware newer than 25th May 2019 is recommended for full feature support.
 
 # Core Status
 
@@ -231,16 +230,23 @@ The Plus1 has two cartridge slots each of which supports two 16KB ROMs.
 Socket 1 is for rom pages 0 and 1, Socket 2 for pages 2 and 3. ROMs
 in socket 1 will take priority.
 
-Currently you need to edit the replay.ini file and set which .rom files
-should be loaded into each of the four pages. Some games/programs were
-a single 16KB ROM in which case you can place it into any page. Others
-came as 2x16KB ROMs, for these you should place the two files in either
-page 0 and 1, or in page 2 and 3. Any ROM page you do not wish to use
-should have the "empty.rom" loaded into it unless you disable the Plus1
-entirely.
+Some games/programs were a single 16KB ROM in which case you can place
+it into any page. Others came as 2x16KB ROMs, for these you should place
+the two files in either page 0 and 1, or in page 2 and 3.
 
-For example to simulate a LISP ROM cartridge in socket 1 uncomment the page 0
-and 1 lines in the ini and edit to match
+Any ROM page you do not wish to use should have the "empty.rom" loaded
+into it unless you disable the Plus1 entirely.
+
+You can load ROMs in two ways. At run time via the OSD ROM menu or
+if you wish to have your ROM selections persist, you can edit the
+ini. These two options are covered in more detail below.
+
+### Ini Configuration
+
+Editing the ini file is recommended if you always want a set of ROMs
+to be loaded each time you load the Electron core. For example, to
+simulate a LISP ROM cartridge in socket 1 uncomment the page 0
+and 1 lines in the ini and edit to match.
 
 ```
 ROM = roms/lisp_1.rom, 0x4000, 0x40000     # page 0
@@ -259,7 +265,45 @@ ROM = roms/countdown_to_doom_1.rom, 0x4000, 0x48000    # page 2
 ROM = roms/countdown_to_doom_2.rom, 0x4000, 0x4C000    # page 3
 ```
 
-Keep in mind some ROMs (such as games) will auto load when the machine
+### OSD Configuration
+
+You can change which ROMs are loaded at runtime without having to edit
+the ini file. This is done via the OSD ROM menu. However, unlike ini file
+editing, changes via the OSD will not persist if you reboot the board.
+
+Currently the OSD lists the address each ROM is loaded into including
+the OS, Basic and Plus1 ROMs.
+
+For the Plus1 expansion slots, the ROM address/page mapping is:-
+  0x40000    page 0
+  0x44000    page 1
+  0x48000    page 2
+  0x4C000    page 3
+  0x50000    page 13
+
+Page 13 should not be used unless you know a cartridge included
+a page 13 based ROM.
+
+As with the ini file, you can place a 16K ROM into any page, but a 32K
+ROM (comprised of 2x16K ROMs) should be loaded into either page 0 & 1 for
+cart socket 1 or into page 2 & 3 for cart socket 2.
+
+As with the ini example, if you wish to load the starship command
+ROM which is a 32K ROM (2x16K), you load starship_command_1.rom into 0x40000 (page 0)
+and starship_command_2.rom into 0x44000 (page1).
+
+After replacing any ROM via the OSD, the core will halt allowing you to load
+additional ROMs as required. Whilst the core is halted, you will see a number of
+white horizontal bars in the video output. Once your ROM changes are complete, select
+"Reboot Target" from the OSD to reset the core to resume normal operation.
+
+NOTE: At this time _ALL_ ROMs are available for switching via the OSD
+including the "soldered" 16K OS (0xC000) and Basic (0x8000) ROMs. As well
+as the Plus1's expansion ROM (8K mirrored at 0x70000 and 0x72000).
+
+### Usage
+
+Some ROMs (such as games) will auto load when the machine
 is switched on preventing you from making use of BASIC (or another
 language ROM) and loading the game in the other ROM socket. ROMs
 in the page 0/1 socket will take priority.
