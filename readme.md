@@ -9,15 +9,11 @@ A series of blog posts covering this core are available on
 
 # Building
 
-If building from a checkout of the Replay SVN, run build.bat or build.sh
-as with any other core.
+Building requires a checkout of the [Replay Common](https://github.com/Takasa/replay_common)
+repository.
 
-When building from a standalone git clone of the acorn electron repo
-you'll first need a copy of (or ideally sym links to) the replay\_lib/ and lib/
-directories from a checkout of the [Replay Library SVN](http://svn.fpgaarcade.com/).
-
-The build scripts expect those directories (or sym links) to be present in
-the parent of the directory containing the build scripts/this readme.
+The build scripts expect both this repository and the replay\_common repository 
+to be cloned into the same parent directory.
 
 # License
 

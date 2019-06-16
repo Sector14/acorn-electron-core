@@ -12,4 +12,4 @@ RELEASE_ZIP="AcornElectron_${VERSION}_${DATE}.zip"
 echo "Creating release zip in ${RELEASE_ZIP}"
 pushd sdcard > /dev/null
 
-zip ../"${RELEASE_ZIP}" acorn_electron.bin changelog.md empty.rom readme.md replay.ini
+zip ../"${RELEASE_ZIP}" acorn_electron.bit changelog.md empty.rom readme.md replay.ini
