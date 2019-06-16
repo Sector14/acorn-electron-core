@@ -6,15 +6,20 @@ sdcard/roms/
 tb/*.rom
 
 # Build files
-sdcard/acorn_electron.bin
+sdcard/acorn_electron.bit
+build.log
 
 # xilinx build/sim intermediates
 **/build/
 **/sim/
 _impactbatch.log
+webtalk.log
+webtalk_impact.xml
+usage_statistics_webtalk.html
+impact_impact.xwbt
+impact.xsl
+_impact.log
+_impact.cmd
 
 # vscode workspace
 .vscode
-
-
-

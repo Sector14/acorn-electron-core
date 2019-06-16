@@ -47,10 +47,10 @@ library ieee;
 
 Package Core_Pack is
   constant c_clk_sys_divider      : natural := 32;   -- divide clk_sys down to 1MHz
-  constant c_clk_ctl_for_video    : boolean := true;
+  constant c_clk_ctl_for_video    : string := "SYNC";
   constant c_use_dram             : boolean := true; -- enabled DRAM block
   constant c_use_fileio           : boolean := true; -- enabled FILEIO block
-
+  constant c_dram_late_start      : boolean := false;
   constant c_cfg_fileio_cha_ena   : word( 3 downto 0) := "0001"; -- FD
   constant c_cfg_fileio_cha_drv   : word( 3 downto 0) := "0010"; -- driver x
   constant c_cfg_fileio_chb_ena   : word( 3 downto 0) := "0000"; -- HD

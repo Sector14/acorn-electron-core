@@ -76,40 +76,41 @@ entity ULA_12C021 is
     -- ULA is clock enabled on clk_sys
     i_clk_sys     : in bit1;
     i_cph_sys     : in word(3 downto 0);
-   
+    i_halt        : in bit1;
+
     --
     -- ULA
-    -- 
-    
-    -- Cassette I/O (not yet supported)
-    i_cas         : in bit1; 
+    --
+
+    -- Cassette I/O
+    i_cas         : in bit1;
     o_cas         : out bit1;                  -- pseudo sine-wave
     b_cas_rc      : inout bit1;                -- Not used, see hightone process.
     o_cas_mo      : out bit1;                  -- Motor relay
-           
+
     -- Audio
-    o_sound_op    : out bit1;            
-       
-    -- Reset             
+    o_sound_op    : out bit1;
+
+    -- Reset
     i_n_por       : in bit1;                   -- /Power on reset
 
     -- Video
     o_n_csync     : out bit1;                  -- h/v sync  (low during horizontal or vertical synchronisation)
-    o_n_hsync     : out bit1;                  -- h sync    
-    o_red         : out bit1;            
-    o_green       : out bit1;            
-    o_blue        : out bit1; 
-  
+    o_n_hsync     : out bit1;                  -- h sync
+    o_red         : out bit1;
+    o_green       : out bit1;
+    o_blue        : out bit1;
+
     -- Clock (used via enables rather than direct clock and must be aligned)
-    i_ena_ula     : in bit1;                   
+    i_ena_ula     : in bit1;
     i_ena_div13   : in bit1;
-       
-    -- RAM (4x64k 1 bit)       
+
+    -- RAM (4x64k 1 bit)
     b_ram0        : inout bit1;                -- RAM Data ic 0
     b_ram1        : inout bit1;                -- RAM Data ic 1
     b_ram2        : inout bit1;                -- RAM Data ic 2
     b_ram3        : inout bit1;                -- RAM Data ic 3
-       
+
     o_n_we        : out bit1;                  -- /write, read
     o_n_ras       : out bit1;                  -- row address strobe  -ve edge
     o_n_cas       : out bit1;                  -- col address strobe  -ve edge
@@ -117,13 +118,13 @@ entity ULA_12C021 is
     o_ra          : out word( 7 downto 0 );    -- ram address
 
     -- Keyboard
-    i_kbd         : in word( 3 downto 0 ); 
+    i_kbd         : in word( 3 downto 0 );
     o_caps_lock   : out bit1;
     i_n_reset     : in bit1;
     o_n_reset     : out bit1;
 
     -- ROM/CPU addressing
-    o_rom         : out bit1;                  -- rom select enable   
+    o_rom         : out bit1;                  -- rom select enable
     i_addr        : in word( 15 downto 0 );
     b_pd          : inout word( 7 downto 0 );  -- CPU/ROM data
 
@@ -192,7 +193,7 @@ architecture RTL of ULA_12C021 is
   type t_cpu_clk is (CPU_1MHz, CPU_2MHz, CPU_STOPPED);
   signal cpu_target_clk : t_cpu_clk;
   type t_clk_state is (CLK_1MHz, CLK_2MHz, CLK_TRANSITION);
-  signal cpu_clk_state : t_clk_state; 
+  signal cpu_clk_state : t_clk_state;
 
   signal phi_out   : bit1;
   signal clk_phase : unsigned(3 downto 0);
@@ -205,13 +206,13 @@ architecture RTL of ULA_12C021 is
   signal ck_s16m32  : bit1; -- 0.5MHz
   signal ck_s16m128 : bit1; -- 0.125MHz
   signal ck_s8m13   : bit1; -- 615kHz
-  signal ck_s4m13   : bit1; -- 307kHz     
+  signal ck_s4m13   : bit1; -- 307kHz
 
   -- Multiplexed clock enables
   signal ck_cas    : bit1;
   signal ck_freqx  : bit1;
 
-  -- 
+  --
   -- Registers (AUG p206)
   --
   -- Interrupt status and control (AUG p135)
@@ -226,17 +227,17 @@ architecture RTL of ULA_12C021 is
   constant ISR_HIGH_TONE      : integer := 6;
   signal isr_en               : word(6 downto 2);
   signal isr_status           : word(6 downto 0);
-  
+
   signal screen_start_addr    : word(14 downto 6);
   signal cas_o_data_shift     : word(9 downto 0);
   signal cas_i_data_shift     : word(7 downto 0);
-  
+
   -- Interrupt clear & ROM Paging
   subtype ISRC_ROM_PAGE is integer range 2 downto 0;
   constant ISRC_ROM_PAGE_ENABLE  : integer := 3;
-  constant ISRC_FRAME_END        : integer := 4;       
-  constant ISRC_RTC              : integer := 5; 
-  constant ISRC_HIGH_TONE        : integer := 6;       
+  constant ISRC_FRAME_END        : integer := 4;
+  constant ISRC_RTC              : integer := 5;
+  constant ISRC_HIGH_TONE        : integer := 6;
   constant ISRC_NMI              : integer := 7;
   signal isrc_paging             : word(3 downto 0);
 
@@ -261,20 +262,20 @@ architecture RTL of ULA_12C021 is
   subtype t_colour_palette is word( 7 downto 0);
   type t_colour_palettes is array(15 downto 8) of t_colour_palette;
   signal colour_palettes : t_colour_palettes;
-  
-begin  
+
+begin
   o_debug(9) <= isr_status(ISR_RX_FULL);
   o_debug(10) <= isr_status(ISR_HIGH_TONE);
   o_debug(11) <= '1' when cas_turbo else '0';
   o_debug(13) <= '1' when cas_hightone else '0';
 
   -- Hard/Soft Reset
-  rst <= not i_n_reset or not i_n_por;  
+  rst <= not i_n_reset or not i_n_por;
   o_n_reset <= i_n_por and i_n_reset;
-  
+
   -- Internal weak pull-up
   i_n_nmi <= 'H';
-  
+
   -- ====================================================================
   -- Master Timing
   -- ====================================================================
@@ -283,12 +284,12 @@ begin
   -- State transition sampling on phase 1 and 9 (reacting to cpu changes).
   --
   -- Transitions from 2MHz to 1MHz depend on 2MHz phase:
-  --   Phase 0: Switch to 1MHz, nothing else required 
+  --   Phase 0: Switch to 1MHz, nothing else required
   --   Phase 8: Stretched pulse, in effect skip the next 1MHz tick
   --            then resume clocking on the following 1MHz tick
   -- Phase 8 transition ensures that the RAM read that was setup on the
   -- 2MHz tick (phase 8) and will not be serviced until phase 0, is not
-  -- lost due to a 1MHz tick occuring (that is why the 1MHz tick is skipped). 
+  -- lost due to a 1MHz tick occuring (that is why the 1MHz tick is skipped).
   --
   -- Final quirk is that in any state, entire CPU clocking may be
   -- stopped. State transitions will not occur. It is assumed clocking
@@ -298,7 +299,7 @@ begin
   p_clk_gen : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
-      vid_rst <= '1';    
+      vid_rst <= '1';
       clk_phase <= "0000";
       cpu_clk_state <= CLK_1MHz;
       phi_out <= '0';
@@ -311,24 +312,24 @@ begin
       if (i_cph_sys(3) = '1' and vid_rst = '1' and clk_phase = "1110") then
          vid_rst <= '0';
       end if;
-      
+
       if i_cph_sys(1) = '1' or i_cph_sys(3) = '1' then
         clk_phase <= clk_phase + 1;
       end if;
 
       -- CPU_STOPPED will be asserted after cph(2) has created a pulse, but before cph(3) has changed
       -- states. Likewise /CPU_STOPPED will occur on cph(3) allowing state change to occur without
-      -- generating an extra clock pulse that would otherwise cause the delayed RAM access to be lost. 
+      -- generating an extra clock pulse that would otherwise cause the delayed RAM access to be lost.
       -- NOTE: This relies on ram_contention changing only on phase 0000.
       if (cpu_target_clk /= CPU_STOPPED) then
         -- Clock gen on cph(2) to edge align with cph(3)
-        if (i_cph_sys(2) = '1') then          
-          if (cpu_clk_state = CLK_1MHz and cpu_target_clk = CPU_1MHz and clk_phase = "0000") then          
+        if (i_cph_sys(2) = '1') then
+          if (cpu_clk_state = CLK_1MHz and cpu_target_clk = CPU_1MHz and clk_phase = "0000") then
             -- 1MHz pulse
             phi_out <= '1';
           elsif ( (cpu_clk_state = CLK_2MHz or cpu_target_clk = CPU_2MHz) and clk_phase(2 downto 0) = "000") then
             -- 2MHz pulse or transition to 2MHz pulsing
-            phi_out <= '1';          
+            phi_out <= '1';
           end if;
         end if;
 
@@ -340,7 +341,7 @@ begin
                 -- 2MHz transition safe to occur at any time
                 cpu_clk_state <= CLK_2MHz;
               end if;
-            when CLK_2MHz => 
+            when CLK_2MHz =>
               if (cpu_target_clk = CPU_1MHz) and (clk_phase(3) = '1') then
                 -- ram access attempt during 2MHz only phase, transition to 1MHz
                 cpu_clk_state <= CLK_TRANSITION;
@@ -357,19 +358,19 @@ begin
           end case;
         end if;
       end if;
-  
+
     end if;
   end process;
 
   -- CPU clocking based on access type
-  cpu_target_clk <= CPU_1MHz when nmi = '1' else                       
+  cpu_target_clk <= CPU_1MHz when nmi = '1' else
                     CPU_1MHz when i_addr(15 downto 9) = "1111110" else  -- ROM Fred/Jim
                     CPU_2MHz when i_addr(15) = '1' else                 -- Any other ROM access
                     CPU_STOPPED when misc_control(MISC_DISPLAY_MODE'LEFT) = '0' and ram_contention else -- RAM access mode 0..3
-                    CPU_1MHz;                                           -- Ram access  
+                    CPU_1MHz;                                           -- Ram access
 
-  o_ena_phi_out <= phi_out and i_cph_sys(3);
-  
+  o_ena_phi_out <= phi_out and i_cph_sys(3) and not i_halt;
+
 
   -- Display logic clocks
   p_clk_display : process(i_clk_sys, rst, vid_rst)
@@ -402,7 +403,7 @@ begin
           div32 := 0;
         else
           div32 := div32 + 1;
-        end if;    
+        end if;
 
       end if;
     end if;
@@ -412,7 +413,7 @@ begin
   -- Additional Timing Frequencies
   -- Used by Cassette I/O and Sound.
   p_clk_divider : process(i_clk_sys, rst)
-    variable div128 : integer range 127 downto 0; 
+    variable div128 : integer range 127 downto 0;
     variable div26  : bit1;
     variable div52  : bit1;
   begin
@@ -470,9 +471,9 @@ begin
   --       due to ck_cas test for turbo, ck_s4m13 will continue to clock.
   cas_turbo <= true when misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_INPUT and
                          misc_control(MISC_CASSETTE_MOTOR) = '1' and
-                         i_cas_turbo else 
+                         i_cas_turbo else
                false;
-  
+
   o_cas_taken <= cas_taken;
 
   -- ====================================================================
@@ -513,17 +514,17 @@ begin
 
   o_n_hsync <= not ana_hsync;
   o_n_vsync <= not ana_vsync;
-  o_n_csync <= not ana_csync;  
+  o_n_csync <= not ana_csync;
 
   -- Mode reads required on phase 0 or 8 ready for following phase as follows:
   -- Mode | Res                  | Read Phase  | cnt
-  --  0   | 640x256 1bpp         | 1000, 0000  | 1   
-  --  1   | 320x256 2bpp         | 1000, 0000  | 2   
-  --  2   | 160x256 4bpp         | 1000, 0000  | 4   
-  --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1   
-  --  4   | 320x256 1bpp         | 1000        | 2   
-  --  5   | 160x256 2bpp         | 1000        | 4   
-  --  6   | 320x250 1bpp (text)  | 1000        | 2   
+  --  0   | 640x256 1bpp         | 1000, 0000  | 1
+  --  1   | 320x256 2bpp         | 1000, 0000  | 2
+  --  2   | 160x256 4bpp         | 1000, 0000  | 4
+  --  3   | 640x250 1bpp (text)  | 1000, 0000  | 1
+  --  4   | 320x256 1bpp         | 1000        | 2
+  --  5   | 160x256 2bpp         | 1000        | 4
+  --  6   | 320x250 1bpp (text)  | 1000        | 2
   --
   -- E.g mode 6 needs 1 byte read during phase 8, ready for output on phase 0
   -- Due to 1bpp and repeated pixels, one byte covers phase 0-7 & 8-15.
@@ -533,7 +534,7 @@ begin
   -- See AUG:
   --   p214 Colour palette
   --   p234 Graphics Modes (Appendix C)
-  --   
+  --
 
   vid_text_mode <= misc_control(MISC_DISPLAY_MODE) = "110" or
                    misc_control(MISC_DISPLAY_MODE) = "011";
@@ -544,12 +545,12 @@ begin
 
     variable logical_colour : unsigned(3 downto 0);
     variable rgb : word(2 downto 0);
-    
+
     variable repeat_count : integer range 0 to 4;
     variable repeat_count_reg : integer range 0 to 4;
   begin
     if (rst = '1') or (vid_rst = '1') then
-      pixel_data := (others => '0');    
+      pixel_data := (others => '0');
       pix_idx := 7;
       repeat_count := 0;
     elsif rising_edge(i_clk_sys) then
@@ -561,36 +562,36 @@ begin
         o_blue <= '0';
 
         -- Byte read on phase 8 only when mode 0..3
-        if ((clk_phase = "0000") or 
+        if ((clk_phase = "0000") or
             (clk_phase = "1000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then
           pixel_data := ram_data;
-                    
+
           case misc_control(MISC_DISPLAY_MODE) is
             when "000" | "011" => repeat_count_reg := 0;
             when "001" | "100" | "110" | "111" => repeat_count_reg := 1;
             when "010" | "101" => repeat_count_reg := 3;
-            when others => -- usused          
-          end case;        
+            when others => -- usused
+          end case;
 
           pix_idx := 7;
           repeat_count := repeat_count_reg;
         end if;
 
         if not disp_cntinh and not disp_frame_end and disp_rowcount < 8 then
-        
+
           logical_colour := (others => '0');
 
           -- Decode pixel to logical colour
           case misc_control(MISC_DISPLAY_MODE) is
             when "000" | "011" | "100" | "110" | "111" =>
-              -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0                    
+              -- Mode 0,3,4,6 : 1bpp 7,6,5,4,3,2,1,0
               logical_colour := "000" & pixel_data(pix_idx);
             when "001" | "101" =>
               -- Mode 1,5     : 2bpp 7&3, 6&2, 5&1, 4&0
               logical_colour := "00" & pixel_data(pix_idx) & pixel_data(pix_idx-4);
             when "010" =>
               -- Mode 2       : 4bpp 7&5&3&1, 6&4&2&0
-                logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);                 
+                logical_colour := pixel_data(pix_idx) & pixel_data(pix_idx-2) & pixel_data(pix_idx-4) & pixel_data(pix_idx-6);
             when others =>
           end case;
 
@@ -600,58 +601,58 @@ begin
           case misc_control(MISC_DISPLAY_MODE) is
             when "000" | "011" | "100" | "110" | "111" =>
               -- 2 colour
-              case to_integer(logical_colour) is 
-                when 0 => 
+              case to_integer(logical_colour) is
+                when 0 =>
                   rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
                 when others => -- 1
                   rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
               end case;
-              
+
             when "001" | "101" =>
-              case to_integer(logical_colour) is 
+              case to_integer(logical_colour) is
                 -- 4 colour
-                when 0 => 
+                when 0 =>
                   rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
                 when 1 =>
                   rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                when 2 => 
+                when 2 =>
                   rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
                 when others => -- 3
                   rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
               end case;
 
             when "010" =>
-              case to_integer(logical_colour) is 
+              case to_integer(logical_colour) is
                 -- 16 colour
-                when 0 => 
+                when 0 =>
                   rgb := colour_palettes(9)(0) & colour_palettes(9)(4) & colour_palettes(8)(4);
                 when 1 =>
                   rgb := colour_palettes(15)(0) & colour_palettes(15)(4) & colour_palettes(14)(4);
-                when 2 => 
+                when 2 =>
                   rgb := colour_palettes(9)(1) & colour_palettes(9)(5) & colour_palettes(8)(5);
-                when 3 => 
+                when 3 =>
                   rgb := colour_palettes(15)(1) & colour_palettes(15)(5) & colour_palettes(14)(5);
                 when 4 =>
                   rgb := colour_palettes(11)(0) & colour_palettes(11)(4) & colour_palettes(10)(4);
-                when 5 => 
+                when 5 =>
                   rgb := colour_palettes(13)(0) & colour_palettes(13)(4) & colour_palettes(12)(4);
-                when 6 => 
+                when 6 =>
                   rgb := colour_palettes(11)(1) & colour_palettes(11)(5) & colour_palettes(10)(5);
                 when 7 =>
                   rgb := colour_palettes(13)(1) & colour_palettes(13)(5) & colour_palettes(12)(5);
-                when 8 => 
+                when 8 =>
                   rgb := colour_palettes(9)(2) & colour_palettes(8)(2) & colour_palettes(8)(6);
-                when 9 => 
+                when 9 =>
                   rgb := colour_palettes(15)(2) & colour_palettes(14)(2) & colour_palettes(14)(6);
                 when 10 =>
                   rgb := colour_palettes(9)(3) & colour_palettes(8)(3) & colour_palettes(8)(7);
-                when 11 => 
+                when 11 =>
                   rgb := colour_palettes(15)(3) & colour_palettes(14)(3) & colour_palettes(14)(7);
-                when 12 => 
+                when 12 =>
                   rgb := colour_palettes(11)(2) & colour_palettes(10)(2) & colour_palettes(10)(6);
                 when 13 =>
                   rgb := colour_palettes(13)(2) & colour_palettes(12)(2) & colour_palettes(12)(6);
-                when 14 => 
+                when 14 =>
                   rgb := colour_palettes(11)(3) & colour_palettes(10)(3) & colour_palettes(10)(7);
                 when others => -- 15
                   rgb := colour_palettes(13)(3) & colour_palettes(12)(3) & colour_palettes(12)(7);
@@ -665,7 +666,7 @@ begin
           o_red <= not rgb(2);
           o_green <= not rgb(1);
           o_blue <= not rgb(0);
-          
+
           -- Handle repeated pixel modes
           if repeat_count = 0 then
             pix_idx := pix_idx - 1;
@@ -692,7 +693,7 @@ begin
       byte_addr := (others => '0');
 
       ram_contention <= false;
-    elsif rising_edge(i_clk_sys) then      
+    elsif rising_edge(i_clk_sys) then
       if (i_ena_ula = '1') then
 
         -- Check for CPU RAM contention change only on phase 0
@@ -721,18 +722,18 @@ begin
         end if;
 
         -- Every 8 or 16 pixels depending on mode/repeats
-        if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then 
+        if (clk_phase = "1000" or (clk_phase = "0000" and misc_control(MISC_DISPLAY_MODE'LEFT) = '0')) then
           if not disp_cntinh then
             byte_addr := byte_addr + 1;
           end if;
         end if;
-        
+
         -- Frame read_addr overflowed? Wrap around until reset next frame
         -- This also handles using wrap address when screen_start_addr is zero
         if (byte_addr(14 downto 11) = "0000") then
-          byte_addr := mode_wrap_addr(14 downto 11) & byte_addr(10 downto 3); 
+          byte_addr := mode_wrap_addr(14 downto 11) & byte_addr(10 downto 3);
         end if;
-        
+
         -- rowcount holds VA0-2, byte_addr VA3-14
         ula_ram_addr <= word(byte_addr & to_unsigned(disp_rowcount, 3));
       end if;
@@ -751,11 +752,11 @@ begin
   -- FE00-FEFF Sheila - Memory Mapped I/O (ULA)
   -- FF00-FFFF ROM    - OS
   --
-  -- 4164 ram is async, however this implementation uses synchronous ram. 
+  -- 4164 ram is async, however this implementation uses synchronous ram.
   -- For a ULA replacement, exact timing requirements of 4164 would need to be
   -- checked and implemented. This is a pseudo ras/cas implementation only.
   --
-  
+
   -- RAM access occurs at 16MHz, however it takes 4 cycles to perform a 4bit
   -- read, 8 cycles to get a full byte. This is effectively 1 byte per 1MHz clk.
   -- The ULA time shares ram access (1MHz period each) with the CPU as:
@@ -767,8 +768,8 @@ begin
   --   * ula always gets this slot
   --
   -- Ram slot check based on clk_phase 0001 but will be stable before the ula clock occurs on that phase
-  
-  -- Note: ram_cpu_slot needs to be stable before rising edge of "0001" and "1001" as ram_addr 
+
+  -- Note: ram_cpu_slot needs to be stable before rising edge of "0001" and "1001" as ram_addr
   --       will be reg'd however value of ram_cpu_slot depeneds on values set on clock
   --       phase "0000" and "1000".
   p_ram_access_sel : process(i_clk_sys, clk_phase, i_addr, rst, nmi, ram_contention)
@@ -802,11 +803,11 @@ begin
       ram_data <= (others => '0');
     elsif rising_edge(i_clk_sys) then
       if (i_ena_ula = '1') then
-        if (ram_n_w = '1') then 
+        if (ram_n_w = '1') then
           b_ram0 <= 'Z'; b_ram1 <= 'Z'; b_ram2 <= 'Z'; b_ram3 <= 'Z';
         end if;
 
-        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.        
+        -- Read/write of byte split into two 4 cycle stages handling 4 bits each.
         case clk_phase(2 downto 0) is
           when "000" =>
             -- CPU clocked on 1 / 2MHz bounds here when enabled.
@@ -833,14 +834,14 @@ begin
             -- Might require two spare cycles with current DRAM setup?
           when "100" =>
             if (ram_n_w = '1') then
-              ram_even_tmp(0) := b_ram0;              
+              ram_even_tmp(0) := b_ram0;
               ram_even_tmp(1) := b_ram1;
               ram_even_tmp(2) := b_ram2;
               ram_even_tmp(3) := b_ram3;
             end if;
             o_n_we <= '1';
-            o_n_cas <= '1';            
-          when "101" =>            
+            o_n_cas <= '1';
+          when "101" =>
             -- second nibble cycle setup
             o_ra <= ram_addr(6 downto 0) & '1';
             o_n_cas <= '0';
@@ -853,7 +854,7 @@ begin
             end if;
           when "110" =>
             -- Unused, future DRAM delay
-          when "111" => 
+          when "111" =>
             if (ram_n_w = '1') then
               ram_data <= b_ram3 & ram_even_tmp(3) & b_ram2 & ram_even_tmp(2) &
                           b_ram1 & ram_even_tmp(1) & b_ram0 & ram_even_tmp(0);
@@ -865,7 +866,7 @@ begin
               end if;
             end if;
             o_n_ras <= '1';
-            o_n_cas <= '1';  
+            o_n_cas <= '1';
             o_n_we <= '1';
           when others =>
             -- unused
@@ -873,7 +874,7 @@ begin
 
       end if;
     end if;
-  end process;                
+  end process;
 
   -- ram access
   ram_addr <= i_addr(14 downto 0) when ram_cpu_slot = '1' else ula_ram_addr;
@@ -887,10 +888,10 @@ begin
   -- ROM
   -- ====================================================================
   -- Enable main board rom for OS access or BASIC rom if page enable
-  
+
   -- ROM enabled for 0x8000 - 0xBFFF when page 10 or 11 active, or for
   -- 0xC000 - 0xFFFF except for the memory mapped i/o in 0xFCXX, 0xFDXX, 0xFEXX
-  o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and        
+  o_rom <= '1' when (i_addr(15) = '1' and i_addr(14) = '0' and
                      isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and        -- ROM page 10 or 11
                      isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "01" ) else
            '1' when (i_addr(15) = '1' and i_addr(14) = '1') and         -- ROM OS except mem mapped i/o
@@ -913,7 +914,7 @@ begin
   -- FEX6 - Counter plus cassette control
   -- FEX7 - Controls screen, sound, cassette and CAPS LED
   -- FEX8-XF - Palette registers
-  -- 
+  --
   -- Addressed via page 0xFExx. 16 byte aliasing, ie 0xFE00 and 0xFE10 both refer to register 0.
 
   p_registers : process(i_clk_sys, rst, i_n_por)
@@ -924,7 +925,7 @@ begin
     variable frameck_cnt : integer range 0 to 3;
     variable cas_i_bits : integer range 0 to 9;
     variable cur_bit    : bit1;
-    
+
     variable cas_o_bits : integer range 0 to 10;
     variable cas_o_data : bit1;
     variable cas_o_halt : boolean;
@@ -937,7 +938,7 @@ begin
     variable cas_last_taken : integer range CAS_1200Hz downto 0;
     variable was_in_hightone_hack : boolean;
   begin
-    if rst = '1' then      
+    if rst = '1' then
       isr_en <= (others => '0');
       isr_status(6 downto 1) <= (others => '0');
       isrc_paging(ISRC_ROM_PAGE) <= "000";
@@ -948,7 +949,7 @@ begin
       misc_control(MISC_DISPLAY_MODE) <= "110";
       misc_control(MISC_COMM_MODE) <= MISC_COMM_MODE_INPUT;
       colour_palettes <= (others => (others => '0'));
-      
+
       cas_o_data_shift <= (others => '0');
       cas_i_data_shift <= (others => '0');
 
@@ -961,8 +962,8 @@ begin
       cas_o_data := '0';
       cas_o_bits := 0;
       cas_o_init := true;
-      cas_o_halt := false;      
-      
+      cas_o_halt := false;
+
       was_in_hightone_hack := false;
       cas_last_taken := CAS_1200Hz;
 
@@ -970,9 +971,9 @@ begin
 
       if (i_n_por = '0') then
         isr_status(ISR_POWER_ON_RESET) <= '1';
-      end if;      
+      end if;
     elsif rising_edge(i_clk_sys) then
-      if (i_ena_ula = '1') then 
+      if (i_ena_ula = '1') then
 
         -- Delayed POR reset pending?
         if (delayed_por_reset = '1' and phi_out = '1') then
@@ -983,10 +984,10 @@ begin
         if (i_n_nmi = '0') then
           nmi <= '1';
         end if;
-        
+
         -- Register access
         if (i_addr(15 downto 8) = x"FE") then
-        
+
           if (i_n_w = '1') then
 
             if (i_addr(3 downto 0) = x"0") then
@@ -1004,13 +1005,13 @@ begin
               when x"0" => isr_en <= b_pd(6 downto 2);
 
               -- do nothing
-              when x"1" => 
+              when x"1" =>
 
               -- Video status address low
               when x"2" => screen_start_addr(8 downto 6) <= b_pd(7 downto 5);
               -- Video status address high
               when x"3" => screen_start_addr(14 downto 9) <= b_pd(5 downto 0);
-              
+
               -- Cassette
               when x"4" =>
                 cas_o_data_shift(9 downto 2) <= b_pd;
@@ -1022,14 +1023,14 @@ begin
                 if (isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and isrc_paging(ISRC_ROM_PAGE'LEFT) = '0') then
                   -- Only 8-15 allowed when page 8-11 is active (ie kbd/basic rom pages AUG p211)
                   if (b_pd(3) = '1') then
-                    isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
+                    isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3);
                     isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
                   end if;
                 else
-                  isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3); 
+                  isrc_paging(ISRC_ROM_PAGE_ENABLE) <= b_pd(3);
                   isrc_paging(ISRC_ROM_PAGE) <= b_pd(2 downto 0);
                 end if;
-                
+
                 -- Clear requested interrupts
                 nmi                       <= nmi and not b_pd(ISRC_NMI);
                 isr_status(ISR_HIGH_TONE) <= isr_status(ISR_HIGH_TONE) and not b_pd(ISRC_HIGH_TONE);
@@ -1038,20 +1039,20 @@ begin
 
               -- Counter/Cassette control (write only)
               when x"6" =>
-                multi_cnt_reg <= unsigned(b_pd);     
+                multi_cnt_reg <= unsigned(b_pd);
 
               -- Controls
-              when x"7" =>                 
+              when x"7" =>
                 misc_control <= b_pd(7 downto 1);
 
-              -- Palette 
-              when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;            
+              -- Palette
+              when others => colour_palettes(to_integer(unsigned(i_addr(3 downto 0)))) <= b_pd;
 
             end case;
           end if;
 
         end if;
-                 
+
         -- Interrupt Generation
         -- Variable duration pulse depending on mode, trigger on rising edge only
         disp_frame_end_l <= disp_frame_end;
@@ -1067,11 +1068,11 @@ begin
 
         --
         -- Cassette Registers
-        -- 
+        --
 
-        -- 
+        --
         -- Reading
-        -- 
+        --
         cur_bit := cas_i_bit;
         o_debug(15) <= '0';
         if (i_cph_sys(3) = '1' ) then
@@ -1081,16 +1082,16 @@ begin
           -- Turbo mode stops during ram_contention as the faster timing can cause ISR
           -- to occur whilst CPU is stopped with no ability to service ISR before next
           -- bit clocked in even when running at 1200Hz.
-          if not ram_contention and cas_last_taken /= 0 and i_cas_avail then            
+          if not ram_contention and cas_last_taken /= 0 and i_cas_avail then
             cas_last_taken := cas_last_taken - 1;
           end if;
         end if;
-        
+
         if (not cas_turbo and ck_freqx = '1') or (cas_turbo and i_cas_avail and cas_last_taken = 0 and i_cph_sys(3) = '1') then
 
           cas_last_taken := CAS_1200Hz;
 
-          if cas_turbo then            
+          if cas_turbo then
             cas_taken <= true;
             cur_bit := i_cas;
             -- Fixup frameck to shift this cycle due to 1 cycle per bit in turbo
@@ -1125,12 +1126,12 @@ begin
 
           -- FRAMECK trigger for CKx2 & CKx4 ripple counter
           if  cas_turbo or
-              ( not cas_turbo and 
+              ( not cas_turbo and
                  ( multi_cnt(6 downto 0) = 122 or   -- S1,  250 or 122
                    multi_cnt(7 downto 0) = 58 or    -- S1,  58
                    multi_cnt(6 downto 0) = 42       -- S11, 170 or 42
                  )
-              ) then 
+              ) then
 
             -- start bit allows clocking even during reset. It can also cause corruption
             -- if one occurs when the circuit expects a stop bit ("1").
@@ -1153,22 +1154,22 @@ begin
 
                   cas_i_bits := cas_i_bits + 1;
 
-                  if cas_i_bits = 8 then 
+                  if cas_i_bits = 8 then
                     isr_status(ISR_RX_FULL) <= '1';
                     cas_last_taken := CAS_1200Hz;
-                  end if;   
+                  end if;
                 end if;
 
                 in_reset := false;
               end if;
-                            
+
               if frameck_cnt = 3 then
                 frameck_cnt := 0;
               else
                 frameck_cnt := frameck_cnt + 1;
               end if;
             end if;
-          end if;          
+          end if;
 
         end if;
 
@@ -1176,7 +1177,7 @@ begin
         -- Cassette Writing
         --
         -- Reset counter after register write ends
-        if i_n_w = '1' or 
+        if i_n_w = '1' or
            i_addr(15 downto 8) /= x"FE" or
            i_addr(3 downto 0) /= x"4" then
           -- writes made during a transfer do not reset counter
@@ -1185,7 +1186,7 @@ begin
           end if;
         end if;
 
-        if ck_freqx = '1' then     
+        if ck_freqx = '1' then
 
           if ck_multi_cnt_wrap then
             -- no clocking shift reg/counter during halt
@@ -1210,42 +1211,42 @@ begin
         if cas_o_halt then
           cas_o_data_shift(0) <= '1';
         end if;
-        
+
         -- TODO: [Gary] This is a square wave based o_cas for use with virtual cassette interface
         --       need to also generate a pseudo sine wave to output to aux pins for real cassette.
         --       It bears little resemblence to the ULA CASA0..2 interface
         o_cas <= '0';
-      
-        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then 
+
+        if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_OUTPUT then
           if ck_freqx = '1' and ck_multi_cnt_wrap then
-            cas_o_data := cas_o_data_shift(0); 
+            cas_o_data := cas_o_data_shift(0);
           end if;
 
           -- 9 bit counter clocked at 615kHz
-          -- 255 multi_cnt: high cycles 128 = 1200Hz, 64 = 2400Hz 
-          if cas_o_data = '0' then  
+          -- 255 multi_cnt: high cycles 128 = 1200Hz, 64 = 2400Hz
+          if cas_o_data = '0' then
             -- ~1200Hz '0'
-            if multi_cnt < 256 then 
-              o_cas <= '1'; 
-            end if; 
-          else 
+            if multi_cnt < 256 then
+              o_cas <= '1';
+            end if;
+          else
             -- ~2400Hz '1'
-            if multi_cnt < 128 or (multi_cnt >= 256 and multi_cnt < 384) then 
-              o_cas <= '1'; 
-            end if; 
-          end if; 
-        end if; 
-   
-      end if; -- end_ula      
+            if multi_cnt < 128 or (multi_cnt >= 256 and multi_cnt < 384) then
+              o_cas <= '1';
+            end if;
+          end if;
+        end if;
+
+      end if; -- end_ula
     end if;
-  
-    
+
+
   end process;
 
   -- Flag master irq for enabled and active interrupts only.
   isr_status(ISR_MASTER_IRQ) <= (isr_status(ISR_FRAME_END) and isr_en(ISR_FRAME_END)) or
                                 (isr_status(ISR_RTC) and isr_en(ISR_RTC)) or
-                                (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or 
+                                (isr_status(ISR_TX_EMPTY) and isr_en(ISR_TX_EMPTY)) or
                                 (isr_status(ISR_RX_FULL) and isr_en(ISR_RX_FULL)) or
                                 (isr_status(ISR_HIGH_TONE) and isr_en(ISR_HIGH_TONE));
   o_n_irq <= not isr_status(ISR_MASTER_IRQ);
@@ -1260,11 +1261,11 @@ begin
 
   --
   -- Video Address
-  -- 
+  --
 
   p_wrap_addr : process(misc_control)
     variable base_addr : word(15 downto 6);
-  begin    
+  begin
     -- mdfs.net notes that if addr 0 is loaded, it will be replaced by a
     -- hardcoded per mode base address. Also used if address overflows back to 0.
     -- 3000 for 0,1,2; 4000 for 3; 5800 for 4,5; 6000 for 6.
@@ -1276,7 +1277,7 @@ begin
       when "110" => base_addr := x"60" & "00";
       when others =>
     end case;
-    
+
     -- Wrapping always starts from the hardcoded address regardless of screen_start_addr.
     mode_wrap_addr <= unsigned(base_addr(14 downto 6));
   end process;
@@ -1284,14 +1285,14 @@ begin
   -- ====================================================================
   -- Interfacing
   -- ====================================================================
-  
-  -- 
+
+  --
   -- Keyboard Interface
   --
 
   -- Keyboard rom active
   -- Invert key state to give 1 for pressed
-  b_pd <= (x"0" & not i_kbd) when  (i_addr(15) = '1' and i_addr(14) = '0' and  
+  b_pd <= (x"0" & not i_kbd) when  (i_addr(15) = '1' and i_addr(14) = '0' and
                                    isrc_paging(ISRC_ROM_PAGE_ENABLE) = '1' and
                                    isrc_paging(ISRC_ROM_PAGE'left downto ISRC_ROM_PAGE'right+1) = "00" ) else
                                   (others => 'Z');
@@ -1299,7 +1300,7 @@ begin
 
   --
   -- Cassette/sound multi counter
-  -- 
+  --
   p_multi_cnt : process(i_clk_sys, rst)
   begin
     if (rst = '1') then
@@ -1310,9 +1311,9 @@ begin
         if ck_freqx = '1' then
           multi_cnt <= multi_cnt - 1;
 
-          -- NOTE: MSB should indicate a wrap around from 0 however as sound does 
+          -- NOTE: MSB should indicate a wrap around from 0 however as sound does
           -- async reset on wrap on real ULA, counter will (when FE06=0) go 0->0.
-          -- Anything that needs to depend on a "wrap" _cannot_ just test 
+          -- Anything that needs to depend on a "wrap" _cannot_ just test
           -- for multi_cnt = 0 as 1->0 should not be included. Instead use
           -- ck_multi_cnt_wrap as an enable guarded by ck_freqx
           ck_multi_cnt_wrap <= false;
@@ -1320,9 +1321,9 @@ begin
             ck_multi_cnt_wrap <= true;
           end if;
 
-          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then            
+          if misc_control(MISC_COMM_MODE) = MISC_COMM_MODE_SOUND then
             if multi_cnt = 0 then
-              multi_cnt <= '0' & multi_cnt_reg;                        
+              multi_cnt <= '0' & multi_cnt_reg;
             end if;
           end if;
         end if;
@@ -1345,8 +1346,8 @@ begin
       end if;
     end if;
   end process;
- 
-  -- 
+
+  --
   -- Cassette Interface
   --
   -- Based on sheet 4 & 10 of the Ferranti ULA schematics with noted exceptions.
@@ -1361,12 +1362,12 @@ begin
       cas_i_delay2 <= i_cas;
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
-        
+
         if ck_s4m13 = '1' then
-          cas_i_delay1 <= i_cas;    
+          cas_i_delay1 <= i_cas;
           cas_i_delay2 <= cas_i_delay1;
         end if;
-      
+
       end if;
     end if;
   end process;
@@ -1415,7 +1416,7 @@ begin
 
         end if;
       end if;
-    end if;    
+    end if;
   end process;
 
   -- Hightone detection
@@ -1444,7 +1445,7 @@ begin
                 hightone_cnt := hightone_cnt + 1;
               else
                 cas_hightone <= true;
-              end if;      
+              end if;
             end if;
           end if;
         elsif ck_s4m13 = '1' then
@@ -1464,15 +1465,15 @@ begin
               hightone_cnt := hightone_cnt + 1;
             else
               cas_hightone <= true;
-            end if;      
+            end if;
           end if;
 
         end if;
       end if;
-    end if;  
+    end if;
   end process;
 
-  -- 
+  --
   -- Sound Interface
   --
 
@@ -1486,7 +1487,7 @@ begin
       cnt9 := '0';
     elsif rising_edge(i_clk_sys) then
       if i_ena_ula = '1' then
-        if ck_freqx = '1' then           
+        if ck_freqx = '1' then
 
           if ck_multi_cnt_wrap then
             -- Schematics don't appear to show cnt9 as an exta div2 stage
