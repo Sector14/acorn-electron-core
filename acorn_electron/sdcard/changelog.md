@@ -4,6 +4,10 @@ Uses semantic versions. Major version bumps signify a breaking change and
 should not be upgraded to blindly. For example, you may require newer ARM
 firmware.
 
+## [2.1.1] - 2019-09-08
+### Added
+  - OSD "Hardware Expansion" page allowing ROMs to be loaded into named pages.
+
 ## [2.1] - 2019-06-16
 ### Added
   - Support new FPGA Replay build system, requires python 3
