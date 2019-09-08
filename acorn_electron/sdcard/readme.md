@@ -268,11 +268,21 @@ ROM = roms/countdown_to_doom_2.rom, 0x4000, 0x4C000    # page 3
 ### OSD Configuration
 
 You can change which ROMs are loaded at runtime without having to edit
-the ini file. This is done via the OSD ROM menu. However, unlike ini file
-editing, changes via the OSD will not persist if you reboot the board.
+the ini file. This is done via either the OSD ROM menu or the "Hardware Expansions"
+menu. However, unlike ini file editing, changes via the OSD will not persist
+if you reboot the board.
 
-Currently the OSD lists the address each ROM is loaded into including
-the OS, Basic and Plus1 ROMs.
+It is recommended you use the "Hardware Expansions" menu page when working with
+cart ROMs for the Plus1 expansion.
+
+NOTE: Any rom changes made via the Hardware Expansion menu are not reflected in
+the ROM Menu (and vice-versa) at this time.
+
+#### ROM Menu
+
+The ROM menu page lists the address and size of all available ROM modules
+along with the name of the currently ROM file. Currently the OSD lists the address
+each ROM is loaded into including the OS, Basic and Plus1 ROMs.
 
 For the Plus1 expansion slots, the ROM address/page mapping is:-
   0x40000    page 0
@@ -295,11 +305,31 @@ and starship_command_2.rom into 0x44000 (page1).
 After replacing any ROM via the OSD, the core will halt allowing you to load
 additional ROMs as required. Whilst the core is halted, you will see a number of
 white horizontal bars in the video output. Once your ROM changes are complete, select
-"Reboot Target" from the OSD to reset the core to resume normal operation.
+"Reset Target" from the OSD to reset the core to resume normal operation.
 
 NOTE: At this time _ALL_ ROMs are available for switching via the OSD
 including the "soldered" 16K OS (0xC000) and Basic (0x8000) ROMs. As well
 as the Plus1's expansion ROM (8K mirrored at 0x70000 and 0x72000).
+
+#### Hardware Expansion Menu
+
+The hardware expansion menu exposes the Plus1's two cartridge slots and
+related ROM pages. Each page may hold a 16K ROM allowing any given cart slot
+to accept a 32K rom (split into 2x16K).
+
+You may load a 16K ROM into any page, however it's recommended you use the first
+page of the chosen slot. For 32K roms that are split into 2x16K ROMs, you must load
+each 16K rom into a page from the same slot.
+
+Note: Page 13 should not be used unless you know a cartridge included a page
+13 based ROM.
+
+When a new ROM is loaded into a page the core will halt allowing you to load additional
+ROMs into the remaining pages. Once you have loaded all the required ROMs, select
+"Reset Target" from the Replay menu to bring the core out of halt.
+
+NOTE: Whilst a ROM may be loaded into a given page, this is not yet reflected
+in the menu display. All pages will continue to show "*.ROM".
 
 ### Usage
 
