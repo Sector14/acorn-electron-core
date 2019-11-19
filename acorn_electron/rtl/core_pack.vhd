@@ -44,24 +44,34 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
+  use work.Replay_Config_Pack.all;
 
 Package Core_Pack is
-  constant c_clk_sys_divider      : natural := 32;   -- divide clk_sys down to 1MHz
-  constant c_clk_ctl_for_video    : string := "SYNC";
-  constant c_use_dram             : boolean := true; -- enabled DRAM block
-  constant c_use_fileio           : boolean := true; -- enabled FILEIO block
-  constant c_dram_late_start      : boolean := false;
-  constant c_cfg_fileio_cha_ena   : word( 3 downto 0) := "0001"; -- FD
-  constant c_cfg_fileio_cha_drv   : word( 3 downto 0) := "0010"; -- driver x
-  constant c_cfg_fileio_chb_ena   : word( 3 downto 0) := "0000"; -- HD
-  constant c_cfg_fileio_chb_drv   : word( 3 downto 0) := "0000"; -- driver x
-
-  constant c_cfg_static           : word(31 downto 0) := x"00000000";
-  constant c_cfg_dynamic          : word(31 downto 0) := x"00000000";
-  constant c_version              : word(15 downto 0) := x"8000"; -- top bit must be set to enable DRAM
-
+  subtype r_sys_cfg is r_sys_cfg;
+  function core_cfg return r_sys_cfg;
 end;
 
 package body Core_Pack is
+
+  function core_cfg return r_sys_cfg is
+    variable cfg : r_sys_cfg := default_sys_cfg;
+    begin
+      cfg.clk_sys_divider    := 32;   -- divide clk_sys down to 1MHz
+      cfg.clk_ctl_for_video  := SYNC;
+      cfg.use_dram           := true; -- enabled DRAM block
+      cfg.use_fileio         := true;  -- enabled FILEIO block
+      cfg.dram_late_start    := false;
+
+      cfg.cfg_fileio_cha_ena := "0001"; -- FD
+      cfg.cfg_fileio_cha_drv := "0010"; -- driver x
+      cfg.cfg_fileio_chb_ena := "0000"; -- HD
+      cfg.cfg_fileio_chb_drv := "0000"; -- driver x
+
+      cfg.cfg_static         := x"00000000";
+      cfg.cfg_dynamic        := x"00000000";
+      cfg.version            := x"0000"; -- top bit stolen by dram
+
+      return cfg;
+  end;
 
 end;
