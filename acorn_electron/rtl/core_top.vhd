@@ -44,7 +44,8 @@ library ieee;
   use ieee.numeric_std.all;
 
   use work.Replay_Pack.all;
-  use work.Replay_Target_Core_Wrap_Pack.all;
+  use work.Replay_Core_Wrap_Pack.all;
+  use work.Replay_Target_Pack.all; -- only if you need to know which target
 
 --
 -- This is an interface layer between the board support library, and the "core"
