@@ -51,9 +51,6 @@ library ieee;
 
   use work.Replay_Pack.all;
 
-library UNISIM;
-  use UNISIM.Vcomponents.all;
-
 entity ULA_12C021 is
   port (
     --

@@ -44,8 +44,6 @@ library ieee;
   use work.Replay_CoreIO_Pack.all;
   use work.Replay_VideoTiming_Pack.all;
 
-library UNISIM;
-  use UNISIM.Vcomponents.all;
 entity Electron_Top is
   port (
     ------------------------------------------------------

@@ -36,7 +36,7 @@
 --
 
 
--- Pseudo TM4164EA4 - 4 x 4164 64k 1bit RAM 
+-- Pseudo TM4164EA4 - 4 x 4164 64k 1bit RAM
 -- Original 4164 RAM was async however this module assumes all signals
 -- are clock synchronised and implements the read/write protocol that the
 -- temporary ULA is using. This will be revisited once more is understood about
@@ -63,20 +63,17 @@ library ieee;
 
   use work.Replay_Pack.all;
 
-library UNISIM;
-  use UNISIM.Vcomponents.all;
-
-entity TM4164EA3_64k_W4 is 
+entity TM4164EA3_64k_W4 is
   -- 64k 0x000 - 0x3FFFF
   port (
-    -- clock for sync bram 
+    -- clock for sync bram
     i_clk                       : bit1;
 
     i_addr                      : in word(7 downto 0);
 
     i_data                      : in word(3 downto 0);
     o_data                      : out word(3 downto 0);
-  
+
     i_n_we                      : in bit1;
     i_n_ras                     : in bit1;
     i_n_cas                     : in bit1
@@ -96,9 +93,9 @@ architecture RTL of TM4164EA3_64k_W4 is
   type ram_type is array (65535 downto 0) of word(3 downto 0);
   shared variable RAM : ram_type;
 
-begin 
+begin
   o_data <= read_data when (i_n_ras = '0' and i_n_cas = '0' and i_n_we = '1') else (others => 'Z');
-  
+
   -- edge detection of ras and cas signals
   p_edge_detect : process (i_clk)
   begin
@@ -134,7 +131,7 @@ begin
         end if;
         read_data <= RAM(to_integer(unsigned(addr)));
       end if;
-      
+
     end if;
 
     -- Other modes that may be needed if used by ULA
@@ -143,7 +140,7 @@ begin
     --   * page mode write cycle
 
     -- Implementation not needed just ensure it doesn't break anything if used:
-    --   * ras only refresh cycle 
+    --   * ras only refresh cycle
     --   * hidden refresh cycle
 
   end process;

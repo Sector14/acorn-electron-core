@@ -42,13 +42,13 @@
 --     borders=6us (96px), active=40us (640px)
 --   Note: hs+fp+bs must be >= 12us
 --
--- Vertical: 
---   Standard is 625 lines, two fields 312.5 lines each with 2nd field 1/2 scanline offset.  
+-- Vertical:
+--   Standard is 625 lines, two fields 312.5 lines each with 2nd field 1/2 scanline offset.
 --   Measurements indicate 1/2 scanline offset is not used. Vsync instead occurs within
 --   regular timed hsync pulses causing a partial offset per field.
 --   Example mode 6 (sl = 64us scanlines)
 --     Fn   = vysnc 2.5sl, partial 11us, 28sl, 250sl active, 31sl, partial 17us
---     Fn+1 = vsync 2.5sl, partial 43us, 28sl, 250sl active, 31sl, partial 49us 
+--     Fn+1 = vsync 2.5sl, partial 43us, 28sl, 250sl active, 31sl, partial 49us
 --   Partials either side of vsync when added = 60us making a full scanline once 4us hs accounted for.
 --
 -- Width of partials in this implementation differs slightly from the Electron.
@@ -69,7 +69,7 @@
 -- HDMI/VGA will display this as a flicker free
 --   720x576 @ 50.2Hz with a 27MHz pixel clock.
 -- Downside of this is the core operates every so slightly faster as RTC/DispEnd
--- interrupt timing is based on scanlines and 1 line is now lost per frame. This 
+-- interrupt timing is based on scanlines and 1 line is now lost per frame. This
 -- results in the core running about 1 second faster per 5 minutes run time.
 -- Timing difference: 100.197Hz compatible vs 100.038Hz in authentic mode.
 
@@ -79,18 +79,15 @@ library ieee;
 
   use work.Replay_Pack.all;
 
-library UNISIM;
-  use UNISIM.Vcomponents.all;
-
 entity ULA_DISPLAY_LOGIC is
-  port (      
+  port (
       i_clk                   : in bit1;
       i_ena                   : in bit1;
       i_rst                   : in bit1;
 
       i_ck_s1m                : in bit1; -- 1MHz enable
       i_ck_s1m2               : in bit1; -- 0.5MHz enable
-      
+
       i_compatible            : in boolean;
 
       -- Graphics mode 0,1,2,4,5
@@ -104,10 +101,10 @@ entity ULA_DISPLAY_LOGIC is
       -- Interrupts
       o_rtc                 : out boolean;
       o_dispend             : out boolean;
-      
+
       o_bline               : out boolean;  -- end of 8/10 block of lines based on gfx mode
       o_addint              : out boolean;  -- start of new fields active data
-      
+
       o_n_pcpu              : out boolean;  -- Low when cpu can process regardless of mode contention
       o_n_blank             : out boolean;  -- n_pcpu sync'd to 1MHz
       o_cntinh              : out boolean;  -- high during sync or border regions of scanline
@@ -155,7 +152,7 @@ begin
     if i_rst = '1' then
       hsync_cnt <= (others => '0');
     elsif rising_edge(i_clk) then
-      if i_ena = '1' and i_ck_s1m2 = '1' then        
+      if i_ena = '1' and i_ck_s1m2 = '1' then
         hsync_cnt <= hsync_cnt + 1;
       end if;
     end if;
@@ -171,12 +168,12 @@ begin
     if i_rst = '1' then
       vsync_cnt <= (others => '0');
       -- First frame is considered odd for PAL
-      oddfield <= '1'; 
+      oddfield <= '1';
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
-        if i_ck_s1m2 = '1' then       
-          
+        if i_ck_s1m2 = '1' then
+
           -- 31.25kHZ enable from hsync counter (falling edge of hsync_cnt(3))
           if hsync_cnt = 31 or hsync_cnt = 15 then
             if (i_compatible and vsync_cnt = 623) or (vsync_cnt = 624) then
@@ -184,7 +181,7 @@ begin
               lsff2 <= false;
               oddfield <= not oddfield;
             else
-              vsync_cnt <= vsync_cnt + 1; 
+              vsync_cnt <= vsync_cnt + 1;
             end if;
           end if;
 
@@ -200,7 +197,7 @@ begin
 
 
   -- vid row count
-  p_vid_row : process(i_clk, i_rst) 
+  p_vid_row : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       vid_row_count <= 0;
@@ -234,7 +231,7 @@ begin
   --       offsets rgb by 1us later than it should be?
   cntinh <= hsync_cnt >= 20;
 
-  p_inactive_video : process(i_clk, i_rst) 
+  p_inactive_video : process(i_clk, i_rst)
   begin
     if i_rst = '1' then
       o_n_blank <= false;
@@ -258,7 +255,7 @@ begin
     elsif rising_edge(i_clk) then
       if i_ena = '1' then
 
-        if i_ck_s1m2 = '1' then          
+        if i_ck_s1m2 = '1' then
           o_rtc <= false;
 
           -- LSFF2 ensures reset occurs once after vcnt reset only during none active video LSN2
@@ -279,7 +276,7 @@ begin
             end if;
           end if;
 
-          -- RTC [200,207]          
+          -- RTC [200,207]
           if vsync_cnt >= 200 and vsync_cnt <= 207 then
             o_rtc <= true;
           end if;
