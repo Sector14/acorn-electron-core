@@ -8,6 +8,7 @@ tb/*.rom
 
 # Build files
 sdcard/acorn_electron.bit
+sdcard/acorn_electron.rbf
 
 # xilinx build/sim intermediates
 build_ise/
